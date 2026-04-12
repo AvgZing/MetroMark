@@ -4,7 +4,7 @@ MetroMark is a transit exploration tracker.
 
 Current MVP goal:
 - Show transit lines and station points on a global map.
-- Load transit by preset city or by visible viewport bbox (international mode).
+- Automatically load transit by current visible map area (international mode) with nearby-area prefetch.
 - Filter by line short name, long name, operator, and mode.
 - Create/login account and mark stations as visited.
 - Preserve progress per user.
@@ -23,12 +23,14 @@ This stack keeps the MVP easy to understand while preserving flexibility for fut
 
 - Server-side proxy to Transitland (API key never sent to browser).
 - Strictly normalized cache keys for city and viewport bbox fetches.
-- City presets with one-click jump/load (Seattle, Hong Kong, London, Paris, New York City, Tokyo).
-- International visible-area loading from map viewport (bbox) with optional auto-fetch.
+- City presets with one-click jump-to-view (Seattle, Hong Kong, London, Paris, New York City, Tokyo).
+- International visible-area loading is always on (no manual load mode switch).
 - Route and stop rendering on a MapLibre globe.
-- Account and line filters available as map popup panels (instead of long sidebar sections).
-- Route filter list with search + operator/type filters + sorting.
-- Light and dark sidebar UI themes with persistence.
+- Sidebar-first controls with integrated route filters, progress, and status messaging.
+- Transitland-style route filtering with mode chips, route search, and per-route isolate/fade behavior.
+- Stop visibility presets: default Transitland-style types (0/1), optional entrances (2), or all (0-4).
+- Light and dark UI themes with a simple toggle next to profile controls.
+- Profile dropdown for demo login, login/register, and logout.
 - Account auth (register/login) + seeded demo user.
 - Station click-to-toggle completion tracking.
 - Station hover diagnostics showing line/operator/mode, matching method, feed IDs, and merge counts.
@@ -84,8 +86,10 @@ Important defaults:
 - Transit requests are done server-side only.
 - Per-city and per-bbox data is cached in SQLite for the configured TTL.
 - Viewport bbox requests are snapped to normalized keys so revisiting the same area does not refetch from Transitland.
-- Client keeps a session cache map of loaded area keys and merges loaded areas, so loading a new area does not wipe previously loaded overlays.
-- Force refresh exists in UI if you need a one-time manual refetch.
+- Client keeps a session cache of area tiles and only fetches missing nearby tiles for the current viewport.
+- Nearby tile fetches are queue-limited and distance-prioritized to reduce timeouts and API spikes when zooming/panning.
+- Initial city jump now triggers visible-area loading automatically instead of waiting on manual fetch actions.
+- Clear Local Cache remains available for rare refresh scenarios (for example, newly published transit updates).
 - Station-to-line assignment and stop dedup are computed once per fetch and then cached.
 
 Result: normal use should not repeatedly consume Transitland calls.
@@ -93,6 +97,7 @@ Result: normal use should not repeatedly consume Transitland calls.
 ## Current Constraints
 
 - Dateline-wrapping viewport bbox fetches are not enabled yet (around the 180-degree meridian).
+- Very wide world zooms are intentionally blocked from fetch to avoid expensive global pulls; zoom in for reliable loading.
 - Station assignment now prefers same-feed route matching before geometry fallback; dense multi-line overlap can still need additional logic in future iterations.
 - Transitland REST stops endpoint still does not expose direct route membership in this integration path, so matching uses feed-aware and geometry heuristics.
 

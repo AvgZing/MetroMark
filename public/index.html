@@ -16,160 +16,127 @@
   <body>
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="brand-block">
-          <p class="brand-kicker">Transit Exploration Tracker</p>
-          <h1>MetroMark</h1>
-          <p class="brand-caption">
-            Jump to a preset city or load transit for the visible map area anywhere in the world.
-          </p>
-          <div class="brand-actions">
-            <button id="themeToggleBtn" class="btn" type="button">Switch To Dark Mode</button>
+        <div class="sidebar-head panel">
+          <div>
+            <p class="brand-kicker">Transit Exploration Tracker</p>
+            <h1>MetroMark</h1>
+          </div>
+          <div class="head-actions">
+            <button id="themeToggleBtn" class="btn btn-icon" type="button" aria-label="Toggle theme">Theme</button>
+            <button
+              id="accountPopupBtn"
+              class="btn btn-icon"
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+            >
+              Profile
+            </button>
           </div>
         </div>
 
-        <section class="panel" id="statusPanel">
-          <h2>Status</h2>
-          <p id="statusText">Initializing map and API...</p>
-        </section>
-
         <section class="panel">
-          <h2>Transit Data</h2>
-          <label>
-            Preset City
+          <h2>Map View</h2>
+          <label class="mono-label">
+            Jump To City
             <select id="citySelect"></select>
           </label>
           <div class="inline-actions">
-            <button id="gotoCityBtn" class="btn" type="button">Go To Preset</button>
-            <button id="loadCityBtn" class="btn" type="button">Load Preset Transit</button>
+            <button id="gotoCityBtn" class="btn" type="button">Go To City</button>
           </div>
-          <div class="inline-actions">
-            <button id="loadVisibleBtn" class="btn btn-primary" type="button">Load Visible Area</button>
-            <label class="inline-check">
-              <input id="autoFetchCheckbox" type="checkbox" />
-              Auto-fetch on map move
-            </label>
+          <div class="map-style-switch" role="group" aria-label="Map style">
+            <button id="streetsModeBtn" class="btn" type="button">Streets</button>
+            <button id="satelliteModeBtn" class="btn" type="button">Satellite</button>
           </div>
-          <div class="inline-actions compact-row">
-            <label class="inline-check">
-              <input id="refreshCheckbox" type="checkbox" />
-              Force refresh (bypass server cache)
-            </label>
-            <button id="clearSessionCacheBtn" class="btn" type="button">Clear Session Cache</button>
-          </div>
-          <p class="microcopy">
-            International mode uses your current viewport bbox with strict cache keys. Zoom in to 9+ for best results.
-          </p>
+          <p class="microcopy">Transit loads automatically for what is visible and nearby.</p>
+        </section>
+
+        <section class="panel">
+          <h2>Routes & Stops</h2>
+          <label class="mono-label">
+            Search Routes
+            <input id="lineSearch" type="search" placeholder="Search route name, number, or operator" />
+          </label>
+
+          <label class="mono-label">
+            Stop Visibility
+            <select id="stopTypeSelect">
+              <option value="core">Stations + Platforms</option>
+              <option value="withEntrances">Add Entrances/Exits</option>
+              <option value="all">All Stop Types (0-4)</option>
+            </select>
+          </label>
+
+          <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
+          <div id="lineList" class="line-list" aria-live="polite"></div>
+          <button id="resetLineFocusBtn" class="btn" type="button" hidden>Show All Routes</button>
         </section>
 
         <section class="panel">
           <h2>Progress</h2>
-          <p id="progressSummary">Sign in and load a city to track station progress.</p>
+          <p id="progressSummary">Sign in to mark visited stations.</p>
           <div id="lineProgressList" class="line-progress-list"></div>
+        </section>
+
+        <section class="panel status-panel">
+          <p id="statusText">Initializing map and API...</p>
+          <p id="statusMeta" class="microcopy"></p>
+          <p id="backendStatusText" class="backend-note"></p>
+          <button id="clearSessionCacheBtn" class="btn btn-subtle" type="button">Clear Local Cache</button>
         </section>
       </aside>
 
       <main class="map-stage">
-        <div class="map-toolbar">
-          <button id="streetsModeBtn" class="btn" type="button">Streets</button>
-          <button id="satelliteModeBtn" class="btn" type="button">Satellite</button>
-          <button id="accountPopupBtn" class="btn" type="button">Account</button>
-          <button id="filtersPopupBtn" class="btn" type="button">Filters</button>
-        </div>
-
-        <section class="panel popup-panel" id="authPopup" hidden>
-          <div class="popup-header">
-            <h2>Account</h2>
-            <button id="closeAuthPopupBtn" class="btn popup-close" type="button">Close</button>
-          </div>
-
-          <div id="authLoggedOut">
-            <button id="demoLoginBtn" class="btn btn-primary" type="button">Use Demo Account</button>
-
-            <form id="loginForm" class="stack-form">
-              <label>
-                Email
-                <input id="loginEmail" name="email" type="email" required />
-              </label>
-              <label>
-                Password
-                <input id="loginPassword" name="password" type="password" required />
-              </label>
-              <button class="btn" type="submit">Login</button>
-            </form>
-
-            <form id="registerForm" class="stack-form">
-              <label>
-                Display Name
-                <input id="registerDisplayName" name="displayName" type="text" placeholder="Optional" />
-              </label>
-              <label>
-                Email
-                <input id="registerEmail" name="email" type="email" required />
-              </label>
-              <label>
-                Password
-                <input id="registerPassword" name="password" type="password" minlength="6" required />
-              </label>
-              <button class="btn" type="submit">Create Account</button>
-            </form>
-
-            <p class="microcopy" id="demoHint">
-              Demo credentials seed automatically from server env.
-            </p>
-          </div>
-
-          <div id="authLoggedIn" hidden>
-            <p>
-              Logged in as <strong id="currentUserLabel">-</strong>
-            </p>
-            <button id="logoutBtn" class="btn" type="button">Log Out</button>
-          </div>
-        </section>
-
-        <section class="panel popup-panel" id="filtersPopup" hidden>
-          <div class="popup-header">
-            <h2>Line Filters</h2>
-            <button id="closeFiltersPopupBtn" class="btn popup-close" type="button">Close</button>
-          </div>
-
-          <div class="inline-actions">
-            <label>
-              Transport Type
-              <select id="modeFilterSelect">
-                <option value="all">All Types</option>
-              </select>
-            </label>
-            <label>
-              Operator
-              <select id="operatorFilterSelect">
-                <option value="all">All Operators</option>
-              </select>
-            </label>
-          </div>
-
-          <label>
-            Sort
-            <select id="lineSortSelect">
-              <option value="name">Name</option>
-              <option value="mode">Transport Type</option>
-              <option value="operator">Operator</option>
-              <option value="stopCount">Stop Count</option>
-            </select>
-          </label>
-
-          <label>
-            Search Line
-            <input id="lineSearch" type="search" placeholder="Filter by short name, long name, operator, or mode" />
-          </label>
-          <div class="inline-actions">
-            <button id="selectAllLinesBtn" class="btn" type="button">Select All Shown</button>
-            <button id="clearLinesBtn" class="btn" type="button">Clear Shown</button>
-          </div>
-          <div id="lineList" class="line-list" aria-live="polite"></div>
-        </section>
-
         <div id="map"></div>
       </main>
+
+      <section class="panel dropdown-panel" id="authPopup" hidden>
+        <div class="popup-header">
+          <h2>Profile</h2>
+          <button id="closeAuthPopupBtn" class="btn popup-close" type="button">Close</button>
+        </div>
+
+        <div id="authLoggedOut">
+          <button id="demoLoginBtn" class="btn btn-primary" type="button">Use Demo Account</button>
+
+          <form id="loginForm" class="stack-form">
+            <label>
+              Email
+              <input id="loginEmail" name="email" type="email" required />
+            </label>
+            <label>
+              Password
+              <input id="loginPassword" name="password" type="password" required />
+            </label>
+            <button class="btn" type="submit">Login</button>
+          </form>
+
+          <form id="registerForm" class="stack-form">
+            <label>
+              Display Name
+              <input id="registerDisplayName" name="displayName" type="text" placeholder="Optional" />
+            </label>
+            <label>
+              Email
+              <input id="registerEmail" name="email" type="email" required />
+            </label>
+            <label>
+              Password
+              <input id="registerPassword" name="password" type="password" minlength="6" required />
+            </label>
+            <button class="btn" type="submit">Create Account</button>
+          </form>
+
+          <p class="microcopy">Demo credentials are seeded automatically from server settings.</p>
+        </div>
+
+        <div id="authLoggedIn" hidden>
+          <p>
+            Signed in as <strong id="currentUserLabel">-</strong>
+          </p>
+          <button id="logoutBtn" class="btn" type="button">Log Out</button>
+        </div>
+      </section>
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>

@@ -16,6 +16,25 @@ function asBoolean(value) {
   return text === "1" || text === "true" || text === "yes";
 }
 
+function parseStopTypes(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return null;
+  }
+
+  const allowed = new Set([0, 1, 2, 3, 4]);
+  const parsed = raw
+    .split(",")
+    .map((entry) => Number.parseInt(entry.trim(), 10))
+    .filter((entry) => Number.isFinite(entry) && allowed.has(entry));
+
+  if (!parsed.length) {
+    return null;
+  }
+
+  return Array.from(new Set(parsed)).sort((a, b) => a - b);
+}
+
 function userResponse(user, token) {
   return {
     token,
@@ -50,8 +69,10 @@ app.get("/api/transit/city/:slug", async (req, res) => {
   }
 
   try {
+    const stopTypes = parseStopTypes(req.query.stopTypes);
     const data = await getCityTransit(city.slug, {
-      forceRefresh: asBoolean(req.query.refresh)
+      forceRefresh: asBoolean(req.query.refresh),
+      stopLocationTypes: stopTypes
     });
 
     if (!data) {
@@ -62,6 +83,7 @@ app.get("/api/transit/city/:slug", async (req, res) => {
       cacheStatus: data.cacheStatus,
       cacheKey: data.cacheKey,
       cacheExpiresAt: data.cacheExpiresAt || null,
+      stopLocationTypes: data.stopLocationTypes || [0, 1],
       ...data.payload
     });
   } catch (error) {
@@ -80,11 +102,13 @@ app.get("/api/transit/bbox", async (req, res) => {
 
   const bbox = bboxRaw.split(",").map((value) => Number(value.trim()));
   const zoom = Number(req.query.zoom);
+  const stopTypes = parseStopTypes(req.query.stopTypes);
 
   try {
     const data = await getBboxTransit(bbox, {
       forceRefresh: asBoolean(req.query.refresh),
-      zoom: Number.isFinite(zoom) ? zoom : null
+      zoom: Number.isFinite(zoom) ? zoom : null,
+      stopLocationTypes: stopTypes
     });
 
     return res.json({
@@ -93,6 +117,7 @@ app.get("/api/transit/bbox", async (req, res) => {
       cacheExpiresAt: data.cacheExpiresAt || null,
       normalizedBbox: data.normalizedBbox,
       snapStep: data.snapStep,
+      stopLocationTypes: data.stopLocationTypes || [0, 1],
       ...data.payload
     });
   } catch (error) {

@@ -130,6 +130,24 @@ function canonicalStationName(name) {
   return trimmed || normalized;
 }
 
+function normalizeStopLocationTypes(rawValue) {
+  const allowed = new Set([0, 1, 2, 3, 4]);
+
+  const source = Array.isArray(rawValue)
+    ? rawValue
+    : String(rawValue || "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+
+  const parsed = source
+    .map((entry) => Number.parseInt(entry, 10))
+    .filter((entry) => Number.isFinite(entry) && allowed.has(entry));
+
+  const uniqueSorted = Array.from(new Set(parsed)).sort((a, b) => a - b);
+  return uniqueSorted.length ? uniqueSorted : [0, 1];
+}
+
 function parseBboxArray(rawBbox) {
   if (!Array.isArray(rawBbox) || rawBbox.length !== 4) {
     throw new Error("bbox must contain four comma-separated coordinates.");
@@ -163,11 +181,13 @@ function parseBboxArray(rawBbox) {
 
 function bboxStepFromZoom(zoom) {
   if (Number.isFinite(zoom)) {
-    if (zoom >= 13) return 0.01;
-    if (zoom >= 11) return 0.02;
-    if (zoom >= 9) return 0.03;
+    if (zoom >= 13) return 0.025;
+    if (zoom >= 11) return 0.04;
+    if (zoom >= 9) return 0.06;
+    if (zoom >= 7) return 0.09;
+    if (zoom >= 5) return 0.12;
   }
-  return Math.max(0.005, config.BBOX_DEFAULT_STEP_DEGREES);
+  return Math.max(0.06, config.BBOX_DEFAULT_STEP_DEGREES);
 }
 
 function snapBboxToGrid(bbox, step) {
@@ -331,6 +351,11 @@ function extractStopPoint(stop) {
   return null;
 }
 
+function extractStopLocationType(stop) {
+  const locationType = Number(stop?.location_type);
+  return Number.isFinite(locationType) ? locationType : 0;
+}
+
 function isRailLikeRouteType(routeType) {
   return routeType === 0 || routeType === 1 || routeType === 2 || routeType === 12;
 }
@@ -406,16 +431,33 @@ function assignStopToClosestRoute(stopPoint, routes, stopContext = {}) {
 
 async function fetchRoutesAndStopsForBbox(bboxArray) {
   const bbox = toBboxString(bboxArray);
+  const lonSpan = Math.max(0, Number(bboxArray[2]) - Number(bboxArray[0]));
+  const latSpan = Math.max(0, Number(bboxArray[3]) - Number(bboxArray[1]));
+  const span = Math.max(lonSpan, latSpan);
+
+  let routeLimit = 420;
+  let stopLimit = 2200;
+
+  if (span > 1.7) {
+    routeLimit = 280;
+    stopLimit = 1300;
+  } else if (span > 1.3) {
+    routeLimit = 340;
+    stopLimit = 1700;
+  } else if (span > 0.9) {
+    routeLimit = 390;
+    stopLimit = 2000;
+  }
 
   const [routesResponse, stopsResponse] = await Promise.all([
     transitlandRequest("/routes", {
       bbox,
       include_geometry: "true",
-      limit: "450"
+      limit: String(routeLimit)
     }),
     transitlandRequest("/stops", {
       bbox,
-      limit: "2400"
+      limit: String(stopLimit)
     })
   ]);
 
@@ -481,6 +523,7 @@ function deduplicateStopsByLineAndName(stops) {
           routeType: stop.routeType,
           routeFeedId: stop.routeFeedId,
           stopFeedId: stop.stopFeedId,
+          stopLocationType: stop.stopLocationType,
           assignmentMethod: stop.assignmentMethod,
           feedMatchCount: stop.feedMatch ? 1 : 0,
           fallbackCount: stop.feedMatch ? 0 : 1,
@@ -511,6 +554,9 @@ function deduplicateStopsByLineAndName(stops) {
       }
       if (!closest.routeFeedId && stop.routeFeedId) {
         closest.routeFeedId = stop.routeFeedId;
+      }
+      if (!Number.isFinite(closest.stopLocationType) && Number.isFinite(stop.stopLocationType)) {
+        closest.stopLocationType = stop.stopLocationType;
       }
       if (!closest.parentStopId && stop.parentStopId) {
         closest.parentStopId = stop.parentStopId;
@@ -621,9 +667,11 @@ function buildStationHubs(stops, routesByLineKey) {
   return hubStops;
 }
 
-function buildTransitPayload(area, rawRoutes, rawStops) {
+function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
   const normalizedRoutes = normalizeRoutes(rawRoutes);
   const routesByLineKey = new Map(normalizedRoutes.map((route) => [route.lineKey, route]));
+  const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
+  const allowedStopLocationTypes = new Set(stopLocationTypes);
 
   const routeFeatures = normalizedRoutes.map((route) => ({
     type: "Feature",
@@ -644,6 +692,11 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
   const assignedStops = [];
 
   for (const stop of rawStops) {
+    const stopLocationType = extractStopLocationType(stop);
+    if (!allowedStopLocationTypes.has(stopLocationType)) {
+      continue;
+    }
+
     const stopPoint = extractStopPoint(stop);
     if (!stopPoint) {
       continue;
@@ -675,6 +728,7 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
       routeType: assignment.route.routeType,
       routeFeedId: assignment.route.routeFeedId,
       stopFeedId,
+      stopLocationType,
       assignmentMethod: assignment.assignmentMethod,
       feedMatch: assignment.feedMatch,
       stationName,
@@ -719,6 +773,7 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
         route_type: stop.routeType,
         route_feed_id: stop.routeFeedId,
         stop_feed_id: stop.stopFeedId,
+        stop_location_type: stop.stopLocationType,
         assignment_method: stop.feedMatchCount > 0 ? "feed+distance" : "distance-fallback",
         feed_match: stop.feedMatchCount > 0 ? 1 : 0,
         station_name: overridden.stationName,
@@ -755,11 +810,13 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
     area,
     city: area.kind === "city" ? area : null,
     fetchedAt: new Date().toISOString(),
+    stopLocationTypes,
     matchingStats: {
       routeCount: routeFeatures.length,
       assignedStops: assignedStops.length,
       lineDedupedStops: dedupedStops.length,
       centralizedStops: stopFeatures.length,
+      stopLocationTypes,
       dedupRadiusMeters: config.STOP_DEDUP_MAX_METERS,
       hubClusterRadiusMeters: config.STATION_HUB_MAX_METERS,
       hubSnapMaxMeters: config.STATION_HUB_SNAP_MAX_METERS,
@@ -776,6 +833,7 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
 async function getTransitForArea(area, options = {}) {
   const forceRefresh = Boolean(options.forceRefresh);
   const cacheKey = `${TRANSIT_CACHE_PREFIX}${area.key}`;
+  const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
 
   if (!forceRefresh) {
     const cached = db.getCache(cacheKey);
@@ -784,20 +842,24 @@ async function getTransitForArea(area, options = {}) {
         payload: cached.payload,
         cacheStatus: "hit",
         cacheKey: area.key,
-        cacheExpiresAt: cached.expiresAt
+        cacheExpiresAt: cached.expiresAt,
+        stopLocationTypes
       };
     }
   }
 
   const { routes, stops } = await fetchRoutesAndStopsForBbox(area.bbox);
-  const payload = buildTransitPayload(area, routes, stops);
+  const payload = buildTransitPayload(area, routes, stops, {
+    stopLocationTypes
+  });
 
   db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600);
 
   return {
     payload,
     cacheStatus: "miss",
-    cacheKey: area.key
+    cacheKey: area.key,
+    stopLocationTypes
   };
 }
 
@@ -807,8 +869,11 @@ async function getCityTransit(slug, options = {}) {
     return null;
   }
 
+  const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
+  const stopTypeKey = stopLocationTypes.join("-");
+
   const area = {
-    key: `city:${city.slug}`,
+    key: `city:${city.slug}:types:${stopTypeKey}`,
     kind: "city",
     slug: city.slug,
     name: city.name,
@@ -817,15 +882,20 @@ async function getCityTransit(slug, options = {}) {
     bbox: city.bbox
   };
 
-  return getTransitForArea(area, options);
+  return getTransitForArea(area, {
+    ...options,
+    stopLocationTypes
+  });
 }
 
 async function getBboxTransit(rawBbox, options = {}) {
   const zoom = Number(options.zoom);
   const bboxInfo = normalizeBboxForCache(rawBbox, zoom);
+  const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
+  const stopTypeKey = stopLocationTypes.join("-");
 
   const area = {
-    key: bboxInfo.areaKey,
+    key: `${bboxInfo.areaKey}:types:${stopTypeKey}`,
     kind: "bbox",
     name: "Visible Area",
     country: "",
@@ -834,11 +904,15 @@ async function getBboxTransit(rawBbox, options = {}) {
     snapStep: bboxInfo.step
   };
 
-  const result = await getTransitForArea(area, options);
+  const result = await getTransitForArea(area, {
+    ...options,
+    stopLocationTypes
+  });
   return {
     ...result,
     normalizedBbox: bboxInfo.bbox,
-    snapStep: bboxInfo.step
+    snapStep: bboxInfo.step,
+    stopLocationTypes
   };
 }
 

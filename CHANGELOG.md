@@ -70,3 +70,25 @@
 - Added mode-hint scoring to reduce common bus-vs-rail assignment errors in mixed feeds.
 - Bumped transit cache namespace to `transit-v3` so old cached payloads do not mask new logic.
 - Runtime smoke test confirms updated health fields and bbox payload diagnostics (hub counts and centralization metadata).
+
+### Milestone 9 - Always-on visible area loading and persistent route panel
+- Replaced manual Load Preset Transit / Load Visible Area workflow with always-on viewport loading based on map movement.
+- Added nearby tile request planning so the client loads what is on-screen plus adjacent areas, then fetches only missing tiles.
+- Added bounded fetch queue with distance-priority and low parallelism to reduce timeout risk and API burst load.
+- Added stale-queue trimming so rapid pans/zooms drop no-longer-relevant queued tiles instead of fetching far-away leftovers.
+- Updated frontend merge logic to render only active nearby areas in the current view context, keeping route list/search locally relevant.
+- Rebuilt filters UI into a persistent Transitland-style panel with mode chips and route search.
+- Added route row click-to-isolate behavior and map fade treatment for non-focused routes/stops.
+- Reworked status UX into user-friendly headline text, concise load/caching meta, and a separate small backend diagnostics line.
+- Moved theme toggle next to top-bar profile button and kept account actions in a dropdown panel.
+- Updated server bbox snap granularity and bbox-span-dependent route/stop limits to improve cache hit rates and lower fetch stress.
+
+### Milestone 10 - Sidebar restoration and loading reliability follow-up
+- Restored a full left sidebar layout and moved route filters, progress, and status back into the sidebar flow.
+- Removed the Refresh Visible Area button to keep loading fully automatic and reduce UX confusion.
+- Added stop visibility preset control in sidebar: default Transitland-style (0/1), add entrances (2), or all stop types (0-4).
+- Threaded stop type selection through bbox API requests and cache keys so each preset stays logically consistent.
+- Added `stop_location_type` metadata to stop features and hover diagnostics.
+- Added first-load trigger after initial city fit so transit starts loading without extra user actions.
+- Improved post-fetch status handling so failure cases no longer appear as endless "0 cached / 0 loading" states.
+- Kept stale queue trimming so rapid pans/zooms avoid fetching irrelevant off-screen tiles.
