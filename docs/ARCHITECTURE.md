@@ -14,6 +14,7 @@
 Responsibilities:
 - Render map and transit overlays.
 - Display and filter route list.
+- Merge multiple loaded area payloads into one continuous overlay.
 - Handle auth forms and session token storage.
 - Toggle station visited state.
 
@@ -26,6 +27,7 @@ Responsibilities:
 - Transitland proxy and normalized city/bbox caching.
 - Station-to-line assignment logic.
 - Station dedup clustering logic (same-name points within radius).
+- Cross-line station hub centralization with optional route snapping.
 - Progress read/write endpoints.
 
 Key reason:
@@ -51,8 +53,9 @@ Why SQLite now:
 4. If cache miss/expired, server fetches routes and stops from Transitland for the area bbox.
 5. Server computes nearest-line assignment for each stop using geometry distance.
 6. Server deduplicates station exits by same normalized name and proximity radius.
-7. Server applies local station_override records.
-8. Server stores final payload in cache and returns it.
+7. Server clusters line-level stations into cross-line station hubs and centralizes marker coordinates.
+8. Server applies local station_override records.
+9. Server stores final payload in cache and returns it.
 
 ## Station Identity Strategy
 

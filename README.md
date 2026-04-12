@@ -27,13 +27,14 @@ This stack keeps the MVP easy to understand while preserving flexibility for fut
 - International visible-area loading from map viewport (bbox) with optional auto-fetch.
 - Route and stop rendering on a MapLibre globe.
 - Account and line filters available as map popup panels (instead of long sidebar sections).
-- Route filter list and search by short/long/operator/mode.
+- Route filter list with search + operator/type filters + sorting.
 - Light and dark sidebar UI themes with persistence.
 - Account auth (register/login) + seeded demo user.
 - Station click-to-toggle completion tracking.
 - Station hover diagnostics showing line/operator/mode, matching method, feed IDs, and merge counts.
 - Progress summary for visible filtered stations.
-- Station exit dedup clustering by distance + name to improve stop precision.
+- Station exit dedup clustering by distance + name.
+- Cross-line station hub centralization with route snapping and spread metadata.
 - Foundation tables for translation and manual station overrides.
 
 ## Demo Account
@@ -83,7 +84,7 @@ Important defaults:
 - Transit requests are done server-side only.
 - Per-city and per-bbox data is cached in SQLite for the configured TTL.
 - Viewport bbox requests are snapped to normalized keys so revisiting the same area does not refetch from Transitland.
-- Client keeps a session cache map of loaded area keys to avoid redundant server requests in the same browser session.
+- Client keeps a session cache map of loaded area keys and merges loaded areas, so loading a new area does not wipe previously loaded overlays.
 - Force refresh exists in UI if you need a one-time manual refetch.
 - Station-to-line assignment and stop dedup are computed once per fetch and then cached.
 
@@ -93,6 +94,7 @@ Result: normal use should not repeatedly consume Transitland calls.
 
 - Dateline-wrapping viewport bbox fetches are not enabled yet (around the 180-degree meridian).
 - Station assignment now prefers same-feed route matching before geometry fallback; dense multi-line overlap can still need additional logic in future iterations.
+- Transitland REST stops endpoint still does not expose direct route membership in this integration path, so matching uses feed-aware and geometry heuristics.
 
 ## Data Model Notes (Future-Proofing)
 

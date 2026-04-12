@@ -1,6 +1,19 @@
 const MIN_VIEWPORT_FETCH_ZOOM = 9;
 const MAX_BBOX_SPAN_DEGREES = 2.2;
 
+const GTFS_MODE_LABELS = {
+  0: "Tram",
+  1: "Subway",
+  2: "Rail",
+  3: "Bus",
+  4: "Ferry",
+  5: "Cable Tram",
+  6: "Aerial",
+  7: "Funicular",
+  11: "Trolleybus",
+  12: "Monorail"
+};
+
 const state = {
   map: null,
   mapReady: false,
@@ -12,11 +25,12 @@ const state = {
   transit: null,
   lineSummaries: [],
   activeLineKeys: new Set(),
+  lineSelectionTouched: false,
   visitedByLine: new Map(),
   areaCache: new Map(),
   currentAreaKey: "",
   theme: localStorage.getItem("metromark_theme") || "light",
-  autoFetchEnabled: localStorage.getItem("metromark_auto_fetch") === "1",
+  autoFetchEnabled: localStorage.getItem("metromark_auto_fetch") !== "0",
   fetchInFlightKey: "",
   lastAutoFetchAt: 0,
   activePopup: "",
@@ -32,6 +46,9 @@ const els = {
   autoFetchCheckbox: document.getElementById("autoFetchCheckbox"),
   refreshCheckbox: document.getElementById("refreshCheckbox"),
   clearSessionCacheBtn: document.getElementById("clearSessionCacheBtn"),
+  modeFilterSelect: document.getElementById("modeFilterSelect"),
+  operatorFilterSelect: document.getElementById("operatorFilterSelect"),
+  lineSortSelect: document.getElementById("lineSortSelect"),
   lineSearch: document.getElementById("lineSearch"),
   lineList: document.getElementById("lineList"),
   selectAllLinesBtn: document.getElementById("selectAllLinesBtn"),
@@ -78,11 +95,8 @@ function setTheme(theme) {
   state.theme = theme === "dark" ? "dark" : "light";
   document.body.setAttribute("data-theme", state.theme);
   localStorage.setItem("metromark_theme", state.theme);
-
-  if (els.themeToggleBtn) {
-    els.themeToggleBtn.textContent =
-      state.theme === "dark" ? "Switch To Light Mode" : "Switch To Dark Mode";
-  }
+  els.themeToggleBtn.textContent =
+    state.theme === "dark" ? "Switch To Light Mode" : "Switch To Dark Mode";
 }
 
 function toggleTheme() {
@@ -119,27 +133,20 @@ function escapeHtml(text) {
     .replace(/'/g, "&#039;");
 }
 
-function stopHoverHtml(properties) {
-  const lineLabel = [properties.line_short_name, properties.line_long_name || properties.line_name]
-    .filter(Boolean)
-    .join(" | ");
+function modeLabelFromRouteType(routeType) {
+  const numeric = Number(routeType);
+  if (!Number.isFinite(numeric)) {
+    return "";
+  }
+  return GTFS_MODE_LABELS[numeric] || "";
+}
 
-  const operatorLabel = properties.operator_name || "Operator unavailable";
-  const modeLabel = properties.mode || "Mode unknown";
-  const assignmentMethod = properties.assignment_method || "distance";
-  const feedMatch = properties.feed_match === 1 ? "feed match" : "fallback";
+function lineMode(line) {
+  return String(line.mode || modeLabelFromRouteType(line.routeType) || "Unknown");
+}
 
-  return `
-    <div class="station-hover">
-      <h4>${escapeHtml(properties.station_name || "Unnamed Station")}</h4>
-      <p><strong>Line:</strong> ${escapeHtml(lineLabel || properties.line_name || properties.line_key || "Unknown")}</p>
-      <p><strong>Operator:</strong> ${escapeHtml(operatorLabel)} <span class="muted">(${escapeHtml(modeLabel)})</span></p>
-      <p><strong>Matched:</strong> ${escapeHtml(assignmentMethod)} <span class="muted">(${escapeHtml(feedMatch)})</span></p>
-      <p><strong>Distance:</strong> ${Number(properties.distance_m || 0)}m <span class="muted">source points: ${Number(properties.source_count || 1)}</span></p>
-      <p class="muted">stop feed: ${escapeHtml(properties.stop_feed_id || "n/a")}</p>
-      <p class="muted">route feed: ${escapeHtml(properties.route_feed_id || "n/a")}</p>
-    </div>
-  `;
+function lineOperatorLabel(line) {
+  return String(line.operatorName || line.routeFeedId || "Operator unavailable");
 }
 
 function lineDisplayName(line) {
@@ -158,11 +165,37 @@ function lineSearchText(line) {
     line.lineName,
     line.lineShortName,
     line.lineLongName,
-    line.operatorName,
-    line.mode
+    lineOperatorLabel(line),
+    lineMode(line),
+    line.routeFeedId
   ]
     .map((value) => String(value || "").toLowerCase())
     .join(" ");
+}
+
+function stopHoverHtml(properties) {
+  const lineLabel = [properties.line_short_name, properties.line_long_name || properties.line_name]
+    .filter(Boolean)
+    .join(" | ");
+
+  const operatorLabel = properties.operator_name || properties.route_feed_id || "Operator unavailable";
+  const modeLabel = properties.mode || modeLabelFromRouteType(properties.route_type) || "Mode unknown";
+  const assignmentMethod = properties.assignment_method || "distance";
+  const feedMatch = properties.feed_match === 1 ? "feed match" : "fallback";
+  const hubSpread = Number(properties.hub_spread_m || 0);
+
+  return `
+    <div class="station-hover">
+      <h4>${escapeHtml(properties.station_name || "Unnamed Station")}</h4>
+      <p><strong>Line:</strong> ${escapeHtml(lineLabel || properties.line_name || properties.line_key || "Unknown")}</p>
+      <p><strong>Operator:</strong> ${escapeHtml(operatorLabel)} <span class="muted">(${escapeHtml(modeLabel)})</span></p>
+      <p><strong>Matched:</strong> ${escapeHtml(assignmentMethod)} <span class="muted">(${escapeHtml(feedMatch)})</span></p>
+      <p><strong>Distance:</strong> ${Number(properties.distance_m || 0)}m <span class="muted">source points: ${Number(properties.source_count || 1)}</span></p>
+      <p><strong>Hub:</strong> ${Number(properties.hub_member_count || 1)} linked stops <span class="muted">spread: ${hubSpread}m (${escapeHtml(properties.centralization_method || "n/a")})</span></p>
+      <p class="muted">stop feed: ${escapeHtml(properties.stop_feed_id || "n/a")}</p>
+      <p class="muted">route feed: ${escapeHtml(properties.route_feed_id || "n/a")}</p>
+    </div>
+  `;
 }
 
 async function apiRequest(path, options = {}) {
@@ -236,7 +269,6 @@ function mapBoundsToBbox() {
   const south = bounds.getSouth();
   const north = bounds.getNorth();
 
-  // Transitland expects non-wrapping bbox ranges.
   if (west > east) {
     return null;
   }
@@ -343,10 +375,24 @@ function initializeMap() {
       type: "circle",
       source: "stops",
       paint: {
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 3, 11, 5, 14, 8],
+        "circle-radius": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          8,
+          ["+", 3, ["min", 9, ["/", ["coalesce", ["get", "hub_spread_m"], 0], 34]]],
+          11,
+          ["+", 5, ["min", 12, ["/", ["coalesce", ["get", "hub_spread_m"], 0], 28]]],
+          14,
+          ["+", 8, ["min", 18, ["/", ["coalesce", ["get", "hub_spread_m"], 0], 22]]]
+        ],
         "circle-color": ["case", ["==", ["get", "visited"], 1], "#1a9b66", "#d9563a"],
         "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 1.25,
+        "circle-stroke-width": [
+          "+",
+          1,
+          ["min", 2.2, ["/", ["coalesce", ["get", "hub_member_count"], 1], 8]]
+        ],
         "circle-opacity": 0.94
       }
     });
@@ -361,11 +407,10 @@ function initializeMap() {
       onStopHoverLeave();
     });
 
+    state.map.on("moveend", onMapMoveEnd);
     state.map.on("click", () => {
       closePopups();
     });
-
-    state.map.on("moveend", onMapMoveEnd);
 
     state.mapReady = true;
     renderMapData();
@@ -394,16 +439,233 @@ function getVisitedSetForLine(lineKey) {
   return fresh;
 }
 
+function mergeStopFeature(existing, incoming) {
+  return {
+    ...incoming,
+    properties: {
+      ...existing.properties,
+      ...incoming.properties,
+      source_count: Math.max(
+        Number(existing.properties.source_count || 1),
+        Number(incoming.properties.source_count || 1)
+      ),
+      hub_member_count: Math.max(
+        Number(existing.properties.hub_member_count || 1),
+        Number(incoming.properties.hub_member_count || 1)
+      ),
+      hub_spread_m: Math.max(
+        Number(existing.properties.hub_spread_m || 0),
+        Number(incoming.properties.hub_spread_m || 0)
+      ),
+      distance_m: Math.min(
+        Number(existing.properties.distance_m || 0),
+        Number(incoming.properties.distance_m || 0)
+      )
+    }
+  };
+}
+
+function rebuildCombinedTransit() {
+  if (state.areaCache.size === 0) {
+    state.transit = null;
+    state.lineSummaries = [];
+    state.activeLineKeys.clear();
+    state.lineSelectionTouched = false;
+    return;
+  }
+
+  const routeByLine = new Map();
+  const stopByKey = new Map();
+  const lineByKey = new Map();
+
+  for (const payload of state.areaCache.values()) {
+    for (const feature of payload?.routesGeoJson?.features || []) {
+      const lineKey = feature?.properties?.line_key;
+      if (!lineKey) {
+        continue;
+      }
+      if (!routeByLine.has(lineKey)) {
+        routeByLine.set(lineKey, feature);
+      }
+    }
+
+    for (const feature of payload?.stopsGeoJson?.features || []) {
+      const lineKey = feature?.properties?.line_key;
+      const stationKey = feature?.properties?.station_key;
+      if (!lineKey || !stationKey) {
+        continue;
+      }
+
+      const key = `${lineKey}|${stationKey}`;
+      if (!stopByKey.has(key)) {
+        stopByKey.set(key, feature);
+      } else {
+        stopByKey.set(key, mergeStopFeature(stopByKey.get(key), feature));
+      }
+    }
+
+    for (const line of payload?.lineSummaries || []) {
+      const lineKey = line?.lineKey;
+      if (!lineKey) {
+        continue;
+      }
+
+      if (!lineByKey.has(lineKey)) {
+        lineByKey.set(lineKey, {
+          ...line,
+          mode: line.mode || modeLabelFromRouteType(line.routeType)
+        });
+      } else {
+        const existing = lineByKey.get(lineKey);
+        lineByKey.set(lineKey, {
+          ...existing,
+          lineName: existing.lineName || line.lineName,
+          lineShortName: existing.lineShortName || line.lineShortName,
+          lineLongName: existing.lineLongName || line.lineLongName,
+          operatorName: existing.operatorName || line.operatorName,
+          mode: existing.mode || line.mode,
+          routeType: Number.isFinite(existing.routeType) ? existing.routeType : line.routeType,
+          routeFeedId: existing.routeFeedId || line.routeFeedId,
+          color: existing.color || line.color
+        });
+      }
+    }
+  }
+
+  const countByLine = new Map();
+  for (const feature of stopByKey.values()) {
+    const lineKey = feature.properties.line_key;
+    countByLine.set(lineKey, (countByLine.get(lineKey) || 0) + 1);
+  }
+
+  const lineSummaries = [];
+  for (const [lineKey, line] of lineByKey.entries()) {
+    lineSummaries.push({
+      ...line,
+      mode: line.mode || modeLabelFromRouteType(line.routeType),
+      stopCount: countByLine.get(lineKey) || 0
+    });
+  }
+
+  lineSummaries.sort((a, b) => lineDisplayName(a).localeCompare(lineDisplayName(b)));
+
+  const allLineKeys = new Set(lineSummaries.map((line) => line.lineKey));
+  if (!state.lineSelectionTouched) {
+    state.activeLineKeys = new Set(allLineKeys);
+  } else {
+    state.activeLineKeys = new Set([...state.activeLineKeys].filter((lineKey) => allLineKeys.has(lineKey)));
+  }
+
+  state.transit = {
+    routesGeoJson: {
+      type: "FeatureCollection",
+      features: Array.from(routeByLine.values())
+    },
+    stopsGeoJson: {
+      type: "FeatureCollection",
+      features: Array.from(stopByKey.values())
+    }
+  };
+  state.lineSummaries = lineSummaries;
+}
+
+function sortLines(lines) {
+  const sortBy = String(els.lineSortSelect.value || "name");
+
+  const sorted = [...lines];
+  sorted.sort((a, b) => {
+    if (sortBy === "mode") {
+      const modeCompare = lineMode(a).localeCompare(lineMode(b));
+      if (modeCompare !== 0) {
+        return modeCompare;
+      }
+    }
+
+    if (sortBy === "operator") {
+      const operatorCompare = lineOperatorLabel(a).localeCompare(lineOperatorLabel(b));
+      if (operatorCompare !== 0) {
+        return operatorCompare;
+      }
+    }
+
+    if (sortBy === "stopCount") {
+      const stopCompare = Number(b.stopCount || 0) - Number(a.stopCount || 0);
+      if (stopCompare !== 0) {
+        return stopCompare;
+      }
+    }
+
+    return lineDisplayName(a).localeCompare(lineDisplayName(b));
+  });
+
+  return sorted;
+}
+
+function lineMatchesFilter(line) {
+  const query = String(els.lineSearch.value || "").trim().toLowerCase();
+  if (query && !lineSearchText(line).includes(query)) {
+    return false;
+  }
+
+  const modeFilter = String(els.modeFilterSelect.value || "all");
+  if (modeFilter !== "all" && lineMode(line) !== modeFilter) {
+    return false;
+  }
+
+  const operatorFilter = String(els.operatorFilterSelect.value || "all");
+  if (operatorFilter !== "all" && lineOperatorLabel(line) !== operatorFilter) {
+    return false;
+  }
+
+  return true;
+}
+
+function getShownLines() {
+  return sortLines(state.lineSummaries.filter((line) => lineMatchesFilter(line)));
+}
+
+function populateFilterOptions() {
+  const currentMode = els.modeFilterSelect.value || "all";
+  const currentOperator = els.operatorFilterSelect.value || "all";
+
+  const modeSet = new Set(["all"]);
+  const operatorSet = new Set(["all"]);
+
+  for (const line of state.lineSummaries) {
+    modeSet.add(lineMode(line));
+    operatorSet.add(lineOperatorLabel(line));
+  }
+
+  const modes = Array.from(modeSet).sort((a, b) => (a === "all" ? -1 : b === "all" ? 1 : a.localeCompare(b)));
+  const operators = Array.from(operatorSet).sort((a, b) => (a === "all" ? -1 : b === "all" ? 1 : a.localeCompare(b)));
+
+  els.modeFilterSelect.innerHTML = "";
+  for (const mode of modes) {
+    const option = document.createElement("option");
+    option.value = mode;
+    option.textContent = mode === "all" ? "All Types" : mode;
+    els.modeFilterSelect.append(option);
+  }
+
+  els.operatorFilterSelect.innerHTML = "";
+  for (const operator of operators) {
+    const option = document.createElement("option");
+    option.value = operator;
+    option.textContent = operator === "all" ? "All Operators" : operator;
+    els.operatorFilterSelect.append(option);
+  }
+
+  els.modeFilterSelect.value = modes.includes(currentMode) ? currentMode : "all";
+  els.operatorFilterSelect.value = operators.includes(currentOperator) ? currentOperator : "all";
+}
+
 function getVisibleLineKeys() {
-  if (!state.lineSummaries.length) {
+  if (!state.lineSummaries.length || state.activeLineKeys.size === 0) {
     return new Set();
   }
 
-  if (state.activeLineKeys.size === 0) {
-    return new Set();
-  }
-
-  return state.activeLineKeys;
+  const shownKeys = new Set(getShownLines().map((line) => line.lineKey));
+  return new Set([...state.activeLineKeys].filter((lineKey) => shownKeys.has(lineKey)));
 }
 
 function getFilteredData() {
@@ -538,14 +800,18 @@ function renderLineList() {
     return;
   }
 
-  const query = els.lineSearch.value.trim().toLowerCase();
+  const shownLines = getShownLines();
+  if (shownLines.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "microcopy";
+    empty.textContent = "No lines match current filters.";
+    els.lineList.append(empty);
+    return;
+  }
+
   const fragment = document.createDocumentFragment();
 
-  for (const line of state.lineSummaries) {
-    if (query && !lineSearchText(line).includes(query)) {
-      continue;
-    }
-
+  for (const line of shownLines) {
     const row = document.createElement("label");
     row.className = "line-item";
 
@@ -553,6 +819,7 @@ function renderLineList() {
     checkbox.type = "checkbox";
     checkbox.checked = state.activeLineKeys.has(line.lineKey);
     checkbox.addEventListener("change", () => {
+      state.lineSelectionTouched = true;
       if (checkbox.checked) {
         state.activeLineKeys.add(line.lineKey);
       } else {
@@ -569,9 +836,7 @@ function renderLineList() {
 
     const lineOperator = document.createElement("p");
     lineOperator.className = "line-operator";
-    const operatorName = line.operatorName || "Operator unavailable";
-    const mode = line.mode ? ` • ${line.mode}` : "";
-    lineOperator.textContent = `${operatorName}${mode}`;
+    lineOperator.textContent = `${lineOperatorLabel(line)} • ${lineMode(line)}`;
 
     labelBlock.append(lineName, lineOperator);
 
@@ -612,20 +877,27 @@ function selectedCityPreset() {
   return state.cities.find((city) => city.slug === els.citySelect.value) || null;
 }
 
-function applyTransitPayload(payload, options = {}) {
-  state.transit = payload;
-  state.lineSummaries = payload.lineSummaries || [];
-  state.activeLineKeys = new Set(state.lineSummaries.map((line) => line.lineKey));
-
+function applyAreaPayload(payload, options = {}) {
   const cacheKey = options.cacheKey || payload.cacheKey || payload.area?.key;
   if (cacheKey) {
     state.currentAreaKey = cacheKey;
     state.areaCache.set(cacheKey, payload);
   }
 
+  rebuildCombinedTransit();
+  populateFilterOptions();
   renderLineList();
   renderMapData();
   renderProgress();
+}
+
+function matchingStatsLabel(payload) {
+  const stats = payload?.matchingStats || {};
+  const centralizedStops = Number(stats.centralizedStops || stats.dedupedStops || payload?.stopsGeoJson?.features?.length || 0);
+  const hubCount = Number(stats.hubCount || 0);
+  const feedMatched = Number(stats.feedMatchedAssignments || 0);
+  const fallback = Number(stats.fallbackAssignments || 0);
+  return `${centralizedStops} stations, ${hubCount || "n/a"} hubs, feed-matched ${feedMatched}, fallback ${fallback}`;
 }
 
 async function loadCities() {
@@ -657,14 +929,12 @@ async function loadCityTransit(options = {}) {
   const localCacheKey = `city:${city.slug}`;
 
   if (!forceRefresh && state.areaCache.has(localCacheKey)) {
-    applyTransitPayload(state.areaCache.get(localCacheKey), { cacheKey: localCacheKey });
+    applyAreaPayload(state.areaCache.get(localCacheKey), { cacheKey: localCacheKey });
     await loadProgress();
-    renderMapData();
-    renderProgress();
     if (options.fit !== false) {
       fitToArea(city);
     }
-    setStatus(`Loaded ${city.name} from local session cache.`, "ok");
+    setStatus(`Loaded ${city.name} from in-browser area cache. Session areas: ${state.areaCache.size}.`, "ok");
     return;
   }
 
@@ -675,20 +945,15 @@ async function loadCityTransit(options = {}) {
     method: "GET"
   });
 
-  applyTransitPayload(payload, { cacheKey: payload.cacheKey || localCacheKey });
+  applyAreaPayload(payload, { cacheKey: payload.cacheKey || localCacheKey });
   await loadProgress();
-  renderMapData();
-  renderProgress();
 
   if (options.fit !== false) {
     fitToArea(payload.area || payload.city || city);
   }
 
-  const dedupNote = payload.matchingStats
-    ? `, deduped to ${payload.matchingStats.dedupedStops} stations`
-    : "";
   setStatus(
-    `Loaded ${payload.lineSummaries.length} lines and ${payload.stopsGeoJson.features.length} stations (${payload.cacheStatus} server cache${dedupNote}). ${payload.cacheStatus === "hit" ? "Enable Force refresh to bypass cached server data." : "Live data fetched from Transitland."}`,
+    `Loaded ${city.name}: ${matchingStatsLabel(payload)} (${payload.cacheStatus} server cache). ${payload.cacheStatus === "hit" ? "Enable Force refresh to bypass cached server data." : "Live data fetched from Transitland."}`,
     "ok"
   );
 }
@@ -728,12 +993,10 @@ async function loadVisibleAreaTransit(options = {}) {
   const forceRefresh = Boolean(options.forceRefresh || els.refreshCheckbox.checked);
 
   if (!forceRefresh && state.areaCache.has(normalized.areaKey)) {
-    applyTransitPayload(state.areaCache.get(normalized.areaKey), { cacheKey: normalized.areaKey });
+    applyAreaPayload(state.areaCache.get(normalized.areaKey), { cacheKey: normalized.areaKey });
     await loadProgress();
-    renderMapData();
-    renderProgress();
     if (!options.fromAuto) {
-      setStatus(`Loaded visible area from local session cache (${normalized.areaKey}).`, "ok");
+      setStatus(`Loaded visible area from in-browser cache. Session areas: ${state.areaCache.size}.`, "ok");
     }
     return;
   }
@@ -762,17 +1025,12 @@ async function loadVisibleAreaTransit(options = {}) {
       method: "GET"
     });
 
-    applyTransitPayload(payload, { cacheKey: payload.cacheKey || normalized.areaKey });
+    applyAreaPayload(payload, { cacheKey: payload.cacheKey || normalized.areaKey });
     await loadProgress();
-    renderMapData();
-    renderProgress();
 
     if (!options.fromAuto) {
-      const dedupNote = payload.matchingStats
-        ? `, deduped to ${payload.matchingStats.dedupedStops} stations`
-        : "";
       setStatus(
-        `Loaded visible area (${payload.cacheStatus} server cache${dedupNote}). ${payload.cacheStatus === "hit" ? "Enable Force refresh to bypass cached server data." : "Live data fetched from Transitland."}`,
+        `Loaded visible area: ${matchingStatsLabel(payload)} (${payload.cacheStatus} server cache). Session areas: ${state.areaCache.size}. ${payload.cacheStatus === "hit" ? "Enable Force refresh to bypass cached server data." : "Live data fetched from Transitland."}`,
         "ok"
       );
     }
@@ -795,7 +1053,7 @@ function onMapMoveEnd() {
   state.lastAutoFetchAt = now;
 
   loadVisibleAreaTransit({ fromAuto: true }).catch(() => {
-    // Intentionally silent for auto mode. Manual mode surfaces status errors.
+    // Intentionally silent in auto mode.
   });
 }
 
@@ -818,7 +1076,7 @@ async function hydrateSession() {
     const me = await apiRequest("/api/auth/me", { method: "GET" });
     state.user = me.user;
     updateAuthUi();
-  } catch (error) {
+  } catch {
     setToken("");
     state.user = null;
     updateAuthUi();
@@ -837,8 +1095,7 @@ function updateAuthUi() {
 function rebuildVisitedMap(items) {
   state.visitedByLine = new Map();
   for (const item of items) {
-    const set = getVisitedSetForLine(item.lineKey);
-    set.add(item.stationKey);
+    getVisitedSetForLine(item.lineKey).add(item.stationKey);
   }
 }
 
@@ -852,6 +1109,8 @@ async function loadProgress() {
 
   const payload = await apiRequest("/api/progress", { method: "GET" });
   rebuildVisitedMap(payload.items || []);
+  renderMapData();
+  renderProgress();
 }
 
 async function loginWithPayload(payloadPromise) {
@@ -861,8 +1120,6 @@ async function loginWithPayload(payloadPromise) {
   updateAuthUi();
   closePopups();
   await loadProgress();
-  renderMapData();
-  renderProgress();
   setStatus(`Signed in as ${payload.user.displayName}.`, "ok");
 }
 
@@ -883,8 +1140,7 @@ async function onStopClicked(event) {
   const [lon, lat] = feature.geometry.coordinates;
 
   const visitedSet = getVisitedSetForLine(lineKey);
-  const visited = visitedSet.has(stationKey);
-  const nextVisited = !visited;
+  const nextVisited = !visitedSet.has(stationKey);
 
   try {
     await apiRequest("/api/progress/toggle", {
@@ -907,9 +1163,7 @@ async function onStopClicked(event) {
 
     renderMapData();
     renderProgress();
-
-    const action = nextVisited ? "Visited" : "Unvisited";
-    setStatus(`${action}: ${stationName}`, "ok");
+    setStatus(`${nextVisited ? "Visited" : "Unvisited"}: ${stationName}`, "ok");
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -937,21 +1191,10 @@ function bindEvents() {
   els.streetsModeBtn.addEventListener("click", () => setMapMode("streets"));
   els.satelliteModeBtn.addEventListener("click", () => setMapMode("satellite"));
 
-  els.accountPopupBtn.addEventListener("click", () => {
-    setActivePopup("account");
-  });
-
-  els.filtersPopupBtn.addEventListener("click", () => {
-    setActivePopup("filters");
-  });
-
-  els.closeAuthPopupBtn.addEventListener("click", () => {
-    closePopups();
-  });
-
-  els.closeFiltersPopupBtn.addEventListener("click", () => {
-    closePopups();
-  });
+  els.accountPopupBtn.addEventListener("click", () => setActivePopup("account"));
+  els.filtersPopupBtn.addEventListener("click", () => setActivePopup("filters"));
+  els.closeAuthPopupBtn.addEventListener("click", closePopups);
+  els.closeFiltersPopupBtn.addEventListener("click", closePopups);
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
@@ -965,21 +1208,15 @@ function bindEvents() {
     }
 
     const target = event.target;
-    const clickedToggle =
-      els.accountPopupBtn.contains(target) ||
-      els.filtersPopupBtn.contains(target);
-    const clickedPanel =
-      els.authPopup.contains(target) ||
-      els.filtersPopup.contains(target);
+    const clickedToggle = els.accountPopupBtn.contains(target) || els.filtersPopupBtn.contains(target);
+    const clickedPanel = els.authPopup.contains(target) || els.filtersPopup.contains(target);
 
     if (!clickedToggle && !clickedPanel) {
       closePopups();
     }
   });
 
-  els.themeToggleBtn.addEventListener("click", () => {
-    toggleTheme();
-  });
+  els.themeToggleBtn.addEventListener("click", toggleTheme);
 
   els.gotoCityBtn.addEventListener("click", () => {
     const city = selectedCityPreset();
@@ -1006,36 +1243,59 @@ function bindEvents() {
     }
   });
 
+  els.autoFetchCheckbox.addEventListener("change", () => {
+    setAutoFetchEnabled(els.autoFetchCheckbox.checked);
+    setStatus(
+      state.autoFetchEnabled
+        ? "Auto-fetch enabled. Panning/zooming at 9+ loads and keeps visible areas in session."
+        : "Auto-fetch disabled.",
+      "ok"
+    );
+  });
+
   els.clearSessionCacheBtn.addEventListener("click", () => {
     state.areaCache.clear();
     state.currentAreaKey = "";
-    setStatus("Cleared in-browser session cache. Use Load Visible Area with Force refresh for a full live refetch.", "ok");
-  });
-
-  els.autoFetchCheckbox.addEventListener("change", () => {
-    setAutoFetchEnabled(els.autoFetchCheckbox.checked);
-    if (state.autoFetchEnabled) {
-      setStatus("Auto-fetch enabled. Moving the map at zoom 9+ will load visible-area transit.", "ok");
-    }
+    state.transit = null;
+    state.lineSummaries = [];
+    state.activeLineKeys.clear();
+    state.lineSelectionTouched = false;
+    renderLineList();
+    renderMapData();
+    renderProgress();
+    setStatus("Cleared in-browser session cache and current overlays. Load a city or visible area to continue.", "ok");
   });
 
   els.citySelect.addEventListener("change", () => {
     state.currentCitySlug = els.citySelect.value;
   });
 
-  els.lineSearch.addEventListener("input", () => {
+  const onFilterChange = () => {
     renderLineList();
-  });
+  };
+
+  els.lineSearch.addEventListener("input", onFilterChange);
+  els.modeFilterSelect.addEventListener("change", onFilterChange);
+  els.operatorFilterSelect.addEventListener("change", onFilterChange);
+  els.lineSortSelect.addEventListener("change", onFilterChange);
 
   els.selectAllLinesBtn.addEventListener("click", () => {
-    state.activeLineKeys = new Set(state.lineSummaries.map((line) => line.lineKey));
+    const shownLines = getShownLines();
+    state.lineSelectionTouched = true;
+    for (const line of shownLines) {
+      state.activeLineKeys.add(line.lineKey);
+    }
     renderLineList();
     renderMapData();
     renderProgress();
   });
 
   els.clearLinesBtn.addEventListener("click", () => {
-    state.activeLineKeys.clear();
+    const shownLines = getShownLines();
+    state.lineSelectionTouched = true;
+    for (const line of shownLines) {
+      state.activeLineKeys.delete(line.lineKey);
+    }
     renderLineList();
     renderMapData();
     renderProgress();

@@ -29,6 +29,13 @@ function toProjectedMeters(lon, lat, refLat) {
   };
 }
 
+function fromProjectedMeters(x, y, refLat) {
+  return {
+    lon: x / Math.max(lonMetersPerDegree(refLat), 1),
+    lat: y / EARTH_METERS_PER_DEG_LAT
+  };
+}
+
 function distanceBetweenPointsMeters(a, b) {
   const refLat = (a[1] + b[1]) / 2;
   const p1 = toProjectedMeters(a[0], a[1], refLat);
@@ -57,6 +64,32 @@ function pointToSegmentDistanceMeters(point, a, b) {
   const projectionY = p1.y + t * vy;
 
   return Math.hypot(p.x - projectionX, p.y - projectionY);
+}
+
+function nearestPointOnSegment(point, a, b) {
+  const refLat = point[1];
+  const p = toProjectedMeters(point[0], point[1], refLat);
+  const p1 = toProjectedMeters(a[0], a[1], refLat);
+  const p2 = toProjectedMeters(b[0], b[1], refLat);
+
+  const vx = p2.x - p1.x;
+  const vy = p2.y - p1.y;
+  const wx = p.x - p1.x;
+  const wy = p.y - p1.y;
+
+  const segmentLengthSquared = vx * vx + vy * vy;
+  const t = segmentLengthSquared === 0
+    ? 0
+    : Math.max(0, Math.min(1, (wx * vx + wy * vy) / segmentLengthSquared));
+
+  const projectionX = p1.x + t * vx;
+  const projectionY = p1.y + t * vy;
+  const projection = fromProjectedMeters(projectionX, projectionY, refLat);
+
+  return {
+    point: [projection.lon, projection.lat],
+    distanceMeters: Math.hypot(p.x - projectionX, p.y - projectionY)
+  };
 }
 
 function lineDistanceMeters(point, coordinates) {
@@ -96,6 +129,45 @@ function geometryDistanceMeters(point, geometry) {
   }
 
   return Number.POSITIVE_INFINITY;
+}
+
+function nearestPointOnGeometry(point, geometry) {
+  if (!geometry || !geometry.type) {
+    return {
+      point,
+      distanceMeters: Number.POSITIVE_INFINITY
+    };
+  }
+
+  const lines = [];
+  if (geometry.type === "LineString") {
+    lines.push(geometry.coordinates || []);
+  }
+  if (geometry.type === "MultiLineString") {
+    lines.push(...(geometry.coordinates || []));
+  }
+
+  let bestPoint = point;
+  let bestDistance = Number.POSITIVE_INFINITY;
+
+  for (const line of lines) {
+    if (!Array.isArray(line) || line.length < 2) {
+      continue;
+    }
+
+    for (let i = 1; i < line.length; i += 1) {
+      const candidate = nearestPointOnSegment(point, line[i - 1], line[i]);
+      if (candidate.distanceMeters < bestDistance) {
+        bestDistance = candidate.distanceMeters;
+        bestPoint = candidate.point;
+      }
+    }
+  }
+
+  return {
+    point: bestPoint,
+    distanceMeters: bestDistance
+  };
 }
 
 function geometryBbox(geometry) {
@@ -157,6 +229,7 @@ module.exports = {
   stableStationKey,
   distanceBetweenPointsMeters,
   geometryDistanceMeters,
+  nearestPointOnGeometry,
   geometryBbox,
   pointInExpandedBbox
 };

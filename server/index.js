@@ -31,6 +31,8 @@ app.get("/api/health", (req, res) => {
     cacheTtlHours: config.TRANSIT_CACHE_TTL_HOURS,
     stopAssignmentMaxMeters: config.STOP_ASSIGNMENT_MAX_METERS,
     stopDedupMaxMeters: config.STOP_DEDUP_MAX_METERS,
+    stationHubMaxMeters: config.STATION_HUB_MAX_METERS,
+    stationHubSnapMaxMeters: config.STATION_HUB_SNAP_MAX_METERS,
     bboxMaxSpanDegrees: config.BBOX_MAX_SPAN_DEGREES
   });
 });

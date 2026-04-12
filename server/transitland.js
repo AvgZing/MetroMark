@@ -6,12 +6,13 @@ const {
   stableStationKey,
   distanceBetweenPointsMeters,
   geometryDistanceMeters,
+  nearestPointOnGeometry,
   geometryBbox,
   pointInExpandedBbox
 } = require("./spatial");
 
 const TRANSITLAND_BASE_URL = "https://transit.land/api/v2/rest";
-const TRANSIT_CACHE_PREFIX = "transit-v2:";
+const TRANSIT_CACHE_PREFIX = "transit-v3:";
 
 const fallbackColors = [
   "#3f7cff",
@@ -113,6 +114,20 @@ function extractRouteMode(route) {
     sanitizeText(route?.route_type_name),
     gtfsRouteTypeLabel(route?.route_type)
   ]);
+}
+
+function canonicalStationName(name) {
+  const normalized = normalizeName(name);
+  if (!normalized) {
+    return "station";
+  }
+
+  const trimmed = normalized
+    .replace(/\b(station|stn|stop|platform|entrance|exit|transit center|transit ctr|tc)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return trimmed || normalized;
 }
 
 function parseBboxArray(rawBbox) {
@@ -316,8 +331,30 @@ function extractStopPoint(stop) {
   return null;
 }
 
+function isRailLikeRouteType(routeType) {
+  return routeType === 0 || routeType === 1 || routeType === 2 || routeType === 12;
+}
+
+function inferStopModeHint(stopName) {
+  const normalized = normalizeName(stopName);
+  if (!normalized) {
+    return "";
+  }
+
+  if (/\b(station|stn|subway|metro|lightrail|light rail|rail)\b/.test(normalized)) {
+    return "rail";
+  }
+
+  if (/\b(bay|stop|bus|route|transit center|tc)\b/.test(normalized) || /&|\d{3,}/.test(stopName)) {
+    return "bus";
+  }
+
+  return "";
+}
+
 function assignStopToClosestRoute(stopPoint, routes, stopContext = {}) {
   const stopFeedId = sanitizeText(stopContext.stopFeedId);
+  const stopModeHint = inferStopModeHint(stopContext.stopName || "");
   const feedMatchedRoutes = stopFeedId
     ? routes.filter((route) => route.routeFeedId && route.routeFeedId === stopFeedId)
     : [];
@@ -327,26 +364,41 @@ function assignStopToClosestRoute(stopPoint, routes, stopContext = {}) {
 
   let bestRoute = null;
   let bestDistance = Number.POSITIVE_INFINITY;
+  let bestRawDistance = Number.POSITIVE_INFINITY;
 
   for (const route of candidateRoutes) {
     if (!pointInExpandedBbox(stopPoint, route.bbox, config.STOP_ASSIGNMENT_MAX_METERS * 2)) {
       continue;
     }
 
-    const distance = geometryDistanceMeters(stopPoint, route.geometry);
-    if (distance < bestDistance) {
-      bestDistance = distance;
+    const baseDistance = geometryDistanceMeters(stopPoint, route.geometry);
+    let scoredDistance = baseDistance;
+
+    // Use a small mode-aware bias to reduce common rail-vs-bus misassignments in mixed feeds.
+    if (stopModeHint === "rail" && route.routeType === 3) {
+      scoredDistance += 55;
+    }
+    if (stopModeHint === "rail" && isRailLikeRouteType(route.routeType)) {
+      scoredDistance -= 10;
+    }
+    if (stopModeHint === "bus" && isRailLikeRouteType(route.routeType)) {
+      scoredDistance += 38;
+    }
+
+    if (scoredDistance < bestDistance) {
+      bestDistance = scoredDistance;
+      bestRawDistance = baseDistance;
       bestRoute = route;
     }
   }
 
-  if (!bestRoute || bestDistance > config.STOP_ASSIGNMENT_MAX_METERS) {
+  if (!bestRoute || bestRawDistance > config.STOP_ASSIGNMENT_MAX_METERS) {
     return null;
   }
 
   return {
     route: bestRoute,
-    distanceMeters: Math.round(bestDistance),
+    distanceMeters: Math.round(bestRawDistance),
     assignmentMethod,
     feedMatch: feedMatchedRoutes.length > 0 ? 1 : 0
   };
@@ -434,6 +486,8 @@ function deduplicateStopsByLineAndName(stops) {
           fallbackCount: stop.feedMatch ? 0 : 1,
           stationName: stop.stationName,
           normalizedName: stop.normalizedName,
+          hubName: stop.hubName,
+          parentStopId: stop.parentStopId,
           lon: stop.point[0],
           lat: stop.point[1],
           sourceStopIds: stop.sourceStopId ? [stop.sourceStopId] : [],
@@ -458,6 +512,9 @@ function deduplicateStopsByLineAndName(stops) {
       if (!closest.routeFeedId && stop.routeFeedId) {
         closest.routeFeedId = stop.routeFeedId;
       }
+      if (!closest.parentStopId && stop.parentStopId) {
+        closest.parentStopId = stop.parentStopId;
+      }
 
       if (stop.sourceStopId) {
         closest.sourceStopIds.push(stop.sourceStopId);
@@ -470,8 +527,103 @@ function deduplicateStopsByLineAndName(stops) {
   return deduped;
 }
 
+function buildStationHubs(stops, routesByLineKey) {
+  const groups = new Map();
+
+  for (const stop of stops) {
+    const key = stop.hubName || stop.normalizedName || "station";
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(stop);
+  }
+
+  const hubStops = [];
+
+  for (const groupStops of groups.values()) {
+    const clusters = [];
+
+    for (const stop of groupStops) {
+      let closestCluster = null;
+      let closestDistance = Number.POSITIVE_INFINITY;
+
+      for (const cluster of clusters) {
+        const distance = distanceBetweenPointsMeters([stop.lon, stop.lat], [cluster.lon, cluster.lat]);
+        if (distance <= config.STATION_HUB_MAX_METERS && distance < closestDistance) {
+          closestCluster = cluster;
+          closestDistance = distance;
+        }
+      }
+
+      if (!closestCluster) {
+        clusters.push({
+          hubName: stop.hubName || stop.normalizedName || "station",
+          lon: stop.lon,
+          lat: stop.lat,
+          members: [stop]
+        });
+        continue;
+      }
+
+      const nextCount = closestCluster.members.length + 1;
+      closestCluster.lon = (closestCluster.lon * closestCluster.members.length + stop.lon) / nextCount;
+      closestCluster.lat = (closestCluster.lat * closestCluster.members.length + stop.lat) / nextCount;
+      closestCluster.members.push(stop);
+    }
+
+    for (const cluster of clusters) {
+      const centroid = [cluster.lon, cluster.lat];
+
+      let bestSnapPoint = centroid;
+      let bestSnapDistance = Number.POSITIVE_INFINITY;
+
+      for (const member of cluster.members) {
+        const route = routesByLineKey.get(member.lineKey);
+        if (!route) {
+          continue;
+        }
+
+        const candidate = nearestPointOnGeometry(centroid, route.geometry);
+        if (candidate.distanceMeters < bestSnapDistance) {
+          bestSnapDistance = candidate.distanceMeters;
+          bestSnapPoint = candidate.point;
+        }
+      }
+
+      const useSnappedPoint = bestSnapDistance <= config.STATION_HUB_SNAP_MAX_METERS;
+      const hubPoint = useSnappedPoint ? bestSnapPoint : centroid;
+
+      let spreadMeters = 0;
+      for (const member of cluster.members) {
+        const distance = distanceBetweenPointsMeters([member.lon, member.lat], hubPoint);
+        if (distance > spreadMeters) {
+          spreadMeters = distance;
+        }
+      }
+
+      const hubKey = stableStationKey(cluster.hubName, hubPoint[0], hubPoint[1]);
+      const centralizationMethod = useSnappedPoint ? "snapped-to-route" : "centroid";
+
+      for (const member of cluster.members) {
+        hubStops.push({
+          ...member,
+          hubKey,
+          hubLon: hubPoint[0],
+          hubLat: hubPoint[1],
+          hubSpreadMeters: Math.round(spreadMeters),
+          hubMemberCount: cluster.members.length,
+          centralizationMethod
+        });
+      }
+    }
+  }
+
+  return hubStops;
+}
+
 function buildTransitPayload(area, rawRoutes, rawStops) {
   const normalizedRoutes = normalizeRoutes(rawRoutes);
+  const routesByLineKey = new Map(normalizedRoutes.map((route) => [route.lineKey, route]));
 
   const routeFeatures = normalizedRoutes.map((route) => ({
     type: "Feature",
@@ -500,15 +652,17 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
     const stopFeedId = extractFeedId(stop);
     const parentStopId = extractParentStopId(stop);
     const parentStopName = extractParentStopName(stop);
+    const stationNameHint = parentStopName || sanitizeText(stop.stop_name || stop.name) || "";
 
     const assignment = assignStopToClosestRoute(stopPoint, normalizedRoutes, {
-      stopFeedId
+      stopFeedId,
+      stopName: stationNameHint
     });
     if (!assignment) {
       continue;
     }
 
-    const stationName = parentStopName || sanitizeText(stop.stop_name || stop.name) || "Unnamed Stop";
+    const stationName = stationNameHint || "Unnamed Stop";
     const normalizedStationName = normalizeName(stationName) || "station";
 
     assignedStops.push({
@@ -525,6 +679,8 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
       feedMatch: assignment.feedMatch,
       stationName,
       normalizedName: normalizedStationName,
+      hubName: canonicalStationName(stationName),
+      parentStopId,
       dedupSeed: parentStopId || normalizedStationName,
       point: stopPoint,
       sourceStopId: sanitizeText(stop.onestop_id || stop.id),
@@ -533,13 +689,14 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
   }
 
   const dedupedStops = deduplicateStopsByLineAndName(assignedStops);
+  const hubStops = buildStationHubs(dedupedStops, routesByLineKey);
 
   const stopFeatures = [];
   const stopCountsByLine = new Map();
 
-  for (const stop of dedupedStops) {
-    const stationKey = stableStationKey(stop.stationName, stop.lon, stop.lat);
-    const overridden = applyStopOverride(stationKey, stop.stationName, stop.lon, stop.lat);
+  for (const stop of hubStops) {
+    const stationKey = stableStationKey(stop.stationName, stop.hubLon, stop.hubLat);
+    const overridden = applyStopOverride(stationKey, stop.stationName, stop.hubLon, stop.hubLat);
 
     for (const sourceStopId of stop.sourceStopIds) {
       db.upsertStopTranslation(sourceStopId, stationKey, "transitland");
@@ -565,6 +722,10 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
         assignment_method: stop.feedMatchCount > 0 ? "feed+distance" : "distance-fallback",
         feed_match: stop.feedMatchCount > 0 ? 1 : 0,
         station_name: overridden.stationName,
+        hub_key: stop.hubKey,
+        hub_member_count: stop.hubMemberCount,
+        hub_spread_m: stop.hubSpreadMeters,
+        centralization_method: stop.centralizationMethod,
         source_count: stop.pointCount,
         distance_m: Math.round(stop.minDistanceMeters),
         source_sample_id: stop.sourceStopIds[0] || null
@@ -597,8 +758,12 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
     matchingStats: {
       routeCount: routeFeatures.length,
       assignedStops: assignedStops.length,
-      dedupedStops: stopFeatures.length,
+      lineDedupedStops: dedupedStops.length,
+      centralizedStops: stopFeatures.length,
       dedupRadiusMeters: config.STOP_DEDUP_MAX_METERS,
+      hubClusterRadiusMeters: config.STATION_HUB_MAX_METERS,
+      hubSnapMaxMeters: config.STATION_HUB_SNAP_MAX_METERS,
+      hubCount: new Set(hubStops.map((stop) => stop.hubKey)).size,
       feedMatchedAssignments: assignedStops.filter((stop) => stop.feedMatch === 1).length,
       fallbackAssignments: assignedStops.filter((stop) => stop.feedMatch !== 1).length
     },

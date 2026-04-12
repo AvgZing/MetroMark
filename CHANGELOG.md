@@ -56,3 +56,17 @@
 - Added route feed/type metadata propagation into route/station payload properties for debugging.
 - Updated operator extraction fallback to use nested agency.agency_name.
 - Runtime smoke test: server startup ok; health, city catalog, and bbox transit endpoints all returned successful responses.
+
+### Milestone 8 - Station hub centralization and filter behavior overhaul
+- Reworked frontend data model to merge multiple loaded area payloads, so loading/refetching one area no longer wipes previously loaded overlays.
+- Enabled auto-fetch by default (can be toggled off) to make pan/zoom exploration behavior more intuitive.
+- Added filter controls for transport type, operator, and sorting (name/type/operator/stop count).
+- Updated map/progress visibility to honor transport type/operator/search filters (not only manual checkbox selection).
+- Updated Select All / Clear actions to operate on currently shown filtered lines only.
+- Added line selection persistence logic so manual selection is preserved while new areas are loaded.
+- Implemented cross-line station hub clustering with configurable radius and centralized hub marker coordinates.
+- Added route-snapping for hub centers (within threshold) and emitted hub diagnostics (`hub_key`, `hub_member_count`, `hub_spread_m`, `centralization_method`).
+- Added station hub tuning env/config values: `STATION_HUB_MAX_METERS`, `STATION_HUB_SNAP_MAX_METERS`.
+- Added mode-hint scoring to reduce common bus-vs-rail assignment errors in mixed feeds.
+- Bumped transit cache namespace to `transit-v3` so old cached payloads do not mask new logic.
+- Runtime smoke test confirms updated health fields and bbox payload diagnostics (hub counts and centralization metadata).

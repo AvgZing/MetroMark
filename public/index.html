@@ -132,13 +132,38 @@
             <button id="closeFiltersPopupBtn" class="btn popup-close" type="button">Close</button>
           </div>
 
+          <div class="inline-actions">
+            <label>
+              Transport Type
+              <select id="modeFilterSelect">
+                <option value="all">All Types</option>
+              </select>
+            </label>
+            <label>
+              Operator
+              <select id="operatorFilterSelect">
+                <option value="all">All Operators</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Sort
+            <select id="lineSortSelect">
+              <option value="name">Name</option>
+              <option value="mode">Transport Type</option>
+              <option value="operator">Operator</option>
+              <option value="stopCount">Stop Count</option>
+            </select>
+          </label>
+
           <label>
             Search Line
             <input id="lineSearch" type="search" placeholder="Filter by short name, long name, operator, or mode" />
           </label>
           <div class="inline-actions">
-            <button id="selectAllLinesBtn" class="btn" type="button">Select All</button>
-            <button id="clearLinesBtn" class="btn" type="button">Clear</button>
+            <button id="selectAllLinesBtn" class="btn" type="button">Select All Shown</button>
+            <button id="clearLinesBtn" class="btn" type="button">Clear Shown</button>
           </div>
           <div id="lineList" class="line-list" aria-live="polite"></div>
         </section>
