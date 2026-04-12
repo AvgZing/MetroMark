@@ -1,0 +1,28 @@
+# Local prototypes and non-app reference material
+prototypes/
+Reference/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+config.js
+config.local.js
+*.local.env
+
+# Node / build artifacts
+node_modules/
+dist/
+coverage/
+*.log
+
+# Runtime data (cache, local DB)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/cache/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
