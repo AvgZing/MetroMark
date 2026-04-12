@@ -88,11 +88,24 @@ function extractOperatorName(route) {
   return firstTruthy([
     sanitizeText(route?.operator_name),
     sanitizeText(route?.operator?.name),
+    sanitizeText(route?.agency?.agency_name),
     sanitizeText(route?.agency_name),
     sanitizeText(route?.operated_by_name),
     operatorsArray,
     sanitizeText(route?.operator_onestop_id)
   ]);
+}
+
+function extractFeedId(entity) {
+  return sanitizeText(entity?.feed_version?.feed?.onestop_id || entity?.feed?.onestop_id);
+}
+
+function extractParentStopId(stop) {
+  return sanitizeText(stop?.parent?.onestop_id || stop?.parent?.stop_id || stop?.parent_stop_id);
+}
+
+function extractParentStopName(stop) {
+  return sanitizeText(stop?.parent?.stop_name || stop?.parent?.name);
 }
 
 function extractRouteMode(route) {
@@ -244,6 +257,8 @@ function normalizeRoute(route, index) {
     color: sanitizeColor(route.route_color, lineKey),
     operatorName,
     mode,
+    routeType: Number.isFinite(Number(route.route_type)) ? Number(route.route_type) : null,
+    routeFeedId: extractFeedId(route),
     geometry,
     bbox: geometryBbox(geometry)
   };
@@ -301,11 +316,19 @@ function extractStopPoint(stop) {
   return null;
 }
 
-function assignStopToClosestRoute(stopPoint, routes) {
+function assignStopToClosestRoute(stopPoint, routes, stopContext = {}) {
+  const stopFeedId = sanitizeText(stopContext.stopFeedId);
+  const feedMatchedRoutes = stopFeedId
+    ? routes.filter((route) => route.routeFeedId && route.routeFeedId === stopFeedId)
+    : [];
+
+  const candidateRoutes = feedMatchedRoutes.length > 0 ? feedMatchedRoutes : routes;
+  const assignmentMethod = feedMatchedRoutes.length > 0 ? "feed+distance" : "distance-fallback";
+
   let bestRoute = null;
   let bestDistance = Number.POSITIVE_INFINITY;
 
-  for (const route of routes) {
+  for (const route of candidateRoutes) {
     if (!pointInExpandedBbox(stopPoint, route.bbox, config.STOP_ASSIGNMENT_MAX_METERS * 2)) {
       continue;
     }
@@ -323,7 +346,9 @@ function assignStopToClosestRoute(stopPoint, routes) {
 
   return {
     route: bestRoute,
-    distanceMeters: Math.round(bestDistance)
+    distanceMeters: Math.round(bestDistance),
+    assignmentMethod,
+    feedMatch: feedMatchedRoutes.length > 0 ? 1 : 0
   };
 }
 
@@ -369,7 +394,7 @@ function deduplicateStopsByLineAndName(stops) {
   const groups = new Map();
 
   for (const stop of stops) {
-    const key = `${stop.lineKey}|${stop.normalizedName}`;
+    const key = `${stop.lineKey}|${stop.dedupSeed || stop.normalizedName}`;
     if (!groups.has(key)) {
       groups.set(key, []);
     }
@@ -401,6 +426,12 @@ function deduplicateStopsByLineAndName(stops) {
           lineLongName: stop.lineLongName,
           operatorName: stop.operatorName,
           mode: stop.mode,
+          routeType: stop.routeType,
+          routeFeedId: stop.routeFeedId,
+          stopFeedId: stop.stopFeedId,
+          assignmentMethod: stop.assignmentMethod,
+          feedMatchCount: stop.feedMatch ? 1 : 0,
+          fallbackCount: stop.feedMatch ? 0 : 1,
           stationName: stop.stationName,
           normalizedName: stop.normalizedName,
           lon: stop.point[0],
@@ -417,6 +448,16 @@ function deduplicateStopsByLineAndName(stops) {
       closest.lat = (closest.lat * closest.pointCount + stop.point[1]) / nextCount;
       closest.pointCount = nextCount;
       closest.minDistanceMeters = Math.min(closest.minDistanceMeters, stop.distanceMeters);
+
+      closest.feedMatchCount += stop.feedMatch ? 1 : 0;
+      closest.fallbackCount += stop.feedMatch ? 0 : 1;
+
+      if (!closest.stopFeedId && stop.stopFeedId) {
+        closest.stopFeedId = stop.stopFeedId;
+      }
+      if (!closest.routeFeedId && stop.routeFeedId) {
+        closest.routeFeedId = stop.routeFeedId;
+      }
 
       if (stop.sourceStopId) {
         closest.sourceStopIds.push(stop.sourceStopId);
@@ -442,6 +483,8 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
       line_long_name: route.lineLongName,
       operator_name: route.operatorName,
       mode: route.mode,
+      route_type: route.routeType,
+      route_feed_id: route.routeFeedId,
       color: route.color
     }
   }));
@@ -454,12 +497,20 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
       continue;
     }
 
-    const assignment = assignStopToClosestRoute(stopPoint, normalizedRoutes);
+    const stopFeedId = extractFeedId(stop);
+    const parentStopId = extractParentStopId(stop);
+    const parentStopName = extractParentStopName(stop);
+
+    const assignment = assignStopToClosestRoute(stopPoint, normalizedRoutes, {
+      stopFeedId
+    });
     if (!assignment) {
       continue;
     }
 
-    const stationName = sanitizeText(stop.stop_name || stop.name) || "Unnamed Stop";
+    const stationName = parentStopName || sanitizeText(stop.stop_name || stop.name) || "Unnamed Stop";
+    const normalizedStationName = normalizeName(stationName) || "station";
+
     assignedStops.push({
       lineKey: assignment.route.lineKey,
       lineName: assignment.route.lineName,
@@ -467,8 +518,14 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
       lineLongName: assignment.route.lineLongName,
       operatorName: assignment.route.operatorName,
       mode: assignment.route.mode,
+      routeType: assignment.route.routeType,
+      routeFeedId: assignment.route.routeFeedId,
+      stopFeedId,
+      assignmentMethod: assignment.assignmentMethod,
+      feedMatch: assignment.feedMatch,
       stationName,
-      normalizedName: normalizeName(stationName) || "station",
+      normalizedName: normalizedStationName,
+      dedupSeed: parentStopId || normalizedStationName,
       point: stopPoint,
       sourceStopId: sanitizeText(stop.onestop_id || stop.id),
       distanceMeters: assignment.distanceMeters
@@ -502,9 +559,15 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
         line_long_name: stop.lineLongName,
         operator_name: stop.operatorName,
         mode: stop.mode,
+        route_type: stop.routeType,
+        route_feed_id: stop.routeFeedId,
+        stop_feed_id: stop.stopFeedId,
+        assignment_method: stop.feedMatchCount > 0 ? "feed+distance" : "distance-fallback",
+        feed_match: stop.feedMatchCount > 0 ? 1 : 0,
         station_name: overridden.stationName,
         source_count: stop.pointCount,
-        distance_m: Math.round(stop.minDistanceMeters)
+        distance_m: Math.round(stop.minDistanceMeters),
+        source_sample_id: stop.sourceStopIds[0] || null
       }
     });
 
@@ -520,6 +583,8 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
       lineLongName: route.lineLongName,
       operatorName: route.operatorName,
       mode: route.mode,
+      routeType: route.routeType,
+      routeFeedId: route.routeFeedId,
       color: route.color,
       stopCount: stopCountsByLine.get(route.lineKey) || 0
     }))
@@ -533,7 +598,9 @@ function buildTransitPayload(area, rawRoutes, rawStops) {
       routeCount: routeFeatures.length,
       assignedStops: assignedStops.length,
       dedupedStops: stopFeatures.length,
-      dedupRadiusMeters: config.STOP_DEDUP_MAX_METERS
+      dedupRadiusMeters: config.STOP_DEDUP_MAX_METERS,
+      feedMatchedAssignments: assignedStops.filter((stop) => stop.feedMatch === 1).length,
+      fallbackAssignments: assignedStops.filter((stop) => stop.feedMatch !== 1).length
     },
     routesGeoJson: asFeatureCollection(routeFeatures),
     stopsGeoJson: asFeatureCollection(stopFeatures),

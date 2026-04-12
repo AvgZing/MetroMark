@@ -18,7 +18,9 @@ const state = {
   theme: localStorage.getItem("metromark_theme") || "light",
   autoFetchEnabled: localStorage.getItem("metromark_auto_fetch") === "1",
   fetchInFlightKey: "",
-  lastAutoFetchAt: 0
+  lastAutoFetchAt: 0,
+  activePopup: "",
+  hoverPopup: null
 };
 
 const els = {
@@ -29,6 +31,7 @@ const els = {
   loadVisibleBtn: document.getElementById("loadVisibleBtn"),
   autoFetchCheckbox: document.getElementById("autoFetchCheckbox"),
   refreshCheckbox: document.getElementById("refreshCheckbox"),
+  clearSessionCacheBtn: document.getElementById("clearSessionCacheBtn"),
   lineSearch: document.getElementById("lineSearch"),
   lineList: document.getElementById("lineList"),
   selectAllLinesBtn: document.getElementById("selectAllLinesBtn"),
@@ -37,6 +40,12 @@ const els = {
   lineProgressList: document.getElementById("lineProgressList"),
   streetsModeBtn: document.getElementById("streetsModeBtn"),
   satelliteModeBtn: document.getElementById("satelliteModeBtn"),
+  accountPopupBtn: document.getElementById("accountPopupBtn"),
+  filtersPopupBtn: document.getElementById("filtersPopupBtn"),
+  authPopup: document.getElementById("authPopup"),
+  filtersPopup: document.getElementById("filtersPopup"),
+  closeAuthPopupBtn: document.getElementById("closeAuthPopupBtn"),
+  closeFiltersPopupBtn: document.getElementById("closeFiltersPopupBtn"),
   themeToggleBtn: document.getElementById("themeToggleBtn"),
   authLoggedOut: document.getElementById("authLoggedOut"),
   authLoggedIn: document.getElementById("authLoggedIn"),
@@ -84,6 +93,53 @@ function setAutoFetchEnabled(enabled) {
   state.autoFetchEnabled = Boolean(enabled);
   els.autoFetchCheckbox.checked = state.autoFetchEnabled;
   localStorage.setItem("metromark_auto_fetch", state.autoFetchEnabled ? "1" : "0");
+}
+
+function setActivePopup(name) {
+  const next = state.activePopup === name ? "" : name;
+  state.activePopup = next;
+
+  els.authPopup.hidden = next !== "account";
+  els.filtersPopup.hidden = next !== "filters";
+
+  els.accountPopupBtn.classList.toggle("btn-primary", next === "account");
+  els.filtersPopupBtn.classList.toggle("btn-primary", next === "filters");
+}
+
+function closePopups() {
+  setActivePopup("");
+}
+
+function escapeHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function stopHoverHtml(properties) {
+  const lineLabel = [properties.line_short_name, properties.line_long_name || properties.line_name]
+    .filter(Boolean)
+    .join(" | ");
+
+  const operatorLabel = properties.operator_name || "Operator unavailable";
+  const modeLabel = properties.mode || "Mode unknown";
+  const assignmentMethod = properties.assignment_method || "distance";
+  const feedMatch = properties.feed_match === 1 ? "feed match" : "fallback";
+
+  return `
+    <div class="station-hover">
+      <h4>${escapeHtml(properties.station_name || "Unnamed Station")}</h4>
+      <p><strong>Line:</strong> ${escapeHtml(lineLabel || properties.line_name || properties.line_key || "Unknown")}</p>
+      <p><strong>Operator:</strong> ${escapeHtml(operatorLabel)} <span class="muted">(${escapeHtml(modeLabel)})</span></p>
+      <p><strong>Matched:</strong> ${escapeHtml(assignmentMethod)} <span class="muted">(${escapeHtml(feedMatch)})</span></p>
+      <p><strong>Distance:</strong> ${Number(properties.distance_m || 0)}m <span class="muted">source points: ${Number(properties.source_count || 1)}</span></p>
+      <p class="muted">stop feed: ${escapeHtml(properties.stop_feed_id || "n/a")}</p>
+      <p class="muted">route feed: ${escapeHtml(properties.route_feed_id || "n/a")}</p>
+    </div>
+  `;
 }
 
 function lineDisplayName(line) {
@@ -231,7 +287,12 @@ function initializeMap() {
     antialias: true
   });
 
-  state.map.addControl(new maplibregl.NavigationControl(), "top-right");
+  state.map.addControl(new maplibregl.NavigationControl(), "bottom-right");
+  state.hoverPopup = new maplibregl.Popup({
+    closeButton: false,
+    closeOnClick: false,
+    offset: 12
+  });
 
   state.map.on("style.load", () => {
     state.map.setProjection({ type: "globe" });
@@ -294,8 +355,14 @@ function initializeMap() {
     state.map.on("mouseenter", "stops-layer", () => {
       state.map.getCanvas().style.cursor = "pointer";
     });
+    state.map.on("mousemove", "stops-layer", onStopHoverMove);
     state.map.on("mouseleave", "stops-layer", () => {
       state.map.getCanvas().style.cursor = "";
+      onStopHoverLeave();
+    });
+
+    state.map.on("click", () => {
+      closePopups();
     });
 
     state.map.on("moveend", onMapMoveEnd);
@@ -621,7 +688,7 @@ async function loadCityTransit(options = {}) {
     ? `, deduped to ${payload.matchingStats.dedupedStops} stations`
     : "";
   setStatus(
-    `Loaded ${payload.lineSummaries.length} lines and ${payload.stopsGeoJson.features.length} stations (${payload.cacheStatus} server cache${dedupNote}).`,
+    `Loaded ${payload.lineSummaries.length} lines and ${payload.stopsGeoJson.features.length} stations (${payload.cacheStatus} server cache${dedupNote}). ${payload.cacheStatus === "hit" ? "Enable Force refresh to bypass cached server data." : "Live data fetched from Transitland."}`,
     "ok"
   );
 }
@@ -705,7 +772,7 @@ async function loadVisibleAreaTransit(options = {}) {
         ? `, deduped to ${payload.matchingStats.dedupedStops} stations`
         : "";
       setStatus(
-        `Loaded visible area (${payload.cacheStatus} server cache${dedupNote}).`,
+        `Loaded visible area (${payload.cacheStatus} server cache${dedupNote}). ${payload.cacheStatus === "hit" ? "Enable Force refresh to bypass cached server data." : "Live data fetched from Transitland."}`,
         "ok"
       );
     }
@@ -792,6 +859,7 @@ async function loginWithPayload(payloadPromise) {
   setToken(payload.token);
   state.user = payload.user;
   updateAuthUi();
+  closePopups();
   await loadProgress();
   renderMapData();
   renderProgress();
@@ -847,9 +915,67 @@ async function onStopClicked(event) {
   }
 }
 
+function onStopHoverMove(event) {
+  const feature = event.features && event.features[0];
+  if (!feature || !state.hoverPopup) {
+    return;
+  }
+
+  state.hoverPopup
+    .setLngLat(event.lngLat)
+    .setHTML(stopHoverHtml(feature.properties || {}))
+    .addTo(state.map);
+}
+
+function onStopHoverLeave() {
+  if (state.hoverPopup) {
+    state.hoverPopup.remove();
+  }
+}
+
 function bindEvents() {
   els.streetsModeBtn.addEventListener("click", () => setMapMode("streets"));
   els.satelliteModeBtn.addEventListener("click", () => setMapMode("satellite"));
+
+  els.accountPopupBtn.addEventListener("click", () => {
+    setActivePopup("account");
+  });
+
+  els.filtersPopupBtn.addEventListener("click", () => {
+    setActivePopup("filters");
+  });
+
+  els.closeAuthPopupBtn.addEventListener("click", () => {
+    closePopups();
+  });
+
+  els.closeFiltersPopupBtn.addEventListener("click", () => {
+    closePopups();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closePopups();
+    }
+  });
+
+  document.addEventListener("pointerdown", (event) => {
+    if (!state.activePopup) {
+      return;
+    }
+
+    const target = event.target;
+    const clickedToggle =
+      els.accountPopupBtn.contains(target) ||
+      els.filtersPopupBtn.contains(target);
+    const clickedPanel =
+      els.authPopup.contains(target) ||
+      els.filtersPopup.contains(target);
+
+    if (!clickedToggle && !clickedPanel) {
+      closePopups();
+    }
+  });
 
   els.themeToggleBtn.addEventListener("click", () => {
     toggleTheme();
@@ -878,6 +1004,12 @@ function bindEvents() {
     } catch (error) {
       setStatus(error.message, "error");
     }
+  });
+
+  els.clearSessionCacheBtn.addEventListener("click", () => {
+    state.areaCache.clear();
+    state.currentAreaKey = "";
+    setStatus("Cleared in-browser session cache. Use Load Visible Area with Force refresh for a full live refetch.", "ok");
   });
 
   els.autoFetchCheckbox.addEventListener("change", () => {
@@ -963,6 +1095,7 @@ function bindEvents() {
     state.user = null;
     state.visitedByLine = new Map();
     updateAuthUi();
+    closePopups();
     renderMapData();
     renderProgress();
     setStatus("Logged out.");

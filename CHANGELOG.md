@@ -45,3 +45,14 @@
 - Runtime validation executed using absolute Node path because shell PATH still does not resolve node/npm in this session.
 - Verified installed runtime versions via absolute path: Node v22.22.2 and npm 10.9.7.
 - Syntax checks passed for server/index.js, server/transitland.js, server/db.js, server/spatial.js, and public/app.js.
+
+### Milestone 7 - Popup UX refinement and stop matching diagnostics
+- Moved Account and Line Filters UI from sidebar into map popup panels with toolbar toggle buttons.
+- Added popup open/close behavior (button toggles, outside click close, Escape close, and close buttons).
+- Repositioned map toolbar and moved MapLibre navigation control to bottom-right to prevent overlap with map mode toggles.
+- Added explicit session cache clear button and clearer cache status messaging to reduce stale-data confusion.
+- Added station hover detail popup with line/operator/mode plus assignment diagnostics (feed match/fallback, distance, source count, feed IDs).
+- Upgraded stop-to-route assignment to prefer same-feed routes before distance fallback.
+- Added route feed/type metadata propagation into route/station payload properties for debugging.
+- Updated operator extraction fallback to use nested agency.agency_name.
+- Runtime smoke test: server startup ok; health, city catalog, and bbox transit endpoints all returned successful responses.

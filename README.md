@@ -26,10 +26,12 @@ This stack keeps the MVP easy to understand while preserving flexibility for fut
 - City presets with one-click jump/load (Seattle, Hong Kong, London, Paris, New York City, Tokyo).
 - International visible-area loading from map viewport (bbox) with optional auto-fetch.
 - Route and stop rendering on a MapLibre globe.
+- Account and line filters available as map popup panels (instead of long sidebar sections).
 - Route filter list and search by short/long/operator/mode.
 - Light and dark sidebar UI themes with persistence.
 - Account auth (register/login) + seeded demo user.
 - Station click-to-toggle completion tracking.
+- Station hover diagnostics showing line/operator/mode, matching method, feed IDs, and merge counts.
 - Progress summary for visible filtered stations.
 - Station exit dedup clustering by distance + name to improve stop precision.
 - Foundation tables for translation and manual station overrides.
@@ -90,7 +92,7 @@ Result: normal use should not repeatedly consume Transitland calls.
 ## Current Constraints
 
 - Dateline-wrapping viewport bbox fetches are not enabled yet (around the 180-degree meridian).
-- Station assignment still uses nearest route geometry first, then dedup; this is strong for MVP but can be improved further for extremely dense multi-line overlap.
+- Station assignment now prefers same-feed route matching before geometry fallback; dense multi-line overlap can still need additional logic in future iterations.
 
 ## Data Model Notes (Future-Proofing)
 

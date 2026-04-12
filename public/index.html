@@ -32,8 +32,55 @@
           <p id="statusText">Initializing map and API...</p>
         </section>
 
-        <section class="panel" id="authPanel">
-          <h2>Account</h2>
+        <section class="panel">
+          <h2>Transit Data</h2>
+          <label>
+            Preset City
+            <select id="citySelect"></select>
+          </label>
+          <div class="inline-actions">
+            <button id="gotoCityBtn" class="btn" type="button">Go To Preset</button>
+            <button id="loadCityBtn" class="btn" type="button">Load Preset Transit</button>
+          </div>
+          <div class="inline-actions">
+            <button id="loadVisibleBtn" class="btn btn-primary" type="button">Load Visible Area</button>
+            <label class="inline-check">
+              <input id="autoFetchCheckbox" type="checkbox" />
+              Auto-fetch on map move
+            </label>
+          </div>
+          <div class="inline-actions compact-row">
+            <label class="inline-check">
+              <input id="refreshCheckbox" type="checkbox" />
+              Force refresh (bypass server cache)
+            </label>
+            <button id="clearSessionCacheBtn" class="btn" type="button">Clear Session Cache</button>
+          </div>
+          <p class="microcopy">
+            International mode uses your current viewport bbox with strict cache keys. Zoom in to 9+ for best results.
+          </p>
+        </section>
+
+        <section class="panel">
+          <h2>Progress</h2>
+          <p id="progressSummary">Sign in and load a city to track station progress.</p>
+          <div id="lineProgressList" class="line-progress-list"></div>
+        </section>
+      </aside>
+
+      <main class="map-stage">
+        <div class="map-toolbar">
+          <button id="streetsModeBtn" class="btn" type="button">Streets</button>
+          <button id="satelliteModeBtn" class="btn" type="button">Satellite</button>
+          <button id="accountPopupBtn" class="btn" type="button">Account</button>
+          <button id="filtersPopupBtn" class="btn" type="button">Filters</button>
+        </div>
+
+        <section class="panel popup-panel" id="authPopup" hidden>
+          <div class="popup-header">
+            <h2>Account</h2>
+            <button id="closeAuthPopupBtn" class="btn popup-close" type="button">Close</button>
+          </div>
 
           <div id="authLoggedOut">
             <button id="demoLoginBtn" class="btn btn-primary" type="button">Use Demo Account</button>
@@ -79,36 +126,12 @@
           </div>
         </section>
 
-        <section class="panel">
-          <h2>Transit Data</h2>
-          <label>
-            Preset City
-            <select id="citySelect"></select>
-          </label>
-          <div class="inline-actions">
-            <button id="gotoCityBtn" class="btn" type="button">Go To Preset</button>
-            <button id="loadCityBtn" class="btn" type="button">Load Preset Transit</button>
+        <section class="panel popup-panel" id="filtersPopup" hidden>
+          <div class="popup-header">
+            <h2>Line Filters</h2>
+            <button id="closeFiltersPopupBtn" class="btn popup-close" type="button">Close</button>
           </div>
-          <div class="inline-actions">
-            <button id="loadVisibleBtn" class="btn btn-primary" type="button">Load Visible Area</button>
-            <label class="inline-check">
-              <input id="autoFetchCheckbox" type="checkbox" />
-              Auto-fetch on map move
-            </label>
-          </div>
-          <div class="inline-actions compact-row">
-            <label class="inline-check">
-              <input id="refreshCheckbox" type="checkbox" />
-              Force refresh
-            </label>
-          </div>
-          <p class="microcopy">
-            International mode uses your current viewport bbox with strict cache keys. Zoom in to 9+ for best results.
-          </p>
-        </section>
 
-        <section class="panel">
-          <h2>Line Filters</h2>
           <label>
             Search Line
             <input id="lineSearch" type="search" placeholder="Filter by short name, long name, operator, or mode" />
@@ -120,18 +143,6 @@
           <div id="lineList" class="line-list" aria-live="polite"></div>
         </section>
 
-        <section class="panel">
-          <h2>Progress</h2>
-          <p id="progressSummary">Sign in and load a city to track station progress.</p>
-          <div id="lineProgressList" class="line-progress-list"></div>
-        </section>
-      </aside>
-
-      <main class="map-stage">
-        <div class="map-toolbar">
-          <button id="streetsModeBtn" class="btn" type="button">Streets</button>
-          <button id="satelliteModeBtn" class="btn" type="button">Satellite</button>
-        </div>
         <div id="map"></div>
       </main>
     </div>
