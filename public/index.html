@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MetroMark MVP</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-head panel">
+          <div>
+            <p class="brand-kicker">Transit Exploration Tracker</p>
+            <h1>MetroMark</h1>
+          </div>
+          <div class="head-actions">
+            <button
+              id="themeToggleBtn"
+              class="btn btn-icon header-icon-btn theme-icon-btn"
+              type="button"
+              aria-label="Toggle theme"
+              title="Toggle theme"
+            >
+              <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3.5v2.2m0 12.6v2.2M5.6 5.6l1.6 1.6m9.6 9.6 1.6 1.6M3.5 12h2.2m12.6 0h2.2M5.6 18.4l1.6-1.6m9.6-9.6 1.6-1.6" />
+                <circle cx="12" cy="12" r="4.4" />
+              </svg>
+            </button>
+            <button
+              id="accountPopupBtn"
+              class="btn btn-icon header-icon-btn"
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded="false"
+            >
+              <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="8" r="3.2" />
+                <path d="M4.7 19c.8-3.3 3.8-5.4 7.3-5.4s6.5 2.1 7.3 5.4" />
+              </svg>
+              <span class="header-label">Profile</span>
+            </button>
+          </div>
+        </div>
+
+        <details class="panel panel-dropdown routes-panel" id="routesPanel" open>
+          <summary class="panel-summary"><span class="panel-summary-label">Routes</span></summary>
+          <div class="panel-dropdown-body routes-panel-body">
+            <label class="mono-label routes-top-controls">
+              Search Routes
+              <input id="lineSearch" type="search" placeholder="Search route name, number, or operator" />
+            </label>
+
+            <div class="filter-sections routes-top-controls" aria-label="Route filters">
+              <div class="filter-section">
+                <p class="filter-section-title">Modes</p>
+                <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
+              </div>
+              <div class="filter-section-divider" aria-hidden="true"></div>
+              <div class="filter-section">
+                <p class="filter-section-title">Frequencies</p>
+                <div id="frequencyFilterBar" class="mode-filter-bar" aria-label="Frequency filters"></div>
+              </div>
+            </div>
+
+            <div class="user-status-card" aria-live="polite">
+              <p class="mono-label">Status</p>
+              <p id="userStatusTitle" class="user-status-title">No route selected.</p>
+              <p id="userStatusSubtitle" class="user-status-subtitle">Select a route or station.</p>
+              <p id="userStatusFeedback" class="user-status-feedback" hidden></p>
+              <dl id="userStatusDetails" class="user-status-details"></dl>
+              <div id="userStatusRouteProgress" class="user-status-route-progress" hidden>
+                <p id="userStatusRouteProgressText" class="user-status-route-progress-text">0 / 0 (0%)</p>
+                <div class="progress-track">
+                  <div id="userStatusRouteProgressFill" class="progress-fill"></div>
+                </div>
+              </div>
+              <div class="user-status-actions">
+                <button id="clearRouteProgressBtn" class="btn" type="button" hidden>
+                  Clear Route Progress
+                </button>
+                <button id="deselectRouteBtn" class="btn" type="button" hidden>Show All Filtered Routes</button>
+              </div>
+              <p id="clearRouteProgressConfirmText" class="clear-progress-confirm" hidden></p>
+            </div>
+
+            <details id="routeListDropdown" class="route-list-dropdown">
+              <summary id="routeListSummary" class="route-list-summary">Filtered Routes (0)</summary>
+              <div id="lineList" class="line-list" aria-live="polite"></div>
+            </details>
+          </div>
+        </details>
+
+        <details class="panel panel-dropdown progress-panel" id="progressPanel" open>
+          <summary class="panel-summary"><span class="panel-summary-label">Progress</span></summary>
+          <div class="panel-dropdown-body">
+            <p id="progressSummary">Sign in to mark visited stations.</p>
+            <div id="lineProgressList" class="line-progress-list"></div>
+          </div>
+        </details>
+
+        <details class="panel panel-dropdown status-panel" id="advancedInfoPanel" open>
+          <summary class="panel-summary"><span class="panel-summary-label">Advanced Information</span></summary>
+          <div class="panel-dropdown-body">
+            <div class="advanced-section">
+              <p id="statusText">Initializing map and API...</p>
+              <p id="statusMeta" class="microcopy"></p>
+            </div>
+            <div class="advanced-section">
+              <p id="backendStatusText" class="backend-note"></p>
+              <p id="apiRequestCounter" class="backend-note"></p>
+              <p id="apiRequestCounterDetail" class="backend-note"></p>
+            </div>
+            <div class="advanced-section">
+              <p class="backend-note legal-link-row">
+                <a href="https://www.transit.land/terms" target="_blank" rel="noopener noreferrer"
+                  >Transitland Terms of Service and Data Attributions</a
+                >
+              </p>
+              <p class="backend-note legal-note">
+                Disclaimer: This is an in-development hobby app, with development help from AI. All services are
+                subject to change, do not store sensitive data on this website.
+              </p>
+              <p class="backend-note legal-note">
+                Copyright &copy; <script>document.write(new Date().getFullYear())</script> MetroMark by Zing. All Rights
+                Reserved.
+              </p>
+            </div>
+            <div class="advanced-section">
+              <button id="clearSessionCacheBtn" class="btn btn-subtle" type="button">Clear Local Cache</button>
+            </div>
+          </div>
+        </details>
+      </aside>
+
+      <main class="map-stage">
+        <button id="mobileDrawerTab" class="mobile-drawer-tab" type="button" aria-expanded="false" aria-label="Open panels">
+          &gt;
+        </button>
+        <div class="map-overlay-controls" role="group" aria-label="Map style">
+          <button id="streetsModeBtn" class="btn btn-icon map-mode-btn" type="button" aria-label="Streets map view">
+            <svg class="map-mode-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 6.5 8.5 4l7 2.5L21 4v13.5L15.5 20l-7-2.5L3 20V6.5Zm5.5-1v12M15.5 6v12" />
+            </svg>
+            <span class="mode-label">Streets</span>
+          </button>
+          <button
+            id="satelliteModeBtn"
+            class="btn btn-icon map-mode-btn"
+            type="button"
+            aria-label="Satellite map view"
+          >
+            <svg class="map-mode-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 15 6 4 8-10-6-4-8 10Zm2.6-.5 3.8 2.5m2.2-8.5 3.8 2.5" />
+            </svg>
+            <span class="mode-label">Satellite</span>
+          </button>
+        </div>
+        <div id="map"></div>
+      </main>
+
+      <section class="panel dropdown-panel" id="authPopup" hidden>
+        <div class="popup-header">
+          <h2>Profile</h2>
+          <button id="closeAuthPopupBtn" class="btn popup-close" type="button">Close</button>
+        </div>
+
+        <div id="authLoggedOut">
+          <button id="demoLoginBtn" class="btn btn-primary" type="button">Use Demo Account</button>
+
+          <form id="loginForm" class="stack-form">
+            <label>
+              Email
+              <input id="loginEmail" name="email" type="email" required />
+            </label>
+            <label>
+              Password
+              <input id="loginPassword" name="password" type="password" required />
+            </label>
+            <button class="btn" type="submit">Login</button>
+          </form>
+
+          <form id="registerForm" class="stack-form">
+            <label>
+              Display Name
+              <input id="registerDisplayName" name="displayName" type="text" placeholder="Optional" />
+            </label>
+            <label>
+              Email
+              <input id="registerEmail" name="email" type="email" required />
+            </label>
+            <label>
+              Password
+              <input id="registerPassword" name="password" type="password" minlength="6" required />
+            </label>
+            <button class="btn" type="submit">Create Account</button>
+          </form>
+
+          <p class="microcopy">Demo credentials are seeded automatically from server settings.</p>
+        </div>
+
+        <div id="authLoggedIn" hidden>
+          <p>
+            Signed in as <strong id="currentUserLabel">-</strong>
+          </p>
+          <button id="logoutBtn" class="btn" type="button">Log Out</button>
+        </div>
+      </section>
+    </div>
+
+    <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
+    <script src="/scripts/core-state-ui.js" defer></script>
+    <script src="/scripts/map-viewport-cache.js" defer></script>
+    <script src="/scripts/filters-routes.js" defer></script>
+    <script src="/scripts/transit-loading-auth.js" defer></script>
+    <script src="/scripts/map-interactions.js" defer></script>
+    <script src="/scripts/bootstrap.js" defer></script>
+  </body>
+</html>
