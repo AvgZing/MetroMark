@@ -20,8 +20,11 @@
           <p class="brand-kicker">Transit Exploration Tracker</p>
           <h1>MetroMark</h1>
           <p class="brand-caption">
-            Choose a city, filter lines, and click stations you have visited.
+            Jump to a preset city or load transit for the visible map area anywhere in the world.
           </p>
+          <div class="brand-actions">
+            <button id="themeToggleBtn" class="btn" type="button">Switch To Dark Mode</button>
+          </div>
         </div>
 
         <section class="panel" id="statusPanel">
@@ -79,23 +82,36 @@
         <section class="panel">
           <h2>Transit Data</h2>
           <label>
-            City
+            Preset City
             <select id="citySelect"></select>
           </label>
           <div class="inline-actions">
-            <button id="loadCityBtn" class="btn btn-primary" type="button">Load City Transit</button>
+            <button id="gotoCityBtn" class="btn" type="button">Go To Preset</button>
+            <button id="loadCityBtn" class="btn" type="button">Load Preset Transit</button>
+          </div>
+          <div class="inline-actions">
+            <button id="loadVisibleBtn" class="btn btn-primary" type="button">Load Visible Area</button>
+            <label class="inline-check">
+              <input id="autoFetchCheckbox" type="checkbox" />
+              Auto-fetch on map move
+            </label>
+          </div>
+          <div class="inline-actions compact-row">
             <label class="inline-check">
               <input id="refreshCheckbox" type="checkbox" />
               Force refresh
             </label>
           </div>
+          <p class="microcopy">
+            International mode uses your current viewport bbox with strict cache keys. Zoom in to 9+ for best results.
+          </p>
         </section>
 
         <section class="panel">
           <h2>Line Filters</h2>
           <label>
             Search Line
-            <input id="lineSearch" type="search" placeholder="Filter by line or operator" />
+            <input id="lineSearch" type="search" placeholder="Filter by short name, long name, operator, or mode" />
           </label>
           <div class="inline-actions">
             <button id="selectAllLinesBtn" class="btn" type="button">Select All</button>

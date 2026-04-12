@@ -5,7 +5,7 @@ const config = require("./config");
 const db = require("./db");
 const { cities, getCityBySlug } = require("./city-presets");
 const { createAuthToken, authMiddleware } = require("./auth");
-const { getCityTransit } = require("./transitland");
+const { getCityTransit, getBboxTransit, TRANSIT_CACHE_PREFIX } = require("./transitland");
 
 const app = express();
 
@@ -28,7 +28,10 @@ app.get("/api/health", (req, res) => {
     status: "ok",
     app: "MetroMark",
     hasTransitlandKey: Boolean(config.TRANSITLAND_API_KEY),
-    cacheTtlHours: config.TRANSIT_CACHE_TTL_HOURS
+    cacheTtlHours: config.TRANSIT_CACHE_TTL_HOURS,
+    stopAssignmentMaxMeters: config.STOP_ASSIGNMENT_MAX_METERS,
+    stopDedupMaxMeters: config.STOP_DEDUP_MAX_METERS,
+    bboxMaxSpanDegrees: config.BBOX_MAX_SPAN_DEGREES
   });
 });
 
@@ -55,12 +58,44 @@ app.get("/api/transit/city/:slug", async (req, res) => {
 
     return res.json({
       cacheStatus: data.cacheStatus,
+      cacheKey: data.cacheKey,
       cacheExpiresAt: data.cacheExpiresAt || null,
       ...data.payload
     });
   } catch (error) {
     return res.status(502).json({
       error: "Transit fetch failed.",
+      detail: error.message
+    });
+  }
+});
+
+app.get("/api/transit/bbox", async (req, res) => {
+  const bboxRaw = String(req.query.bbox || "").trim();
+  if (!bboxRaw) {
+    return res.status(400).json({ error: "bbox query parameter is required." });
+  }
+
+  const bbox = bboxRaw.split(",").map((value) => Number(value.trim()));
+  const zoom = Number(req.query.zoom);
+
+  try {
+    const data = await getBboxTransit(bbox, {
+      forceRefresh: asBoolean(req.query.refresh),
+      zoom: Number.isFinite(zoom) ? zoom : null
+    });
+
+    return res.json({
+      cacheStatus: data.cacheStatus,
+      cacheKey: data.cacheKey,
+      cacheExpiresAt: data.cacheExpiresAt || null,
+      normalizedBbox: data.normalizedBbox,
+      snapStep: data.snapStep,
+      ...data.payload
+    });
+  } catch (error) {
+    return res.status(400).json({
+      error: "Visible-area transit fetch failed.",
       detail: error.message
     });
   }
@@ -166,8 +201,8 @@ app.post("/api/admin/overrides/station", (req, res) => {
     note
   );
 
-  db.clearCacheByPrefix("city-transit-v1:");
-  return res.json({ ok: true, invalidatedCachePrefix: "city-transit-v1:" });
+  db.clearCacheByPrefix(TRANSIT_CACHE_PREFIX);
+  return res.json({ ok: true, invalidatedCachePrefix: TRANSIT_CACHE_PREFIX });
 });
 
 app.use(express.static(path.join(__dirname, "..", "public")));

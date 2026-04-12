@@ -29,6 +29,13 @@ function toProjectedMeters(lon, lat, refLat) {
   };
 }
 
+function distanceBetweenPointsMeters(a, b) {
+  const refLat = (a[1] + b[1]) / 2;
+  const p1 = toProjectedMeters(a[0], a[1], refLat);
+  const p2 = toProjectedMeters(b[0], b[1], refLat);
+  return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+}
+
 function pointToSegmentDistanceMeters(point, a, b) {
   const refLat = point[1];
   const p = toProjectedMeters(point[0], point[1], refLat);
@@ -148,6 +155,7 @@ function pointInExpandedBbox(point, bbox, meters) {
 module.exports = {
   normalizeName,
   stableStationKey,
+  distanceBetweenPointsMeters,
   geometryDistanceMeters,
   geometryBbox,
   pointInExpandedBbox

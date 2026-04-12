@@ -4,7 +4,8 @@ MetroMark is a transit exploration tracker.
 
 Current MVP goal:
 - Show transit lines and station points on a global map.
-- Filter by city and line.
+- Load transit by preset city or by visible viewport bbox (international mode).
+- Filter by line short name, long name, operator, and mode.
 - Create/login account and mark stations as visited.
 - Preserve progress per user.
 - Minimize external API calls with local caching.
@@ -21,13 +22,16 @@ This stack keeps the MVP easy to understand while preserving flexibility for fut
 ## What Is Already Implemented
 
 - Server-side proxy to Transitland (API key never sent to browser).
-- Cached city transit payloads in SQLite to minimize Transitland calls.
-- City presets with one-click loading.
+- Strictly normalized cache keys for city and viewport bbox fetches.
+- City presets with one-click jump/load (Seattle, Hong Kong, London, Paris, New York City, Tokyo).
+- International visible-area loading from map viewport (bbox) with optional auto-fetch.
 - Route and stop rendering on a MapLibre globe.
-- Route filter list and simple search.
+- Route filter list and search by short/long/operator/mode.
+- Light and dark sidebar UI themes with persistence.
 - Account auth (register/login) + seeded demo user.
 - Station click-to-toggle completion tracking.
 - Progress summary for visible filtered stations.
+- Station exit dedup clustering by distance + name to improve stop precision.
 - Foundation tables for translation and manual station overrides.
 
 ## Demo Account
@@ -68,15 +72,25 @@ Required for transit loading:
 Important defaults:
 - TRANSIT_CACHE_TTL_HOURS=168 (7 days)
 - STOP_ASSIGNMENT_MAX_METERS=140
+- STOP_DEDUP_MAX_METERS=55
+- BBOX_MAX_SPAN_DEGREES=2.2
+- BBOX_DEFAULT_STEP_DEGREES=0.03
 
 ## Caching and API-Limit Strategy
 
 - Transit requests are done server-side only.
-- Per-city data is cached in SQLite for the configured TTL.
+- Per-city and per-bbox data is cached in SQLite for the configured TTL.
+- Viewport bbox requests are snapped to normalized keys so revisiting the same area does not refetch from Transitland.
+- Client keeps a session cache map of loaded area keys to avoid redundant server requests in the same browser session.
 - Force refresh exists in UI if you need a one-time manual refetch.
-- Station-to-line assignment is computed once per fetch and then cached.
+- Station-to-line assignment and stop dedup are computed once per fetch and then cached.
 
 Result: normal use should not repeatedly consume Transitland calls.
+
+## Current Constraints
+
+- Dateline-wrapping viewport bbox fetches are not enabled yet (around the 180-degree meridian).
+- Station assignment still uses nearest route geometry first, then dedup; this is strong for MVP but can be improved further for extremely dense multi-line overlap.
 
 ## Data Model Notes (Future-Proofing)
 
@@ -91,9 +105,10 @@ stop_translation and station_override are the beginning of your translation laye
 - External stop identifiers can map to a stable internal station key.
 - Manual name/coordinate overrides can be applied without losing ingest compatibility.
 
-## Supabase Path (Planned)
+## Supabase Path (Planned, Deferred)
 
-This MVP currently runs fully local using SQLite so you can test quickly.
+This MVP intentionally remains fully local using SQLite for fast iteration on your local PC.
+Supabase migration is deferred for now so you can keep debugging core matching quality first.
 
 When you move to Supabase/PostGIS, keep the same conceptual model:
 - user_station_visit for progress
@@ -117,7 +132,7 @@ Then add:
 
 Ignored from git:
 - .env and env variants
-- config.js patterns
+- config.local.js / local env variants
 - prototypes folder
 - local db/cache artifacts
 - Reference folder (as requested)

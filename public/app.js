@@ -1,3 +1,6 @@
+const MIN_VIEWPORT_FETCH_ZOOM = 9;
+const MAX_BBOX_SPAN_DEGREES = 2.2;
+
 const state = {
   map: null,
   mapReady: false,
@@ -9,13 +12,22 @@ const state = {
   transit: null,
   lineSummaries: [],
   activeLineKeys: new Set(),
-  visitedByLine: new Map()
+  visitedByLine: new Map(),
+  areaCache: new Map(),
+  currentAreaKey: "",
+  theme: localStorage.getItem("metromark_theme") || "light",
+  autoFetchEnabled: localStorage.getItem("metromark_auto_fetch") === "1",
+  fetchInFlightKey: "",
+  lastAutoFetchAt: 0
 };
 
 const els = {
   statusText: document.getElementById("statusText"),
   citySelect: document.getElementById("citySelect"),
+  gotoCityBtn: document.getElementById("gotoCityBtn"),
   loadCityBtn: document.getElementById("loadCityBtn"),
+  loadVisibleBtn: document.getElementById("loadVisibleBtn"),
+  autoFetchCheckbox: document.getElementById("autoFetchCheckbox"),
   refreshCheckbox: document.getElementById("refreshCheckbox"),
   lineSearch: document.getElementById("lineSearch"),
   lineList: document.getElementById("lineList"),
@@ -25,6 +37,7 @@ const els = {
   lineProgressList: document.getElementById("lineProgressList"),
   streetsModeBtn: document.getElementById("streetsModeBtn"),
   satelliteModeBtn: document.getElementById("satelliteModeBtn"),
+  themeToggleBtn: document.getElementById("themeToggleBtn"),
   authLoggedOut: document.getElementById("authLoggedOut"),
   authLoggedIn: document.getElementById("authLoggedIn"),
   currentUserLabel: document.getElementById("currentUserLabel"),
@@ -50,6 +63,50 @@ function setStatus(message, kind = "neutral") {
   if (kind === "ok") {
     els.statusText.classList.add("ok");
   }
+}
+
+function setTheme(theme) {
+  state.theme = theme === "dark" ? "dark" : "light";
+  document.body.setAttribute("data-theme", state.theme);
+  localStorage.setItem("metromark_theme", state.theme);
+
+  if (els.themeToggleBtn) {
+    els.themeToggleBtn.textContent =
+      state.theme === "dark" ? "Switch To Light Mode" : "Switch To Dark Mode";
+  }
+}
+
+function toggleTheme() {
+  setTheme(state.theme === "dark" ? "light" : "dark");
+}
+
+function setAutoFetchEnabled(enabled) {
+  state.autoFetchEnabled = Boolean(enabled);
+  els.autoFetchCheckbox.checked = state.autoFetchEnabled;
+  localStorage.setItem("metromark_auto_fetch", state.autoFetchEnabled ? "1" : "0");
+}
+
+function lineDisplayName(line) {
+  const shortName = String(line.lineShortName || "").trim();
+  const longName = String(line.lineLongName || "").trim();
+
+  if (shortName && longName && !longName.toLowerCase().includes(shortName.toLowerCase())) {
+    return `${shortName} | ${longName}`;
+  }
+
+  return shortName || longName || line.lineName || "Line";
+}
+
+function lineSearchText(line) {
+  return [
+    line.lineName,
+    line.lineShortName,
+    line.lineLongName,
+    line.operatorName,
+    line.mode
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
 }
 
 async function apiRequest(path, options = {}) {
@@ -87,8 +144,7 @@ function createMapStyle() {
         type: "raster",
         tiles: ["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],
         tileSize: 256,
-        attribution:
-          "&copy; OpenStreetMap contributors &copy; CARTO"
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
       },
       satellite: {
         type: "raster",
@@ -115,6 +171,54 @@ function createMapStyle() {
       }
     ]
   };
+}
+
+function mapBoundsToBbox() {
+  const bounds = state.map.getBounds();
+  const west = bounds.getWest();
+  const east = bounds.getEast();
+  const south = bounds.getSouth();
+  const north = bounds.getNorth();
+
+  // Transitland expects non-wrapping bbox ranges.
+  if (west > east) {
+    return null;
+  }
+
+  return [west, south, east, north];
+}
+
+function bboxStepFromZoom(zoom) {
+  if (zoom >= 13) return 0.01;
+  if (zoom >= 11) return 0.02;
+  if (zoom >= 9) return 0.03;
+  return 0.03;
+}
+
+function normalizeBboxForClientCache(rawBbox, zoom) {
+  const step = bboxStepFromZoom(zoom);
+  const snapped = [
+    Math.floor(rawBbox[0] / step) * step,
+    Math.floor(rawBbox[1] / step) * step,
+    Math.ceil(rawBbox[2] / step) * step,
+    Math.ceil(rawBbox[3] / step) * step
+  ];
+
+  return {
+    areaKey: `bbox:${step.toFixed(3)}:${snapped.map((value) => value.toFixed(4)).join(",")}`,
+    bbox: snapped,
+    step
+  };
+}
+
+function bboxQueryText(bbox) {
+  return bbox.map((value) => Number(value).toFixed(6)).join(",");
+}
+
+function updateMapModeButtons() {
+  const streetsActive = state.mapMode === "streets";
+  els.streetsModeBtn.classList.toggle("btn-primary", streetsActive);
+  els.satelliteModeBtn.classList.toggle("btn-primary", !streetsActive);
 }
 
 function initializeMap() {
@@ -194,8 +298,11 @@ function initializeMap() {
       state.map.getCanvas().style.cursor = "";
     });
 
+    state.map.on("moveend", onMapMoveEnd);
+
     state.mapReady = true;
     renderMapData();
+    updateMapModeButtons();
   });
 }
 
@@ -207,71 +314,7 @@ function setMapMode(mode) {
 
   const satelliteVisibility = mode === "satellite" ? "visible" : "none";
   state.map.setLayoutProperty("satellite-base", "visibility", satelliteVisibility);
-}
-
-function normalizeLineName(line) {
-  return `${line.lineName || "Line"} ${(line.operatorName || "").trim()}`.trim().toLowerCase();
-}
-
-function renderLineList() {
-  els.lineList.innerHTML = "";
-
-  if (!state.lineSummaries.length) {
-    const empty = document.createElement("p");
-    empty.className = "microcopy";
-    empty.textContent = "Load a city to view transit lines.";
-    els.lineList.append(empty);
-    return;
-  }
-
-  const query = els.lineSearch.value.trim().toLowerCase();
-  const fragment = document.createDocumentFragment();
-
-  for (const line of state.lineSummaries) {
-    if (query && !normalizeLineName(line).includes(query)) {
-      continue;
-    }
-
-    const row = document.createElement("label");
-    row.className = "line-item";
-
-    const checkbox = document.createElement("input");
-    checkbox.type = "checkbox";
-    checkbox.checked = state.activeLineKeys.has(line.lineKey);
-    checkbox.addEventListener("change", () => {
-      if (checkbox.checked) {
-        state.activeLineKeys.add(line.lineKey);
-      } else {
-        state.activeLineKeys.delete(line.lineKey);
-      }
-      renderMapData();
-      renderProgress();
-    });
-
-    const labelBlock = document.createElement("div");
-    const lineName = document.createElement("p");
-    lineName.className = "line-name";
-    lineName.textContent = line.lineName;
-
-    const lineOperator = document.createElement("p");
-    lineOperator.className = "line-operator";
-    lineOperator.textContent = line.operatorName || "Operator unavailable";
-
-    labelBlock.append(lineName, lineOperator);
-
-    const stopCount = document.createElement("span");
-    stopCount.className = "line-stop-count";
-    stopCount.textContent = `${line.stopCount} stops`;
-
-    const dot = document.createElement("span");
-    dot.className = "line-color-dot";
-    dot.style.backgroundColor = line.color;
-
-    row.append(checkbox, dot, labelBlock, stopCount);
-    fragment.append(row);
-  }
-
-  els.lineList.append(fragment);
+  updateMapModeButtons();
 }
 
 function getVisitedSetForLine(lineKey) {
@@ -354,9 +397,13 @@ function renderMapData() {
   state.map.getSource("stops").setData(filtered.stops);
 }
 
+function lineSummaryByKey() {
+  return new Map(state.lineSummaries.map((line) => [line.lineKey, line]));
+}
+
 function renderProgress() {
   if (!state.transit) {
-    els.progressSummary.textContent = "Load a city to view progress metrics.";
+    els.progressSummary.textContent = "Load a preset city or visible area to view progress metrics.";
     els.lineProgressList.innerHTML = "";
     return;
   }
@@ -375,10 +422,12 @@ function renderProgress() {
 
   els.lineProgressList.innerHTML = "";
   const byLine = new Map();
+  const lineLookup = lineSummaryByKey();
 
   for (const feature of filtered.stops.features) {
     const lineKey = feature.properties.line_key;
-    const lineName = feature.properties.line_name || lineKey;
+    const summary = lineLookup.get(lineKey);
+    const lineName = summary ? lineDisplayName(summary) : feature.properties.line_name || lineKey;
     const current = byLine.get(lineKey) || { lineName, visited: 0, total: 0 };
     current.total += 1;
     if (feature.properties.visited === 1) {
@@ -411,6 +460,107 @@ function renderProgress() {
   }
 }
 
+function renderLineList() {
+  els.lineList.innerHTML = "";
+
+  if (!state.lineSummaries.length) {
+    const empty = document.createElement("p");
+    empty.className = "microcopy";
+    empty.textContent = "Load transit data to view lines.";
+    els.lineList.append(empty);
+    return;
+  }
+
+  const query = els.lineSearch.value.trim().toLowerCase();
+  const fragment = document.createDocumentFragment();
+
+  for (const line of state.lineSummaries) {
+    if (query && !lineSearchText(line).includes(query)) {
+      continue;
+    }
+
+    const row = document.createElement("label");
+    row.className = "line-item";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = state.activeLineKeys.has(line.lineKey);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        state.activeLineKeys.add(line.lineKey);
+      } else {
+        state.activeLineKeys.delete(line.lineKey);
+      }
+      renderMapData();
+      renderProgress();
+    });
+
+    const labelBlock = document.createElement("div");
+    const lineName = document.createElement("p");
+    lineName.className = "line-name";
+    lineName.textContent = lineDisplayName(line);
+
+    const lineOperator = document.createElement("p");
+    lineOperator.className = "line-operator";
+    const operatorName = line.operatorName || "Operator unavailable";
+    const mode = line.mode ? ` • ${line.mode}` : "";
+    lineOperator.textContent = `${operatorName}${mode}`;
+
+    labelBlock.append(lineName, lineOperator);
+
+    const stopCount = document.createElement("span");
+    stopCount.className = "line-stop-count";
+    stopCount.textContent = `${line.stopCount} stops`;
+
+    const dot = document.createElement("span");
+    dot.className = "line-color-dot";
+    dot.style.backgroundColor = line.color;
+
+    row.append(checkbox, dot, labelBlock, stopCount);
+    fragment.append(row);
+  }
+
+  els.lineList.append(fragment);
+}
+
+function fitToArea(area) {
+  if (!state.map || !state.mapReady || !area?.bbox) {
+    return;
+  }
+
+  const [minLon, minLat, maxLon, maxLat] = area.bbox;
+  state.map.fitBounds(
+    [
+      [minLon, minLat],
+      [maxLon, maxLat]
+    ],
+    {
+      padding: 40,
+      duration: 600
+    }
+  );
+}
+
+function selectedCityPreset() {
+  return state.cities.find((city) => city.slug === els.citySelect.value) || null;
+}
+
+function applyTransitPayload(payload, options = {}) {
+  state.transit = payload;
+  state.lineSummaries = payload.lineSummaries || [];
+  state.activeLineKeys = new Set(state.lineSummaries.map((line) => line.lineKey));
+
+  const cacheKey = options.cacheKey || payload.cacheKey || payload.area?.key;
+  if (cacheKey) {
+    state.currentAreaKey = cacheKey;
+    state.areaCache.set(cacheKey, payload);
+  }
+
+  renderLineList();
+  renderMapData();
+  renderProgress();
+}
+
 async function loadCities() {
   const payload = await apiRequest("/api/catalog/cities", { method: "GET" });
   state.cities = payload.cities || [];
@@ -429,52 +579,157 @@ async function loadCities() {
   }
 }
 
-async function loadCityTransit() {
-  const citySlug = els.citySelect.value;
-  if (!citySlug) {
+async function loadCityTransit(options = {}) {
+  const city = selectedCityPreset();
+  if (!city) {
+    setStatus("Select a preset city first.", "error");
     return;
   }
 
-  state.currentCitySlug = citySlug;
-  setStatus(`Loading ${citySlug} transit data...`);
+  const forceRefresh = Boolean(options.forceRefresh || els.refreshCheckbox.checked);
+  const localCacheKey = `city:${city.slug}`;
 
-  const refreshSuffix = els.refreshCheckbox.checked ? "?refresh=1" : "";
-  const payload = await apiRequest(`/api/transit/city/${citySlug}${refreshSuffix}`, {
+  if (!forceRefresh && state.areaCache.has(localCacheKey)) {
+    applyTransitPayload(state.areaCache.get(localCacheKey), { cacheKey: localCacheKey });
+    await loadProgress();
+    renderMapData();
+    renderProgress();
+    if (options.fit !== false) {
+      fitToArea(city);
+    }
+    setStatus(`Loaded ${city.name} from local session cache.`, "ok");
+    return;
+  }
+
+  setStatus(`Loading ${city.name} transit data...`);
+
+  const refreshSuffix = forceRefresh ? "?refresh=1" : "";
+  const payload = await apiRequest(`/api/transit/city/${city.slug}${refreshSuffix}`, {
     method: "GET"
   });
 
-  state.transit = payload;
-  state.lineSummaries = payload.lineSummaries || [];
-  state.activeLineKeys = new Set(state.lineSummaries.map((line) => line.lineKey));
-
-  renderLineList();
+  applyTransitPayload(payload, { cacheKey: payload.cacheKey || localCacheKey });
   await loadProgress();
   renderMapData();
   renderProgress();
 
-  fitToCity(payload.city);
+  if (options.fit !== false) {
+    fitToArea(payload.area || payload.city || city);
+  }
+
+  const dedupNote = payload.matchingStats
+    ? `, deduped to ${payload.matchingStats.dedupedStops} stations`
+    : "";
   setStatus(
-    `Loaded ${payload.lineSummaries.length} lines and ${payload.stopsGeoJson.features.length} stations (${payload.cacheStatus} cache).`,
+    `Loaded ${payload.lineSummaries.length} lines and ${payload.stopsGeoJson.features.length} stations (${payload.cacheStatus} server cache${dedupNote}).`,
     "ok"
   );
 }
 
-function fitToCity(city) {
-  if (!state.map || !state.mapReady || !city) {
+async function loadVisibleAreaTransit(options = {}) {
+  if (!state.mapReady) {
+    setStatus("Map is still loading.", "error");
     return;
   }
 
-  const [minLon, minLat, maxLon, maxLat] = city.bbox;
-  state.map.fitBounds(
-    [
-      [minLon, minLat],
-      [maxLon, maxLat]
-    ],
-    {
-      padding: 40,
-      duration: 600
+  const zoom = state.map.getZoom();
+  if (zoom < MIN_VIEWPORT_FETCH_ZOOM) {
+    if (!options.fromAuto) {
+      setStatus(`Zoom to ${MIN_VIEWPORT_FETCH_ZOOM}+ before loading visible-area transit.`, "error");
     }
-  );
+    return;
+  }
+
+  const rawBbox = mapBoundsToBbox();
+  if (!rawBbox) {
+    if (!options.fromAuto) {
+      setStatus("Dateline-wrapping views are not supported yet. Pan away from the 180° meridian.", "error");
+    }
+    return;
+  }
+
+  const width = rawBbox[2] - rawBbox[0];
+  const height = rawBbox[3] - rawBbox[1];
+  if (width > MAX_BBOX_SPAN_DEGREES || height > MAX_BBOX_SPAN_DEGREES) {
+    if (!options.fromAuto) {
+      setStatus(`Zoom in before loading; visible span must stay under ${MAX_BBOX_SPAN_DEGREES} degrees.`, "error");
+    }
+    return;
+  }
+
+  const normalized = normalizeBboxForClientCache(rawBbox, zoom);
+  const forceRefresh = Boolean(options.forceRefresh || els.refreshCheckbox.checked);
+
+  if (!forceRefresh && state.areaCache.has(normalized.areaKey)) {
+    applyTransitPayload(state.areaCache.get(normalized.areaKey), { cacheKey: normalized.areaKey });
+    await loadProgress();
+    renderMapData();
+    renderProgress();
+    if (!options.fromAuto) {
+      setStatus(`Loaded visible area from local session cache (${normalized.areaKey}).`, "ok");
+    }
+    return;
+  }
+
+  if (state.fetchInFlightKey && state.fetchInFlightKey === normalized.areaKey) {
+    return;
+  }
+
+  state.fetchInFlightKey = normalized.areaKey;
+
+  try {
+    if (!options.fromAuto) {
+      setStatus("Loading visible-area transit data...");
+    }
+
+    const params = new URLSearchParams({
+      bbox: bboxQueryText(rawBbox),
+      zoom: zoom.toFixed(2)
+    });
+
+    if (forceRefresh) {
+      params.set("refresh", "1");
+    }
+
+    const payload = await apiRequest(`/api/transit/bbox?${params.toString()}`, {
+      method: "GET"
+    });
+
+    applyTransitPayload(payload, { cacheKey: payload.cacheKey || normalized.areaKey });
+    await loadProgress();
+    renderMapData();
+    renderProgress();
+
+    if (!options.fromAuto) {
+      const dedupNote = payload.matchingStats
+        ? `, deduped to ${payload.matchingStats.dedupedStops} stations`
+        : "";
+      setStatus(
+        `Loaded visible area (${payload.cacheStatus} server cache${dedupNote}).`,
+        "ok"
+      );
+    }
+  } finally {
+    if (state.fetchInFlightKey === normalized.areaKey) {
+      state.fetchInFlightKey = "";
+    }
+  }
+}
+
+function onMapMoveEnd() {
+  if (!state.autoFetchEnabled || !state.mapReady) {
+    return;
+  }
+
+  const now = Date.now();
+  if (now - state.lastAutoFetchAt < 1200) {
+    return;
+  }
+  state.lastAutoFetchAt = now;
+
+  loadVisibleAreaTransit({ fromAuto: true }).catch(() => {
+    // Intentionally silent for auto mode. Manual mode surfaces status errors.
+  });
 }
 
 function setToken(token) {
@@ -596,11 +851,39 @@ function bindEvents() {
   els.streetsModeBtn.addEventListener("click", () => setMapMode("streets"));
   els.satelliteModeBtn.addEventListener("click", () => setMapMode("satellite"));
 
+  els.themeToggleBtn.addEventListener("click", () => {
+    toggleTheme();
+  });
+
+  els.gotoCityBtn.addEventListener("click", () => {
+    const city = selectedCityPreset();
+    if (!city) {
+      setStatus("Select a preset city first.", "error");
+      return;
+    }
+    fitToArea(city);
+  });
+
   els.loadCityBtn.addEventListener("click", async () => {
     try {
-      await loadCityTransit();
+      await loadCityTransit({ fit: true });
     } catch (error) {
       setStatus(error.message, "error");
+    }
+  });
+
+  els.loadVisibleBtn.addEventListener("click", async () => {
+    try {
+      await loadVisibleAreaTransit({ fromAuto: false });
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  els.autoFetchCheckbox.addEventListener("change", () => {
+    setAutoFetchEnabled(els.autoFetchCheckbox.checked);
+    if (state.autoFetchEnabled) {
+      setStatus("Auto-fetch enabled. Moving the map at zoom 9+ will load visible-area transit.", "ok");
     }
   });
 
@@ -687,13 +970,16 @@ function bindEvents() {
 }
 
 async function init() {
+  setTheme(state.theme);
+  setAutoFetchEnabled(state.autoFetchEnabled);
+
   bindEvents();
   initializeMap();
 
   try {
     await loadCities();
     await hydrateSession();
-    await loadCityTransit();
+    await loadCityTransit({ fit: true });
   } catch (error) {
     setStatus(error.message, "error");
   }

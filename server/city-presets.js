@@ -8,7 +8,7 @@ const cities = [
   },
   {
     slug: "new-york",
-    name: "New York",
+    name: "New York City",
     country: "USA",
     center: [-73.985, 40.758],
     bbox: [-74.28, 40.49, -73.67, 40.93]
@@ -19,6 +19,13 @@ const cities = [
     country: "UK",
     center: [-0.1278, 51.5074],
     bbox: [-0.56, 51.27, 0.31, 51.72]
+  },
+  {
+    slug: "hong-kong",
+    name: "Hong Kong",
+    country: "China",
+    center: [114.1694, 22.3193],
+    bbox: [113.82, 22.15, 114.42, 22.56]
   },
   {
     slug: "tokyo",

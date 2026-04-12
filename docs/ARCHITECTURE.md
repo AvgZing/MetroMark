@@ -23,8 +23,9 @@ The browser never directly calls Transitland.
 
 Responsibilities:
 - Auth endpoints and JWT issue/validation.
-- Transitland proxy and city-level caching.
+- Transitland proxy and normalized city/bbox caching.
 - Station-to-line assignment logic.
+- Station dedup clustering logic (same-name points within radius).
 - Progress read/write endpoints.
 
 Key reason:
@@ -44,12 +45,14 @@ Why SQLite now:
 
 ## Transit Ingest Flow
 
-1. Client requests /api/transit/city/:slug.
-2. Server checks api_cache table for city cache key.
-3. If cache miss/expired, server fetches routes and stops from Transitland for city bbox.
-4. Server computes nearest-line assignment for each stop using geometry distance.
-5. Server applies local station_override records.
-6. Server stores final payload in cache and returns it.
+1. Client requests either /api/transit/city/:slug or /api/transit/bbox?bbox=....
+2. Server normalizes area to a strict cache key (city key or snapped bbox key).
+3. Server checks api_cache table for that key.
+4. If cache miss/expired, server fetches routes and stops from Transitland for the area bbox.
+5. Server computes nearest-line assignment for each stop using geometry distance.
+6. Server deduplicates station exits by same normalized name and proximity radius.
+7. Server applies local station_override records.
+8. Server stores final payload in cache and returns it.
 
 ## Station Identity Strategy
 
@@ -63,11 +66,17 @@ Related tables:
 - stop_translation: maps upstream stop IDs to stable key.
 - station_override: manual local name/location corrections.
 
+Dedup behavior:
+- Stops are first assigned to closest route geometry within threshold.
+- Assigned stops are then clustered by line + normalized station name.
+- Points within the configured dedup radius collapse to one station marker.
+
 ## Current API Surface
 
 - GET /api/health
 - GET /api/catalog/cities
 - GET /api/transit/city/:slug
+- GET /api/transit/bbox
 - POST /api/auth/register
 - POST /api/auth/login
 - POST /api/auth/demo-login
