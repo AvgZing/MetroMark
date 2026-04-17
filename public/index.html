@@ -22,15 +22,25 @@
             <h1>MetroMark</h1>
           </div>
           <div class="head-actions">
-            <button id="themeToggleBtn" class="btn btn-icon" type="button" aria-label="Toggle theme">Theme</button>
+            <button id="themeToggleBtn" class="btn btn-icon header-icon-btn" type="button" aria-label="Toggle theme">
+              <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3.5v2.2m0 12.6v2.2M5.6 5.6l1.6 1.6m9.6 9.6 1.6 1.6M3.5 12h2.2m12.6 0h2.2M5.6 18.4l1.6-1.6m9.6-9.6 1.6-1.6" />
+                <circle cx="12" cy="12" r="4.4" />
+              </svg>
+              <span class="header-label">Theme</span>
+            </button>
             <button
               id="accountPopupBtn"
-              class="btn btn-icon"
+              class="btn btn-icon header-icon-btn"
               type="button"
               aria-haspopup="dialog"
               aria-expanded="false"
             >
-              Profile
+              <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="8" r="3.2" />
+                <path d="M4.7 19c.8-3.3 3.8-5.4 7.3-5.4s6.5 2.1 7.3 5.4" />
+              </svg>
+              <span class="header-label">Profile</span>
             </button>
           </div>
         </div>
@@ -42,8 +52,24 @@
             <input id="lineSearch" type="search" placeholder="Search route name, number, or operator" />
           </label>
 
-          <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
-          <div id="frequencyFilterBar" class="mode-filter-bar" aria-label="Frequency filters"></div>
+          <div class="filter-sections" aria-label="Route filters">
+            <div class="filter-section">
+              <p class="filter-section-title">Modes</p>
+              <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
+            </div>
+            <div class="filter-section-divider" aria-hidden="true"></div>
+            <div class="filter-section">
+              <p class="filter-section-title">Frequencies</p>
+              <div id="frequencyFilterBar" class="mode-filter-bar" aria-label="Frequency filters"></div>
+            </div>
+          </div>
+
+          <div class="user-status-card" aria-live="polite">
+            <p class="mono-label">Filter Status</p>
+            <p id="userStatusTitle" class="user-status-title">No route selected.</p>
+            <p id="userStatusBody" class="user-status-body">Click or hover a route to inspect it here.</p>
+          </div>
+
           <div id="lineList" class="line-list" aria-live="polite"></div>
           <button id="resetLineFocusBtn" class="btn" type="button" hidden>Show All Routes</button>
         </section>
@@ -58,6 +84,7 @@
           <p id="statusText">Initializing map and API...</p>
           <p id="statusMeta" class="microcopy"></p>
           <p id="backendStatusText" class="backend-note"></p>
+          <p id="apiRequestCounter" class="backend-note"></p>
           <button id="clearSessionCacheBtn" class="btn btn-subtle" type="button">Clear Local Cache</button>
         </section>
       </aside>

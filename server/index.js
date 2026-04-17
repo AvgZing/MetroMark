@@ -10,6 +10,7 @@ const {
   getBboxTransit,
   getRouteStopsTransit,
   getRouteHeadway,
+  getTransitlandMetrics,
   TRANSIT_CACHE_PREFIX
 } = require("./transitland");
 
@@ -41,6 +42,31 @@ function parseStopTypes(value) {
   return Array.from(new Set(parsed)).sort((a, b) => a - b);
 }
 
+function parseRouteTypes(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return [];
+  }
+
+  const allowed = new Set([0, 1, 2, 3, 4, 5, 6, 7, 11, 12]);
+  const parsed = raw
+    .split(",")
+    .map((entry) => Number.parseInt(entry.trim(), 10))
+    .filter((entry) => Number.isFinite(entry) && allowed.has(entry));
+
+  return Array.from(new Set(parsed)).sort((a, b) => a - b);
+}
+
+function withTransitlandMetrics(payload) {
+  const metrics = getTransitlandMetrics();
+  return {
+    ...payload,
+    transitlandApiRequests: metrics.apiRequestCount,
+    transitlandApiRequestFailures: metrics.apiRequestFailureCount,
+    transitlandLastRequestAt: metrics.lastRequestAt || null
+  };
+}
+
 function userResponse(user, token) {
   return {
     token,
@@ -49,7 +75,7 @@ function userResponse(user, token) {
 }
 
 app.get("/api/health", (req, res) => {
-  res.json({
+  res.json(withTransitlandMetrics({
     status: "ok",
     app: "MetroMark",
     hasTransitlandKey: Boolean(config.TRANSITLAND_API_KEY),
@@ -66,7 +92,7 @@ app.get("/api/health", (req, res) => {
     stationHubMaxMeters: config.STATION_HUB_MAX_METERS,
     stationHubSnapMaxMeters: config.STATION_HUB_SNAP_MAX_METERS,
     bboxMaxSpanDegrees: config.BBOX_MAX_SPAN_DEGREES
-  });
+  }));
 });
 
 app.get("/api/catalog/cities", (req, res) => {
@@ -83,22 +109,25 @@ app.get("/api/transit/city/:slug", async (req, res) => {
 
   try {
     const stopTypes = parseStopTypes(req.query.stopTypes);
+    const routeTypes = parseRouteTypes(req.query.routeTypes);
     const data = await getCityTransit(city.slug, {
       forceRefresh: asBoolean(req.query.refresh),
-      stopLocationTypes: stopTypes
+      stopLocationTypes: stopTypes,
+      routeTypes
     });
 
     if (!data) {
       return res.status(404).json({ error: "No transit data available for this city." });
     }
 
-    return res.json({
+    return res.json(withTransitlandMetrics({
       cacheStatus: data.cacheStatus,
       cacheKey: data.cacheKey,
       cacheExpiresAt: data.cacheExpiresAt || null,
       stopLocationTypes: data.stopLocationTypes || [0, 1],
+      routeTypes: data.routeTypes || [],
       ...data.payload
-    });
+    }));
   } catch (error) {
     return res.status(502).json({
       error: "Transit fetch failed.",
@@ -116,23 +145,26 @@ app.get("/api/transit/bbox", async (req, res) => {
   const bbox = bboxRaw.split(",").map((value) => Number(value.trim()));
   const zoom = Number(req.query.zoom);
   const stopTypes = parseStopTypes(req.query.stopTypes);
+  const routeTypes = parseRouteTypes(req.query.routeTypes);
 
   try {
     const data = await getBboxTransit(bbox, {
       forceRefresh: asBoolean(req.query.refresh),
       zoom: Number.isFinite(zoom) ? zoom : null,
-      stopLocationTypes: stopTypes
+      stopLocationTypes: stopTypes,
+      routeTypes
     });
 
-    return res.json({
+    return res.json(withTransitlandMetrics({
       cacheStatus: data.cacheStatus,
       cacheKey: data.cacheKey,
       cacheExpiresAt: data.cacheExpiresAt || null,
       normalizedBbox: data.normalizedBbox,
       snapStep: data.snapStep,
       stopLocationTypes: data.stopLocationTypes || [0, 1],
+      routeTypes: data.routeTypes || [],
       ...data.payload
-    });
+    }));
   } catch (error) {
     return res.status(400).json({
       error: "Visible-area transit fetch failed.",
@@ -155,13 +187,13 @@ app.get("/api/transit/route-stops", async (req, res) => {
       stopLocationTypes: stopTypes
     });
 
-    return res.json({
+    return res.json(withTransitlandMetrics({
       cacheStatus: data.cacheStatus,
       cacheKey: data.cacheKey,
       cacheExpiresAt: data.cacheExpiresAt || null,
       stopLocationTypes: data.stopLocationTypes || [0, 1],
       ...data.payload
-    });
+    }));
   } catch (error) {
     return res.status(400).json({
       error: "Route stop fetch failed.",
@@ -181,7 +213,7 @@ app.get("/api/transit/route-headway", async (req, res) => {
       forceRefresh: asBoolean(req.query.refresh)
     });
 
-    return res.json(data);
+    return res.json(withTransitlandMetrics(data));
   } catch (error) {
     return res.status(400).json({
       error: "Route headway fetch failed.",

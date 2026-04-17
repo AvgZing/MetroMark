@@ -13,6 +13,11 @@ const {
 
 const TRANSITLAND_BASE_URL = "https://transit.land/api/v2/rest";
 const TRANSIT_CACHE_PREFIX = "transit-v3:";
+const transitlandMetrics = {
+  apiRequestCount: 0,
+  apiRequestFailureCount: 0,
+  lastRequestAt: ""
+};
 
 const fallbackColors = [
   "#3f7cff",
@@ -148,6 +153,29 @@ function normalizeStopLocationTypes(rawValue) {
   return uniqueSorted.length ? uniqueSorted : [0, 1];
 }
 
+function normalizeRouteTypes(rawValue) {
+  const allowed = new Set([0, 1, 2, 3, 4, 5, 6, 7, 11, 12]);
+
+  const source = Array.isArray(rawValue)
+    ? rawValue
+    : String(rawValue || "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+
+  const parsed = source
+    .map((entry) => Number.parseInt(entry, 10))
+    .filter((entry) => Number.isFinite(entry) && allowed.has(entry));
+
+  return Array.from(new Set(parsed)).sort((a, b) => a - b);
+}
+
+function getTransitlandMetrics() {
+  return {
+    ...transitlandMetrics
+  };
+}
+
 function parseBboxArray(rawBbox) {
   if (!Array.isArray(rawBbox) || rawBbox.length !== 4) {
     throw new Error("bbox must contain four comma-separated coordinates.");
@@ -261,6 +289,8 @@ async function transitlandRequest(path, params) {
     const controller = new AbortController();
     const timeoutMs = Math.max(1500, Number(config.TRANSITLAND_REQUEST_TIMEOUT_MS || 15000));
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+    transitlandMetrics.apiRequestCount += 1;
+    transitlandMetrics.lastRequestAt = new Date().toISOString();
 
     try {
       const response = await fetch(url, {
@@ -273,18 +303,27 @@ async function transitlandRequest(path, params) {
       if (!response.ok) {
         const detail = await response.text();
         const retryable = response.status === 429 || response.status >= 500;
+        transitlandMetrics.apiRequestFailureCount += 1;
 
         if (retryable && attempt < retries) {
           await wait(280 * (attempt + 1));
           continue;
         }
 
-        throw new Error(`Transitland request failed (${response.status}): ${detail.slice(0, 220)}`);
+        const requestError = new Error(
+          `Transitland request failed (${response.status}): ${detail.slice(0, 220)}`
+        );
+        requestError.alreadyCounted = true;
+        throw requestError;
       }
 
       return response.json();
     } catch (error) {
       const timedOut = error?.name === "AbortError";
+      if (!error?.alreadyCounted) {
+        transitlandMetrics.apiRequestFailureCount += 1;
+      }
+
       if (timedOut && attempt < retries) {
         await wait(220 * (attempt + 1));
         continue;
@@ -478,10 +517,71 @@ function stripHtmlTags(text) {
 }
 
 function parseHeadwayCellMinutes(cellText) {
-  const values = String(cellText || "")
+  const text = String(cellText || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!text || /\b(no service|none|n\/a)\b/.test(text)) {
+    return null;
+  }
+
+  const hasTripWord = /\btrips?\b/.test(text);
+  const minuteValues = [];
+
+  const rangeRegex = /(\d+(?:\.\d+)?)\s*(?:-|to|–|—)\s*(\d+(?:\.\d+)?)(?:\s*(?:min|mins|minute|minutes))?/g;
+  let rangeMatch = rangeRegex.exec(text);
+  while (rangeMatch) {
+    const low = Number(rangeMatch[1]);
+    const high = Number(rangeMatch[2]);
+    if (Number.isFinite(low) && Number.isFinite(high)) {
+      minuteValues.push(Number(((low + high) / 2).toFixed(1)));
+    }
+    rangeMatch = rangeRegex.exec(text);
+  }
+
+  const explicitMinutesRegex = /(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes)\b/g;
+  let minutesMatch = explicitMinutesRegex.exec(text);
+  while (minutesMatch) {
+    const value = Number(minutesMatch[1]);
+    if (Number.isFinite(value)) {
+      minuteValues.push(value);
+    }
+    minutesMatch = explicitMinutesRegex.exec(text);
+  }
+
+  const explicitHoursRegex = /(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours)\b/g;
+  let hoursMatch = explicitHoursRegex.exec(text);
+  while (hoursMatch) {
+    const value = Number(hoursMatch[1]);
+    if (Number.isFinite(value)) {
+      minuteValues.push(Number((value * 60).toFixed(1)));
+    }
+    hoursMatch = explicitHoursRegex.exec(text);
+  }
+
+  const everyRegex = /every\s+(\d+(?:\.\d+)?)/g;
+  let everyMatch = everyRegex.exec(text);
+  while (everyMatch) {
+    const value = Number(everyMatch[1]);
+    if (Number.isFinite(value)) {
+      minuteValues.push(value);
+    }
+    everyMatch = everyRegex.exec(text);
+  }
+
+  if (minuteValues.length) {
+    return Number(Math.min(...minuteValues).toFixed(1));
+  }
+
+  if (hasTripWord) {
+    return null;
+  }
+
+  const values = text
     .match(/\d+(?:\.\d+)?/g)
     ?.map((value) => Number(value))
-    .filter((value) => Number.isFinite(value));
+    .filter((value) => Number.isFinite(value) && value >= 5 && value <= 240);
 
   if (!values || !values.length) {
     return null;
@@ -665,8 +765,10 @@ function assignStopToClosestRoute(stopPoint, routes, stopContext = {}) {
   };
 }
 
-async function fetchRoutesAndStopsForBbox(bboxArray) {
+async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
   const bbox = toBboxString(bboxArray);
+  const routeTypes = normalizeRouteTypes(options.routeTypes);
+  const allowedRouteTypes = new Set(routeTypes);
   const lonSpan = Math.max(0, Number(bboxArray[2]) - Number(bboxArray[0]));
   const latSpan = Math.max(0, Number(bboxArray[3]) - Number(bboxArray[1]));
   const span = Math.max(lonSpan, latSpan);
@@ -681,14 +783,24 @@ async function fetchRoutesAndStopsForBbox(bboxArray) {
     routeLimit = Math.max(100, Math.round(routeLimit * 0.82));
   }
 
-  const routesResponse = await transitlandRequest("/routes", {
+  const routeParams = {
     bbox,
     include_geometry: "true",
     limit: String(routeLimit)
-  });
+  };
+
+  if (routeTypes.length) {
+    routeParams.route_types = routeTypes.join(",");
+  }
+
+  const routesResponse = await transitlandRequest("/routes", routeParams);
+  const fetchedRoutes = Array.isArray(routesResponse.routes) ? routesResponse.routes : [];
+  const filteredRoutes = routeTypes.length
+    ? fetchedRoutes.filter((route) => allowedRouteTypes.has(Number(route?.route_type)))
+    : fetchedRoutes;
 
   return {
-    routes: Array.isArray(routesResponse.routes) ? routesResponse.routes : [],
+    routes: filteredRoutes,
     stops: []
   };
 }
@@ -897,6 +1009,7 @@ function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
   const normalizedRoutes = normalizeRoutes(rawRoutes);
   const routesByLineKey = new Map(normalizedRoutes.map((route) => [route.lineKey, route]));
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
+  const routeTypes = normalizeRouteTypes(options.routeTypes);
   const allowedStopLocationTypes = new Set(stopLocationTypes);
 
   const routeFeatures = normalizedRoutes.map((route) => ({
@@ -915,6 +1028,7 @@ function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
       service_tier: routeServiceTier(route.routeType),
       frequency_bucket: routeFrequencyBucket(route.routeType),
       headway_best_minutes: null,
+      headway_checked: 0,
       color: route.color
     }
   }));
@@ -1036,6 +1150,7 @@ function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
       frequencyBucket: routeFrequencyBucket(route.routeType),
       headwayBestMinutes: null,
       headwaySource: "",
+      headwayChecked: 0,
       color: route.color,
       stopCount: stopCountsByLine.get(route.lineKey) || 0
     }))
@@ -1063,6 +1178,7 @@ function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
       hubClusterRadiusMeters: config.STATION_HUB_MAX_METERS,
       hubSnapMaxMeters: config.STATION_HUB_SNAP_MAX_METERS,
       hubCount: new Set(hubStops.map((stop) => stop.hubKey)).size,
+      routeTypes,
       feedMatchedAssignments: assignedStops.filter((stop) => stop.feedMatch === 1).length,
       fallbackAssignments: assignedStops.filter((stop) => stop.feedMatch !== 1).length,
       fetchStrategy: rawStops.length > 0 ? "bbox-stop-assignment" : "route-first-catalog"
@@ -1095,6 +1211,7 @@ function routeFeatureFromLine(line) {
       headway_best_minutes: Number.isFinite(headwayBestMinutes)
         ? Number(headwayBestMinutes.toFixed(1))
         : null,
+      headway_checked: Number(line?.headwayChecked || 0) === 1 ? 1 : 0,
       color: line.color
     }
   };
@@ -1285,6 +1402,7 @@ function buildRouteStopsPayload(line, rawStops, options = {}) {
     frequencyBucket,
     headwayBestMinutes: normalizedHeadwayBestMinutes,
     headwaySource: headwaySummary?.source || "",
+    headwayChecked: headwaySummary ? 1 : 0,
     color: line.color,
     stopCount: stopFeatures.length
   };
@@ -1391,6 +1509,7 @@ async function getRouteHeadway(lineKey, options = {}) {
     headwaySummary: summary,
     headwayBestMinutes: normalizedBestMinutes,
     headwaySource: summary?.source || "",
+    headwayChecked: 1,
     frequencyBucket: normalizedBestMinutes
       ? frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)
       : routeFrequencyBucket(line.routeType)
@@ -1401,6 +1520,7 @@ async function getTransitForArea(area, options = {}) {
   const forceRefresh = Boolean(options.forceRefresh);
   const cacheKey = `${TRANSIT_CACHE_PREFIX}${area.key}`;
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
+  const routeTypes = normalizeRouteTypes(options.routeTypes || area.routeTypes);
 
   if (!forceRefresh) {
     const cached = db.getCache(cacheKey);
@@ -1415,9 +1535,12 @@ async function getTransitForArea(area, options = {}) {
     }
   }
 
-  const { routes, stops } = await fetchRoutesAndStopsForBbox(area.bbox);
+  const { routes, stops } = await fetchRoutesAndStopsForBbox(area.bbox, {
+    routeTypes
+  });
   const payload = buildTransitPayload(area, routes, stops, {
-    stopLocationTypes
+    stopLocationTypes,
+    routeTypes
   });
 
   db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600);
@@ -1437,20 +1560,24 @@ async function getCityTransit(slug, options = {}) {
   }
 
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
+  const routeTypes = normalizeRouteTypes(options.routeTypes);
+  const routeTypeKey = routeTypes.length ? routeTypes.join("-") : "all";
 
   const area = {
-    key: `city:${city.slug}:route-catalog`,
+    key: `city:${city.slug}:route-catalog:route-types:${routeTypeKey}`,
     kind: "city",
     slug: city.slug,
     name: city.name,
     country: city.country,
     center: city.center,
-    bbox: city.bbox
+    bbox: city.bbox,
+    routeTypes
   };
 
   return getTransitForArea(area, {
     ...options,
-    stopLocationTypes
+    stopLocationTypes,
+    routeTypes
   });
 }
 
@@ -1458,26 +1585,31 @@ async function getBboxTransit(rawBbox, options = {}) {
   const zoom = Number(options.zoom);
   const bboxInfo = normalizeBboxForCache(rawBbox, zoom);
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
+  const routeTypes = normalizeRouteTypes(options.routeTypes);
+  const routeTypeKey = routeTypes.length ? routeTypes.join("-") : "all";
 
   const area = {
-    key: `${bboxInfo.areaKey}:route-catalog`,
+    key: `${bboxInfo.areaKey}:route-catalog:route-types:${routeTypeKey}`,
     kind: "bbox",
     name: "Visible Area",
     country: "",
     center: bboxCenter(bboxInfo.bbox),
     bbox: bboxInfo.bbox,
-    snapStep: bboxInfo.step
+    snapStep: bboxInfo.step,
+    routeTypes
   };
 
   const result = await getTransitForArea(area, {
     ...options,
-    stopLocationTypes
+    stopLocationTypes,
+    routeTypes
   });
   return {
     ...result,
     normalizedBbox: bboxInfo.bbox,
     snapStep: bboxInfo.step,
-    stopLocationTypes
+    stopLocationTypes,
+    routeTypes
   };
 }
 
@@ -1486,5 +1618,6 @@ module.exports = {
   getBboxTransit,
   getRouteStopsTransit,
   getRouteHeadway,
+  getTransitlandMetrics,
   TRANSIT_CACHE_PREFIX
 };
