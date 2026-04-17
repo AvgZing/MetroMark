@@ -1,7 +1,7 @@
 const config = require("./config");
 const db = require("./db");
 const { VectorTile } = require("@mapbox/vector-tile");
-const Pbf = require("pbf");
+const Pbf = require("pbf").default;
 const { getCityBySlug } = require("./city-presets");
 const {
   normalizeName,
@@ -431,6 +431,33 @@ function parseVectorTileRouteType(properties) {
   return Number.isFinite(value) ? value : null;
 }
 
+function normalizeRouteLookupKey(value) {
+  return sanitizeText(value).toLowerCase();
+}
+
+function routeLookupKeysFromObject(route) {
+  const candidates = [
+    route?.onestop_id,
+    route?.route_onestop_id,
+    route?.route_id,
+    route?.line_key,
+    route?.lineKey,
+    route?.id,
+    route?.routeFeedId
+  ];
+
+  const unique = new Set();
+  for (const candidate of candidates) {
+    const normalized = normalizeRouteLookupKey(candidate);
+    if (!normalized) {
+      continue;
+    }
+    unique.add(normalized);
+  }
+
+  return Array.from(unique);
+}
+
 async function fetchRoutesVectorTile(z, x, y, options = {}) {
   const cacheKey = `${TRANSIT_CACHE_PREFIX}routes-tile:${z}:${x}:${y}`;
   if (!options.forceRefresh) {
@@ -474,16 +501,14 @@ async function fetchRoutesVectorTile(z, x, y, options = {}) {
     const buffer = Buffer.from(await response.arrayBuffer());
     const tile = new VectorTile(new Pbf(buffer));
     const layer = tile.layers?.routes;
-    const headwayByOnestopId = {};
+    const headwayByRouteKey = {};
 
     if (layer && Number.isFinite(layer.length) && layer.length > 0) {
       for (let index = 0; index < layer.length; index += 1) {
         const feature = layer.feature(index);
         const properties = feature?.properties || {};
-        const onestopId = sanitizeText(
-          properties.onestop_id || properties.route_onestop_id || properties.route_id || properties.id
-        );
-        if (!onestopId) {
+        const routeKeys = routeLookupKeysFromObject(properties);
+        if (!routeKeys.length) {
           continue;
         }
 
@@ -493,12 +518,14 @@ async function fetchRoutesVectorTile(z, x, y, options = {}) {
         }
 
         const routeType = parseVectorTileRouteType(properties);
-        const existing = headwayByOnestopId[onestopId];
-        if (!existing || headwaySeconds < existing.headwaySeconds) {
-          headwayByOnestopId[onestopId] = {
-            headwaySeconds,
-            routeType
-          };
+        for (const routeKey of routeKeys) {
+          const existing = headwayByRouteKey[routeKey];
+          if (!existing || headwaySeconds < existing.headwaySeconds) {
+            headwayByRouteKey[routeKey] = {
+              headwaySeconds,
+              routeType
+            };
+          }
         }
       }
     }
@@ -507,7 +534,7 @@ async function fetchRoutesVectorTile(z, x, y, options = {}) {
       z,
       x,
       y,
-      headwayByOnestopId,
+      headwayByRouteKey,
       fetchedAt: new Date().toISOString()
     };
 
@@ -536,7 +563,19 @@ async function fetchVectorRouteHeadwaysForBbox(bboxArray, options = {}) {
   const zoom = inferVectorTileZoom(bboxArray, Number(options.zoom));
   const allTiles = tilesForBbox(bboxArray, zoom);
   const maxTiles = Math.max(1, Number(config.VECTOR_TILE_MAX_PER_BBOX || 10));
-  const selectedTiles = allTiles.slice(0, maxTiles);
+  const center = bboxCenter(bboxArray);
+  const centerTileX = lngToTileX(center[0], zoom);
+  const centerTileY = latToTileY(center[1], zoom);
+
+  const selectedTiles = [...allTiles]
+    .sort((a, b) => {
+      const adx = a.x - centerTileX;
+      const ady = a.y - centerTileY;
+      const bdx = b.x - centerTileX;
+      const bdy = b.y - centerTileY;
+      return adx * adx + ady * ady - (bdx * bdx + bdy * bdy);
+    })
+    .slice(0, maxTiles);
   const merged = new Map();
 
   for (const tile of selectedTiles) {
@@ -549,7 +588,7 @@ async function fetchVectorRouteHeadwaysForBbox(bboxArray, options = {}) {
       continue;
     }
 
-    for (const [onestopId, value] of Object.entries(tilePayload?.headwayByOnestopId || {})) {
+    for (const [routeKey, value] of Object.entries(tilePayload?.headwayByRouteKey || {})) {
       const headwaySeconds = Number(value?.headwaySeconds);
       if (!Number.isFinite(headwaySeconds) || headwaySeconds <= 0) {
         continue;
@@ -560,9 +599,9 @@ async function fetchVectorRouteHeadwaysForBbox(bboxArray, options = {}) {
         continue;
       }
 
-      const existing = merged.get(onestopId);
+      const existing = merged.get(routeKey);
       if (!existing || headwaySeconds < existing.headwaySeconds) {
-        merged.set(onestopId, {
+        merged.set(routeKey, {
           headwaySeconds,
           routeType: Number.isFinite(routeType) ? routeType : null
         });
@@ -570,13 +609,13 @@ async function fetchVectorRouteHeadwaysForBbox(bboxArray, options = {}) {
     }
   }
 
-  const headwayByOnestopId = {};
-  for (const [onestopId, value] of merged.entries()) {
-    headwayByOnestopId[onestopId] = value.headwaySeconds;
+  const headwayByRouteKey = {};
+  for (const [routeKey, value] of merged.entries()) {
+    headwayByRouteKey[routeKey] = value.headwaySeconds;
   }
 
   return {
-    headwayByOnestopId,
+    headwayByRouteKey,
     tileCount: selectedTiles.length,
     omittedTileCount: Math.max(0, allTiles.length - selectedTiles.length),
     zoom
@@ -1047,14 +1086,18 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
     forceRefresh: options.forceRefresh
   });
 
-  const headwayByOnestopId = vectorHeadways.headwayByOnestopId || {};
+  const headwayByRouteKey = vectorHeadways.headwayByRouteKey || {};
   for (const route of filteredRoutes) {
-    const routeOnestopId = sanitizeText(route?.onestop_id);
-    if (!routeOnestopId) {
-      continue;
+    const lookupKeys = routeLookupKeysFromObject(route);
+    let vectorHeadwaySeconds = null;
+    for (const lookupKey of lookupKeys) {
+      const candidate = Number(headwayByRouteKey[lookupKey]);
+      if (Number.isFinite(candidate) && candidate > 0) {
+        vectorHeadwaySeconds = candidate;
+        break;
+      }
     }
 
-    const vectorHeadwaySeconds = Number(headwayByOnestopId[routeOnestopId]);
     if (Number.isFinite(vectorHeadwaySeconds) && vectorHeadwaySeconds > 0) {
       route.headway_secs = Math.round(vectorHeadwaySeconds);
       route.headway_source = "transitland-vector-tiles";
@@ -1798,7 +1841,22 @@ async function getRouteHeadway(lineKey, options = {}) {
       forceRefresh: Boolean(options.forceRefresh)
     });
 
-    const headwaySeconds = Number(vectorHeadways?.headwayByOnestopId?.[lookupKey]);
+    const lookupKeys = routeLookupKeysFromObject({
+      onestop_id: lookupKey,
+      route_onestop_id: line.routeOnestopId,
+      line_key: line.lineKey,
+      routeFeedId: line.routeFeedId
+    });
+
+    let headwaySeconds = null;
+    for (const routeKey of lookupKeys) {
+      const candidate = Number(vectorHeadways?.headwayByRouteKey?.[routeKey]);
+      if (Number.isFinite(candidate) && candidate > 0) {
+        headwaySeconds = candidate;
+        break;
+      }
+    }
+
     if (Number.isFinite(headwaySeconds) && headwaySeconds > 0) {
       normalizedBestMinutes = Number((headwaySeconds / 60).toFixed(1));
       summary = {

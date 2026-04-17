@@ -169,15 +169,15 @@ body[data-theme="dark"] {
 }
 
 .theme-icon-btn {
-  min-width: 40px;
-  width: 40px;
-  height: 40px;
+  min-width: 34px;
+  width: 34px;
+  height: 34px;
   padding: 0;
 }
 
 .theme-icon-btn .header-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
 .header-icon {
@@ -406,17 +406,25 @@ body[data-theme="dark"] .user-status-card {
 
 .user-status-actions {
   margin-top: 8px;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
 .user-status-actions .btn {
-  width: auto;
+  width: 100%;
+  min-width: 0;
 }
 
 .user-status-actions .btn-subtle {
   margin-top: 0;
+}
+
+.clear-progress-confirm {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
 }
 
 .route-list-dropdown {
@@ -527,7 +535,7 @@ body[data-theme="dark"] .line-list {
 }
 
 .line-progress-list {
-  max-height: min(18vh, 172px);
+  max-height: clamp(172px, 31vh, 360px);
   overflow-y: auto;
 }
 
@@ -688,7 +696,7 @@ body[data-theme="dark"] .maplibregl-popup-content {
   .sidebar {
     border-right: none;
     border-bottom: 1px solid var(--panel-border);
-    max-height: 58vh;
+    max-height: 62vh;
   }
 
   .map-stage {
@@ -701,8 +709,16 @@ body[data-theme="dark"] .maplibregl-popup-content {
   }
 
   .map-mode-btn {
-    min-width: 116px;
+    min-width: 104px;
     padding: 8px 9px;
+  }
+
+  .line-progress-list {
+    max-height: clamp(172px, 34vh, 400px);
+  }
+
+  .line-list {
+    max-height: min(38vh, 420px);
   }
 
   .dropdown-panel {
@@ -712,4 +728,49 @@ body[data-theme="dark"] .maplibregl-popup-content {
     width: auto;
     max-height: min(70vh, 640px);
   }
+}
+
+@media (max-width: 640px) {
+  .sidebar {
+    padding: 10px;
+  }
+
+  .sidebar-head h1 {
+    font-size: 30px;
+  }
+
+  .head-actions {
+    gap: 5px;
+  }
+
+  .header-icon-btn {
+    min-width: 78px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .theme-icon-btn {
+    min-width: 32px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+
+  .map-overlay-controls {
+    top: auto;
+    bottom: 10px;
+    right: 10px;
+    flex-direction: row;
+  }
+
+  .map-mode-btn {
+    min-width: 44px;
+    justify-content: center;
+    padding: 8px;
+  }
+
+  .mode-label {
+    display: none;
+  }
+
 }
