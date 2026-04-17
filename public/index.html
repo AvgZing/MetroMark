@@ -22,12 +22,17 @@
             <h1>MetroMark</h1>
           </div>
           <div class="head-actions">
-            <button id="themeToggleBtn" class="btn btn-icon header-icon-btn" type="button" aria-label="Toggle theme">
+            <button
+              id="themeToggleBtn"
+              class="btn btn-icon header-icon-btn theme-icon-btn"
+              type="button"
+              aria-label="Toggle theme"
+              title="Toggle theme"
+            >
               <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 3.5v2.2m0 12.6v2.2M5.6 5.6l1.6 1.6m9.6 9.6 1.6 1.6M3.5 12h2.2m12.6 0h2.2M5.6 18.4l1.6-1.6m9.6-9.6 1.6-1.6" />
                 <circle cx="12" cy="12" r="4.4" />
               </svg>
-              <span class="header-label">Theme</span>
             </button>
             <button
               id="accountPopupBtn"
@@ -67,11 +72,26 @@
           <div class="user-status-card" aria-live="polite">
             <p class="mono-label">Filter Status</p>
             <p id="userStatusTitle" class="user-status-title">No route selected.</p>
-            <p id="userStatusBody" class="user-status-body">Click or hover a route to inspect it here.</p>
+            <p id="userStatusSubtitle" class="user-status-subtitle">Click or hover a route to inspect it here.</p>
+            <dl id="userStatusDetails" class="user-status-details"></dl>
+            <div id="userStatusRouteProgress" class="user-status-route-progress" hidden>
+              <p id="userStatusRouteProgressText" class="user-status-route-progress-text">0 / 0 (0%)</p>
+              <div class="progress-track">
+                <div id="userStatusRouteProgressFill" class="progress-fill"></div>
+              </div>
+            </div>
+            <div class="user-status-actions">
+              <button id="clearRouteProgressBtn" class="btn btn-subtle" type="button" hidden>
+                Clear Route Progress
+              </button>
+              <button id="deselectRouteBtn" class="btn" type="button" hidden>Show All Filtered Routes</button>
+            </div>
           </div>
 
-          <div id="lineList" class="line-list" aria-live="polite"></div>
-          <button id="resetLineFocusBtn" class="btn" type="button" hidden>Show All Routes</button>
+          <details id="routeListDropdown" class="route-list-dropdown" open>
+            <summary id="routeListSummary" class="route-list-summary">Filtered Routes (0)</summary>
+            <div id="lineList" class="line-list" aria-live="polite"></div>
+          </details>
         </section>
 
         <section class="panel">
@@ -85,6 +105,20 @@
           <p id="statusMeta" class="microcopy"></p>
           <p id="backendStatusText" class="backend-note"></p>
           <p id="apiRequestCounter" class="backend-note"></p>
+          <p id="apiRequestCounterDetail" class="backend-note"></p>
+          <p class="backend-note legal-link-row">
+            <a href="https://www.transit.land/terms" target="_blank" rel="noopener noreferrer"
+              >Transitland Terms of Service and Data Attributions</a
+            >
+          </p>
+          <p class="backend-note legal-note">
+            Disclaimer: This is an in-development hobby app, with development help from AI. All services are
+            subject to change, do not store sensitive data on this website.
+          </p>
+          <p class="backend-note legal-note">
+            Copyright &copy; <script>document.write(new Date().getFullYear())</script> MetroMark by Zing. All Rights
+            Reserved.
+          </p>
           <button id="clearSessionCacheBtn" class="btn btn-subtle" type="button">Clear Local Cache</button>
         </section>
       </aside>

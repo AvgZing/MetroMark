@@ -111,6 +111,9 @@ const statements = {
   deleteVisit: db.prepare(
     `DELETE FROM user_station_visit WHERE user_id = ? AND line_key = ? AND station_key = ?`
   ),
+  deleteVisitsForUserByLine: db.prepare(
+    `DELETE FROM user_station_visit WHERE user_id = ? AND line_key = ?`
+  ),
   getVisitsForUser: db.prepare(
     `
     SELECT line_key, station_key, station_name, lat, lon, updated_at
@@ -293,6 +296,16 @@ function getVisitedStations(userId, lineKey = "") {
   }));
 }
 
+function clearVisitedStationsForLine(userId, lineKey) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    throw new Error("lineKey is required.");
+  }
+
+  const result = statements.deleteVisitsForUserByLine.run(userId, normalizedLineKey);
+  return Number(result.changes || 0);
+}
+
 function seedDemoUser() {
   const existing = statements.getUserByEmail.get(config.DEMO_USER_EMAIL.toLowerCase());
   if (existing) {
@@ -326,5 +339,6 @@ module.exports = {
   getStationOverride,
   upsertStationOverride,
   setVisitedState,
-  getVisitedStations
+  getVisitedStations,
+  clearVisitedStationsForLine
 };

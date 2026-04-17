@@ -61,9 +61,15 @@ function withTransitlandMetrics(payload) {
   const metrics = getTransitlandMetrics();
   return {
     ...payload,
-    transitlandApiRequests: metrics.apiRequestCount,
-    transitlandApiRequestFailures: metrics.apiRequestFailureCount,
-    transitlandLastRequestAt: metrics.lastRequestAt || null
+    transitlandRestApiRequests: Number(metrics.restApiRequestCount || 0),
+    transitlandRestApiRequestFailures: Number(metrics.restApiRequestFailureCount || 0),
+    transitlandVectorTileRequests: Number(metrics.vectorTileRequestCount || 0),
+    transitlandVectorTileRequestFailures: Number(metrics.vectorTileRequestFailureCount || 0),
+    transitlandRoutingApiRequests: Number(metrics.routingApiRequestCount || 0),
+    transitlandRoutingApiRequestFailures: Number(metrics.routingApiRequestFailureCount || 0),
+    transitlandLastRestRequestAt: metrics.lastRestRequestAt || null,
+    transitlandLastVectorTileRequestAt: metrics.lastVectorTileRequestAt || null,
+    transitlandLastRoutingRequestAt: metrics.lastRoutingRequestAt || null
   };
 }
 
@@ -89,6 +95,7 @@ app.get("/api/health", (req, res) => {
     routeStopMaxResults: config.ROUTE_STOP_MAX_RESULTS,
     routeHeadwayTimeoutMs: config.ROUTE_HEADWAY_TIMEOUT_MS,
     routeHeadwayCacheTtlHours: config.ROUTE_HEADWAY_CACHE_TTL_HOURS,
+    vectorTileMaxPerBbox: config.VECTOR_TILE_MAX_PER_BBOX,
     stationHubMaxMeters: config.STATION_HUB_MAX_METERS,
     stationHubSnapMaxMeters: config.STATION_HUB_SNAP_MAX_METERS,
     bboxMaxSpanDegrees: config.BBOX_MAX_SPAN_DEGREES
@@ -289,6 +296,20 @@ app.post("/api/progress/toggle", authMiddleware, (req, res) => {
     });
 
     return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+app.post("/api/progress/clear-route", authMiddleware, (req, res) => {
+  const lineKey = String(req.body.lineKey || "").trim();
+  if (!lineKey) {
+    return res.status(400).json({ error: "lineKey is required." });
+  }
+
+  try {
+    const clearedCount = db.clearVisitedStationsForLine(req.user.id, lineKey);
+    return res.json({ ok: true, lineKey, clearedCount });
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
