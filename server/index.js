@@ -5,7 +5,7 @@ const config = require("./config");
 const db = require("./db");
 const { cities, getCityBySlug } = require("./city-presets");
 const { createAuthToken, authMiddleware } = require("./auth");
-const { getCityTransit, getBboxTransit, TRANSIT_CACHE_PREFIX } = require("./transitland");
+const { getCityTransit, getBboxTransit, getRouteStopsTransit, TRANSIT_CACHE_PREFIX } = require("./transitland");
 
 const app = express();
 
@@ -50,6 +50,8 @@ app.get("/api/health", (req, res) => {
     cacheTtlHours: config.TRANSIT_CACHE_TTL_HOURS,
     stopAssignmentMaxMeters: config.STOP_ASSIGNMENT_MAX_METERS,
     stopDedupMaxMeters: config.STOP_DEDUP_MAX_METERS,
+    routeStopPageLimit: config.ROUTE_STOP_PAGE_LIMIT,
+    routeStopMaxResults: config.ROUTE_STOP_MAX_RESULTS,
     stationHubMaxMeters: config.STATION_HUB_MAX_METERS,
     stationHubSnapMaxMeters: config.STATION_HUB_SNAP_MAX_METERS,
     bboxMaxSpanDegrees: config.BBOX_MAX_SPAN_DEGREES
@@ -123,6 +125,35 @@ app.get("/api/transit/bbox", async (req, res) => {
   } catch (error) {
     return res.status(400).json({
       error: "Visible-area transit fetch failed.",
+      detail: error.message
+    });
+  }
+});
+
+app.get("/api/transit/route-stops", async (req, res) => {
+  const lineKey = String(req.query.lineKey || "").trim();
+  if (!lineKey) {
+    return res.status(400).json({ error: "lineKey query parameter is required." });
+  }
+
+  const stopTypes = parseStopTypes(req.query.stopTypes);
+
+  try {
+    const data = await getRouteStopsTransit(lineKey, {
+      forceRefresh: asBoolean(req.query.refresh),
+      stopLocationTypes: stopTypes
+    });
+
+    return res.json({
+      cacheStatus: data.cacheStatus,
+      cacheKey: data.cacheKey,
+      cacheExpiresAt: data.cacheExpiresAt || null,
+      stopLocationTypes: data.stopLocationTypes || [0, 1],
+      ...data.payload
+    });
+  } catch (error) {
+    return res.status(400).json({
+      error: "Route stop fetch failed.",
       detail: error.message
     });
   }

@@ -4,7 +4,16 @@ const MAX_TARGET_TILES_PER_VIEW = 30;
 const MAX_NEW_FETCHES_PER_VIEW = 12;
 const MAX_PARALLEL_FETCHES = 2;
 const MAX_SESSION_AREAS = 220;
+const MAX_SESSION_ROUTE_STOP_PAYLOADS = 120;
 const MIN_MOVE_FETCH_INTERVAL_MS = 850;
+
+const MODE_FILTER_ALL = "all";
+const MODE_FILTER_NON_BUS = "non-bus";
+
+const FREQUENCY_FILTER_ALL = "all";
+const FREQUENCY_FILTER_HIGHER = "higher";
+const FREQUENCY_FILTER_LOWER = "lower";
+const FREQUENCY_FILTER_UNKNOWN = "unknown";
 
 const GTFS_MODE_LABELS = {
   0: "Tram",
@@ -61,6 +70,8 @@ const state = {
   transit: null,
   lineSummaries: [],
   areaCache: new Map(),
+  lineStopsCache: new Map(),
+  inFlightLineStopKeys: new Set(),
   requestedAreaKeys: new Set(),
   activeAreaKeys: new Set(),
   fetchQueue: [],
@@ -68,7 +79,8 @@ const state = {
   inFlightAreaKeys: new Set(),
   queueDrainRunning: false,
   focusedLineKey: "",
-  activeModeFilter: "all",
+  activeModeFilter: MODE_FILTER_NON_BUS,
+  activeFrequencyFilter: FREQUENCY_FILTER_ALL,
   lineSearchQuery: "",
   stopTypePreset: validStopPreset(localStorage.getItem("metromark_stop_types") || "core"),
   theme: localStorage.getItem("metromark_theme") || "light",
@@ -98,6 +110,7 @@ const els = {
   lineSearch: document.getElementById("lineSearch"),
   stopTypeSelect: document.getElementById("stopTypeSelect"),
   modeFilterBar: document.getElementById("modeFilterBar"),
+  frequencyFilterBar: document.getElementById("frequencyFilterBar"),
   lineList: document.getElementById("lineList"),
   progressSummary: document.getElementById("progressSummary"),
   lineProgressList: document.getElementById("lineProgressList"),
@@ -165,6 +178,68 @@ function lineMode(line) {
   return String(line.mode || modeLabelFromRouteType(line.routeType) || "Unknown");
 }
 
+function isBusLikeRouteType(routeType) {
+  const numeric = Number(routeType);
+  return numeric === 3 || numeric === 11;
+}
+
+function isRailLikeRouteType(routeType) {
+  const numeric = Number(routeType);
+  return numeric === 0 || numeric === 1 || numeric === 2 || numeric === 12;
+}
+
+function lineServiceTier(line) {
+  const explicit = String(line?.serviceTier || "").trim().toLowerCase();
+  if (explicit) {
+    return explicit;
+  }
+
+  if (isRailLikeRouteType(line?.routeType)) {
+    return "rail";
+  }
+
+  if (isBusLikeRouteType(line?.routeType)) {
+    return "bus";
+  }
+
+  return "other";
+}
+
+function lineSortWeight(line) {
+  const tier = lineServiceTier(line);
+  if (tier === "rail") return 0;
+  if (tier === "special") return 1;
+  if (tier === "other") return 2;
+  return 3;
+}
+
+function lineFrequencyBucket(line) {
+  const explicit = String(line?.frequencyBucket || "").trim().toLowerCase();
+  if (
+    explicit === FREQUENCY_FILTER_HIGHER ||
+    explicit === FREQUENCY_FILTER_LOWER ||
+    explicit === FREQUENCY_FILTER_UNKNOWN
+  ) {
+    return explicit;
+  }
+
+  if (isRailLikeRouteType(line?.routeType)) {
+    return FREQUENCY_FILTER_HIGHER;
+  }
+
+  if (isBusLikeRouteType(line?.routeType)) {
+    return FREQUENCY_FILTER_LOWER;
+  }
+
+  return FREQUENCY_FILTER_UNKNOWN;
+}
+
+function frequencyBucketLabel(bucket) {
+  if (bucket === FREQUENCY_FILTER_HIGHER) return "Higher Frequency";
+  if (bucket === FREQUENCY_FILTER_LOWER) return "Lower Frequency";
+  return "Frequency Unknown";
+}
+
 function lineOperatorLabel(line) {
   return String(line.operatorName || line.routeFeedId || "Operator unavailable");
 }
@@ -185,7 +260,10 @@ function lineSearchText(line) {
     line.lineName,
     line.lineShortName,
     line.lineLongName,
+    line.routeOnestopId,
     lineMode(line),
+    lineServiceTier(line),
+    frequencyBucketLabel(lineFrequencyBucket(line)),
     lineOperatorLabel(line),
     line.routeFeedId
   ]
@@ -394,7 +472,7 @@ function tileSpanFromZoom(zoom) {
   return 2.0;
 }
 
-function normalizeBboxForClientCache(rawBbox, zoom, stopTypesKey) {
+function normalizeBboxForClientCache(rawBbox, zoom) {
   const step = bboxStepFromZoom(zoom);
   const snapped = [
     Math.floor(rawBbox[0] / step) * step,
@@ -411,7 +489,7 @@ function normalizeBboxForClientCache(rawBbox, zoom, stopTypesKey) {
   ];
 
   return {
-    areaKey: `bbox:${step.toFixed(3)}:${normalizedBbox.map((value) => value.toFixed(4)).join(",")}:types:${stopTypesKey}`,
+    areaKey: `bbox:${step.toFixed(3)}:${normalizedBbox.map((value) => value.toFixed(4)).join(",")}`,
     bbox: normalizedBbox,
     step
   };
@@ -421,7 +499,7 @@ function bboxQueryText(bbox) {
   return bbox.map((value) => Number(value).toFixed(6)).join(",");
 }
 
-function buildViewportTileRequests(rawBbox, zoom, stopTypesKey) {
+function buildViewportTileRequests(rawBbox, zoom) {
   const span = Math.min(MAX_BBOX_SPAN_DEGREES, tileSpanFromZoom(zoom));
   const padded = expandBbox(rawBbox, span * 0.28);
   const viewCenter = bboxCenter(rawBbox);
@@ -443,7 +521,7 @@ function buildViewportTileRequests(rawBbox, zoom, stopTypesKey) {
         continue;
       }
 
-      const normalized = normalizeBboxForClientCache([west, south, east, north], zoom, stopTypesKey);
+      const normalized = normalizeBboxForClientCache([west, south, east, north], zoom);
       const center = bboxCenter(normalized.bbox);
       const dx = center[0] - viewCenter[0];
       const dy = center[1] - viewCenter[1];
@@ -455,8 +533,6 @@ function buildViewportTileRequests(rawBbox, zoom, stopTypesKey) {
           areaKey: normalized.areaKey,
           bbox: normalized.bbox,
           zoom,
-          stopTypesKey,
-          stopTypesQuery: stopTypesQueryForPreset(state.stopTypePreset),
           distanceScore
         });
       }
@@ -531,6 +607,34 @@ function pruneAreaCache() {
   }
 }
 
+function routeStopCacheKey(lineKey, preset = state.stopTypePreset) {
+  return `${String(lineKey || "")}|types:${stopTypesKeyForPreset(preset)}`;
+}
+
+function pruneLineStopsCache() {
+  if (state.lineStopsCache.size <= MAX_SESSION_ROUTE_STOP_PAYLOADS) {
+    return;
+  }
+
+  const focusedCacheKey = state.focusedLineKey
+    ? routeStopCacheKey(state.focusedLineKey, state.stopTypePreset)
+    : "";
+
+  const sorted = Array.from(state.lineStopsCache.entries()).sort(
+    (a, b) => Number(a[1]?.lastUsedAt || 0) - Number(b[1]?.lastUsedAt || 0)
+  );
+
+  for (const [cacheKey] of sorted) {
+    if (state.lineStopsCache.size <= MAX_SESSION_ROUTE_STOP_PAYLOADS) {
+      break;
+    }
+    if (cacheKey === focusedCacheKey || state.inFlightLineStopKeys.has(cacheKey)) {
+      continue;
+    }
+    state.lineStopsCache.delete(cacheKey);
+  }
+}
+
 function syncActiveAreaKeys() {
   state.activeAreaKeys = new Set();
   const now = Date.now();
@@ -572,7 +676,6 @@ function rebuildCombinedTransit() {
   }
 
   const routeByLine = new Map();
-  const stopByLineAndStation = new Map();
   const lineByKey = new Map();
 
   for (const cacheKey of state.activeAreaKeys) {
@@ -621,6 +724,7 @@ function rebuildCombinedTransit() {
         const existing = lineByKey.get(lineKey);
         lineByKey.set(lineKey, {
           ...existing,
+          routeOnestopId: existing.routeOnestopId || line.routeOnestopId,
           lineName: existing.lineName || line.lineName,
           lineShortName: existing.lineShortName || line.lineShortName,
           lineLongName: existing.lineLongName || line.lineLongName,
@@ -628,8 +732,45 @@ function rebuildCombinedTransit() {
           mode: existing.mode || line.mode,
           routeType: Number.isFinite(existing.routeType) ? existing.routeType : line.routeType,
           routeFeedId: existing.routeFeedId || line.routeFeedId,
+          serviceTier: existing.serviceTier || line.serviceTier,
+          frequencyBucket: existing.frequencyBucket || line.frequencyBucket,
           color: existing.color || line.color
         });
+      }
+    }
+  }
+
+  if (state.focusedLineKey && !lineByKey.has(state.focusedLineKey)) {
+    state.focusedLineKey = "";
+  }
+
+  const stopByLineAndStation = new Map();
+  const activeStopTypeKey = stopTypesKeyForPreset(state.stopTypePreset);
+  const now = Date.now();
+
+  for (const entry of state.lineStopsCache.values()) {
+    if (!entry || entry.stopTypesKey !== activeStopTypeKey) {
+      continue;
+    }
+
+    if (!lineByKey.has(entry.lineKey)) {
+      continue;
+    }
+
+    entry.lastUsedAt = now;
+
+    for (const feature of entry.payload?.stopsGeoJson?.features || []) {
+      const lineKey = feature?.properties?.line_key;
+      const stationKey = feature?.properties?.station_key;
+      if (!lineKey || !stationKey) {
+        continue;
+      }
+
+      const stopKey = `${lineKey}|${stationKey}`;
+      if (!stopByLineAndStation.has(stopKey)) {
+        stopByLineAndStation.set(stopKey, feature);
+      } else {
+        stopByLineAndStation.set(stopKey, mergeStopFeature(stopByLineAndStation.get(stopKey), feature));
       }
     }
   }
@@ -645,11 +786,19 @@ function rebuildCombinedTransit() {
 
   const lineSummaries = Array.from(lineByKey.entries()).map(([lineKey, line]) => ({
     ...line,
+    routeOnestopId: line.routeOnestopId || "",
     stopCount: stopCountsByLine.get(lineKey) || 0,
-    mode: line.mode || modeLabelFromRouteType(line.routeType)
+    mode: line.mode || modeLabelFromRouteType(line.routeType),
+    serviceTier: line.serviceTier || lineServiceTier(line),
+    frequencyBucket: line.frequencyBucket || lineFrequencyBucket(line)
   }));
 
   lineSummaries.sort((a, b) => {
+    const tierDiff = lineSortWeight(a) - lineSortWeight(b);
+    if (tierDiff !== 0) {
+      return tierDiff;
+    }
+
     const stopDiff = Number(b.stopCount || 0) - Number(a.stopCount || 0);
     if (stopDiff !== 0) {
       return stopDiff;
@@ -657,8 +806,11 @@ function rebuildCombinedTransit() {
     return lineDisplayName(a).localeCompare(lineDisplayName(b));
   });
 
-  if (state.focusedLineKey && !lineSummaries.some((line) => line.lineKey === state.focusedLineKey)) {
-    state.focusedLineKey = "";
+  if (
+    state.activeModeFilter === MODE_FILTER_NON_BUS &&
+    !lineSummaries.some((line) => !isBusLikeRouteType(line.routeType))
+  ) {
+    state.activeModeFilter = MODE_FILTER_ALL;
   }
 
   state.transit = {
@@ -678,9 +830,25 @@ function getShownLines() {
   const query = String(state.lineSearchQuery || "").trim().toLowerCase();
 
   const filtered = state.lineSummaries.filter((line) => {
-    if (state.activeModeFilter !== "all" && lineMode(line) !== state.activeModeFilter) {
+    if (state.activeModeFilter === MODE_FILTER_NON_BUS && isBusLikeRouteType(line.routeType)) {
       return false;
     }
+
+    if (
+      state.activeModeFilter !== MODE_FILTER_ALL &&
+      state.activeModeFilter !== MODE_FILTER_NON_BUS &&
+      lineMode(line) !== state.activeModeFilter
+    ) {
+      return false;
+    }
+
+    if (
+      state.activeFrequencyFilter !== FREQUENCY_FILTER_ALL &&
+      lineFrequencyBucket(line) !== state.activeFrequencyFilter
+    ) {
+      return false;
+    }
+
     if (query && !lineSearchText(line).includes(query)) {
       return false;
     }
@@ -688,6 +856,11 @@ function getShownLines() {
   });
 
   filtered.sort((a, b) => {
+    const tierDiff = lineSortWeight(a) - lineSortWeight(b);
+    if (tierDiff !== 0) {
+      return tierDiff;
+    }
+
     const stopDiff = Number(b.stopCount || 0) - Number(a.stopCount || 0);
     if (stopDiff !== 0) {
       return stopDiff;
@@ -748,8 +921,13 @@ function getFilteredData() {
       };
     });
 
-  const stops = state.transit.stopsGeoJson.features
-    .filter((feature) => visibleLineKeys.has(feature.properties.line_key))
+  const stopSource = hasFocus
+    ? state.transit.stopsGeoJson.features.filter(
+        (feature) => feature?.properties?.line_key === state.focusedLineKey
+      )
+    : [];
+
+  const stops = stopSource
     .filter((feature) => {
       const stopType = Number(feature.properties.stop_location_type);
       const normalizedStopType = Number.isFinite(stopType) ? stopType : 0;
@@ -759,14 +937,13 @@ function getFilteredData() {
       const visited = getVisitedSetForLine(feature.properties.line_key).has(feature.properties.station_key)
         ? 1
         : 0;
-      const focused = !hasFocus || feature.properties.line_key === state.focusedLineKey ? 1 : 0;
 
       return {
         ...feature,
         properties: {
           ...feature.properties,
           visited,
-          is_focused: focused
+          is_focused: 1
         }
       };
     });
@@ -800,8 +977,28 @@ function lineSummaryByKey() {
 
 function renderProgress() {
   if (!state.transit) {
-    els.progressSummary.textContent = "Pan or zoom the map and transit will load automatically.";
+    els.progressSummary.textContent = "Pan or zoom the map and routes will load automatically.";
     els.lineProgressList.innerHTML = "";
+    return;
+  }
+
+  if (!state.focusedLineKey) {
+    const activeStopTypeKey = stopTypesKeyForPreset(state.stopTypePreset);
+    const visibleLineKeys = new Set(state.lineSummaries.map((line) => line.lineKey));
+    const cachedRouteStops = Array.from(state.lineStopsCache.values()).filter(
+      (entry) => entry?.stopTypesKey === activeStopTypeKey && visibleLineKeys.has(entry.lineKey)
+    ).length;
+
+    els.progressSummary.textContent = `${state.lineSummaries.length} routes visible. Select a route to load stops.`;
+    els.lineProgressList.innerHTML = "";
+
+    if (cachedRouteStops > 0) {
+      const note = document.createElement("p");
+      note.className = "microcopy";
+      note.textContent = `${cachedRouteStops} focused-route stop sets cached for this view.`;
+      els.lineProgressList.append(note);
+    }
+
     return;
   }
 
@@ -810,10 +1007,16 @@ function renderProgress() {
   const visitedStops = filtered.stops.features.filter((feature) => feature.properties.visited === 1).length;
   const percent = totalStops ? ((visitedStops / totalStops) * 100).toFixed(1) : "0.0";
 
+  if (totalStops === 0) {
+    els.progressSummary.textContent = "Loading stops for the selected route...";
+    els.lineProgressList.innerHTML = "";
+    return;
+  }
+
   if (!state.user) {
-    els.progressSummary.textContent = `${totalStops} visible stations loaded. Sign in to mark visited stations.`;
+    els.progressSummary.textContent = `${totalStops} route-linked stations loaded. Sign in to mark visited stations.`;
   } else {
-    els.progressSummary.textContent = `${visitedStops}/${totalStops} visible stations visited (${percent}%).`;
+    els.progressSummary.textContent = `${visitedStops}/${totalStops} selected-route stations visited (${percent}%).`;
   }
 
   els.lineProgressList.innerHTML = "";
@@ -874,11 +1077,18 @@ function renderModeFilterBar() {
     counts.set(mode, (counts.get(mode) || 0) + 1);
   }
 
+  const nonBusCount = state.lineSummaries.filter((line) => !isBusLikeRouteType(line.routeType)).length;
+
   const chips = [
     {
-      key: "all",
+      key: MODE_FILTER_ALL,
       label: "All",
       count: state.lineSummaries.length
+    },
+    {
+      key: MODE_FILTER_NON_BUS,
+      label: "Rail + Rapid",
+      count: nonBusCount
     },
     ...Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -912,12 +1122,208 @@ function renderModeFilterBar() {
       renderMapData();
       renderProgress();
 
-      const label = chip.key === "all" ? "all modes" : chip.label;
+      let label = chip.label;
+      if (chip.key === MODE_FILTER_ALL) {
+        label = "all modes";
+      }
+      if (chip.key === MODE_FILTER_NON_BUS) {
+        label = "rail and rapid modes";
+      }
+
       setStatus("Filter updated.", "ok", `Showing routes for ${label}.`);
     });
 
     els.modeFilterBar.append(button);
   }
+}
+
+function renderFrequencyFilterBar() {
+  els.frequencyFilterBar.innerHTML = "";
+
+  if (!state.lineSummaries.length) {
+    return;
+  }
+
+  const buckets = new Map([
+    [FREQUENCY_FILTER_HIGHER, 0],
+    [FREQUENCY_FILTER_LOWER, 0],
+    [FREQUENCY_FILTER_UNKNOWN, 0]
+  ]);
+
+  for (const line of state.lineSummaries) {
+    const bucket = lineFrequencyBucket(line);
+    buckets.set(bucket, (buckets.get(bucket) || 0) + 1);
+  }
+
+  const chips = [
+    {
+      key: FREQUENCY_FILTER_ALL,
+      label: "All Frequencies",
+      count: state.lineSummaries.length
+    },
+    {
+      key: FREQUENCY_FILTER_HIGHER,
+      label: "Higher Frequency",
+      count: buckets.get(FREQUENCY_FILTER_HIGHER) || 0
+    },
+    {
+      key: FREQUENCY_FILTER_LOWER,
+      label: "Lower Frequency",
+      count: buckets.get(FREQUENCY_FILTER_LOWER) || 0
+    },
+    {
+      key: FREQUENCY_FILTER_UNKNOWN,
+      label: "Unknown",
+      count: buckets.get(FREQUENCY_FILTER_UNKNOWN) || 0
+    }
+  ];
+
+  for (const chip of chips) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mode-chip";
+    button.textContent = `${chip.label} (${chip.count})`;
+
+    if (state.activeFrequencyFilter === chip.key) {
+      button.classList.add("is-active");
+    }
+
+    button.addEventListener("click", () => {
+      state.activeFrequencyFilter = chip.key;
+
+      const shown = getShownLines();
+      if (state.focusedLineKey && !shown.some((line) => line.lineKey === state.focusedLineKey)) {
+        state.focusedLineKey = "";
+      }
+
+      renderFrequencyFilterBar();
+      renderLineList();
+      renderMapData();
+      renderProgress();
+
+      const label = chip.key === FREQUENCY_FILTER_ALL ? "all frequencies" : chip.label;
+      setStatus("Frequency filter updated.", "ok", `Showing routes for ${label}.`);
+    });
+
+    els.frequencyFilterBar.append(button);
+  }
+}
+
+async function ensureLineStopsLoaded(lineKey, options = {}) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return false;
+  }
+
+  const cacheKey = routeStopCacheKey(normalizedLineKey, state.stopTypePreset);
+  const existing = state.lineStopsCache.get(cacheKey);
+  if (existing && !options.forceRefresh) {
+    existing.lastUsedAt = Date.now();
+    return true;
+  }
+
+  if (state.inFlightLineStopKeys.has(cacheKey)) {
+    return false;
+  }
+
+  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  const lineLabel = line ? lineDisplayName(line) : normalizedLineKey;
+  const routeStopLookupKey = String(line?.routeOnestopId || normalizedLineKey).trim();
+
+  state.inFlightLineStopKeys.add(cacheKey);
+  updateLoadingStatus();
+
+  if (!options.silent) {
+    setStatus(`Loading stops for ${lineLabel}...`, "ok", "Using route membership from Transitland.");
+  }
+
+  try {
+    const params = new URLSearchParams({
+      lineKey: routeStopLookupKey,
+      stopTypes: stopTypesQueryForPreset(state.stopTypePreset)
+    });
+
+    if (options.forceRefresh) {
+      params.set("refresh", "1");
+    }
+
+    const payload = await apiRequest(`/api/transit/route-stops?${params.toString()}`, {
+      method: "GET"
+    });
+
+    state.lineStopsCache.set(cacheKey, {
+      lineKey: normalizedLineKey,
+      stopTypesKey: stopTypesKeyForPreset(state.stopTypePreset),
+      payload,
+      cacheStatus: payload.cacheStatus || "miss",
+      lastUsedAt: Date.now()
+    });
+
+    pruneLineStopsCache();
+    rebuildCombinedTransit();
+    refreshUiFromState();
+
+    const stationCount = Number(payload?.stopsGeoJson?.features?.length || 0);
+    setBackendStatus(
+      `Route stops ready for ${lineLabel} (${payload.cacheStatus || "miss"} cache, ${stationCount} stops).`
+    );
+
+    if (!options.silent) {
+      setStatus(`Loaded ${stationCount} route-linked stops for ${lineLabel}.`, "ok");
+    }
+
+    return true;
+  } catch (error) {
+    setBackendStatus(`Route stop fetch failed for ${lineLabel}: ${error.message}`);
+    if (!options.silent) {
+      setStatus(`Could not load stops for ${lineLabel}.`, "error", error.message);
+    }
+    return false;
+  } finally {
+    state.inFlightLineStopKeys.delete(cacheKey);
+    updateLoadingStatus();
+  }
+}
+
+async function setFocusedLine(lineKey, options = {}) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return;
+  }
+
+  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  if (!line) {
+    return;
+  }
+
+  const shouldClear = state.focusedLineKey === normalizedLineKey && !options.force;
+  if (shouldClear) {
+    state.focusedLineKey = "";
+    renderLineList();
+    renderMapData();
+    renderProgress();
+    setStatus("Route focus cleared.", "ok", "Select any route to load its stops.");
+    return;
+  }
+
+  state.focusedLineKey = normalizedLineKey;
+  renderLineList();
+  renderMapData();
+  renderProgress();
+
+  setStatus(
+    `Focused on ${lineDisplayName(line)}.`,
+    "ok",
+    "Loading route-linked stops. Other routes stay visible in a faded state."
+  );
+
+  await ensureLineStopsLoaded(normalizedLineKey, {
+    forceRefresh: Boolean(options.forceRefresh),
+    silent: false
+  });
+
+  renderMapData();
+  renderProgress();
 }
 
 function renderLineList() {
@@ -927,7 +1333,7 @@ function renderLineList() {
   if (!state.lineSummaries.length) {
     const empty = document.createElement("p");
     empty.className = "microcopy";
-    empty.textContent = "Transit appears here once nearby areas are loaded.";
+    empty.textContent = "Routes appear here once nearby areas are loaded.";
     els.lineList.append(empty);
     return;
   }
@@ -971,31 +1377,22 @@ function renderLineList() {
 
     const meta = document.createElement("p");
     meta.className = "line-meta";
-    meta.textContent = `${lineMode(line)} - ${lineOperatorLabel(line)}`;
+    meta.textContent = `${lineMode(line)} - ${lineOperatorLabel(line)} - ${frequencyBucketLabel(
+      lineFrequencyBucket(line)
+    )}`;
 
     labelBlock.append(name, meta);
 
     const stopCount = document.createElement("span");
     stopCount.className = "line-stop-count";
-    stopCount.textContent = `${line.stopCount} stops`;
+    stopCount.textContent = Number(line.stopCount || 0) > 0 ? `${line.stopCount} stops` : "Load stops";
 
     row.append(dot, labelBlock, stopCount);
 
     row.addEventListener("click", () => {
-      state.focusedLineKey = state.focusedLineKey === line.lineKey ? "" : line.lineKey;
-      renderLineList();
-      renderMapData();
-      renderProgress();
-
-      if (state.focusedLineKey) {
-        setStatus(
-          `Focused on ${lineDisplayName(line)}.`,
-          "ok",
-          "Other routes remain visible in a faded state."
-        );
-      } else {
-        setStatus("Showing all routes for the current filter.", "ok");
-      }
+      setFocusedLine(line.lineKey).catch((error) => {
+        setStatus(error.message, "error");
+      });
     });
 
     fragment.append(row);
@@ -1006,20 +1403,22 @@ function renderLineList() {
 
 function refreshUiFromState() {
   renderModeFilterBar();
+  renderFrequencyFilterBar();
   renderLineList();
   renderMapData();
   renderProgress();
 }
 
 function updateLoadingStatus() {
-  const loadingCount = state.inFlightAreaKeys.size;
+  const areaLoadingCount = state.inFlightAreaKeys.size;
   const queuedCount = state.fetchQueue.length;
+  const routeStopLoadingCount = state.inFlightLineStopKeys.size;
 
-  if (loadingCount > 0 || queuedCount > 0) {
+  if (areaLoadingCount > 0 || queuedCount > 0 || routeStopLoadingCount > 0) {
     setStatus(
       "Loading transit for the current map view...",
       "ok",
-      `${state.lastLoadStats.cached} cached - ${loadingCount} loading - ${Math.max(
+      `${state.lastLoadStats.cached} route tiles cached - ${areaLoadingCount} tiles loading - ${routeStopLoadingCount} routes loading stops - ${Math.max(
         queuedCount,
         state.lastLoadStats.deferred
       )} pending`
@@ -1028,10 +1427,11 @@ function updateLoadingStatus() {
   }
 
   if (state.lineSummaries.length > 0) {
+    const focusLabel = state.focusedLineKey ? "Focused route stop view." : "Select a route to load stops.";
     setStatus(
-      "Transit is ready for this view.",
+      "Routes are ready for this view.",
       "ok",
-      `${state.activeAreaKeys.size} nearby areas in session cache (${STOP_TYPE_PRESETS[state.stopTypePreset].label}).`
+      `${state.activeAreaKeys.size} nearby areas in session cache (${STOP_TYPE_PRESETS[state.stopTypePreset].label}). ${focusLabel}`
     );
     return;
   }
@@ -1047,9 +1447,9 @@ function updateLoadingStatus() {
 
   if (state.lastLoadStats.requested > 0) {
     setStatus(
-      "No transit data was returned for this map area.",
+      "No route data was returned for this map area.",
       "error",
-      "Try panning a little or switching Stop Visibility." 
+      "Try panning a little or changing zoom level."
     );
   }
 }
@@ -1071,7 +1471,6 @@ function queueTileFetches(tileRequests, options = {}) {
       cacheKey,
       bbox: request.bbox,
       zoom: request.zoom,
-      stopTypesQuery: request.stopTypesQuery,
       epoch: state.loadEpoch,
       forceRefresh: Boolean(options.forceRefresh)
     });
@@ -1114,8 +1513,7 @@ async function fetchTile(job) {
   try {
     const params = new URLSearchParams({
       bbox: bboxQueryText(job.bbox),
-      zoom: Number(job.zoom || 0).toFixed(2),
-      stopTypes: job.stopTypesQuery
+      zoom: Number(job.zoom || 0).toFixed(2)
     });
 
     if (job.forceRefresh) {
@@ -1138,8 +1536,9 @@ async function fetchTile(job) {
     refreshUiFromState();
 
     const lines = Number(payload?.lineSummaries?.length || 0);
-    const stations = Number(payload?.stopsGeoJson?.features?.length || 0);
-    setBackendStatus(`Fetched ${job.cacheKey} (${payload.cacheStatus || "miss"} cache, ${lines} lines, ${stations} stops).`);
+    setBackendStatus(
+      `Fetched ${job.cacheKey} (${payload.cacheStatus || "miss"} cache, ${lines} routes). Select a route to load stops.`
+    );
   } catch (error) {
     if (job.epoch !== state.loadEpoch) {
       return;
@@ -1194,7 +1593,7 @@ async function loadVisibleTransit(options = {}) {
   const zoom = state.map.getZoom();
   if (zoom < MIN_VIEWPORT_FETCH_ZOOM) {
     setStatus(
-      "Zoom in a bit more and transit will load automatically.",
+      "Zoom in a bit more and routes will load automatically.",
       "error",
       "At world-scale views, loading is paused to avoid timeouts and unnecessary API calls."
     );
@@ -1211,8 +1610,7 @@ async function loadVisibleTransit(options = {}) {
     return;
   }
 
-  const stopTypesKey = stopTypesKeyForPreset(state.stopTypePreset);
-  const requests = buildViewportTileRequests(rawBbox, zoom, stopTypesKey);
+  const requests = buildViewportTileRequests(rawBbox, zoom);
 
   state.requestedAreaKeys = new Set(requests.map((request) => request.areaKey));
   trimQueuedFetchesToCurrentView();
@@ -1241,9 +1639,9 @@ async function loadVisibleTransit(options = {}) {
 
   if (!nextBatch.length) {
     setStatus(
-      "Showing transit for the current map view.",
+      "Showing routes for the current map view.",
       "ok",
-      `${cached}/${requests.length} nearby areas loaded from session cache.`
+      `${cached}/${requests.length} nearby areas loaded from session cache. Select a route to load stops.`
     );
     setBackendStatus("No network fetch was needed for this view.");
     return;
@@ -1264,7 +1662,7 @@ async function loadVisibleTransit(options = {}) {
   );
 
   setBackendStatus(
-    `Stop visibility preset: ${STOP_TYPE_PRESETS[state.stopTypePreset].label} (${stopTypesQueryForPreset(
+    `Route-first mode active. Stop visibility preset: ${STOP_TYPE_PRESETS[state.stopTypePreset].label} (${stopTypesQueryForPreset(
       state.stopTypePreset
     )}).`
   );
@@ -1530,6 +1928,26 @@ function initializeMap() {
       }
     });
 
+    state.map.on("click", "routes-main", (event) => {
+      const feature = event.features && event.features[0];
+      const lineKey = feature?.properties?.line_key;
+      if (!lineKey) {
+        return;
+      }
+
+      setFocusedLine(lineKey).catch((error) => {
+        setStatus(error.message, "error");
+      });
+    });
+
+    state.map.on("mouseenter", "routes-main", () => {
+      state.map.getCanvas().style.cursor = "pointer";
+    });
+
+    state.map.on("mouseleave", "routes-main", () => {
+      state.map.getCanvas().style.cursor = "";
+    });
+
     state.map.on("click", "stops-layer", onStopClicked);
     state.map.on("mouseenter", "stops-layer", () => {
       state.map.getCanvas().style.cursor = "pointer";
@@ -1611,7 +2029,7 @@ function bindEvents() {
     setStatus(
       `Moved to ${city.name}.`,
       "ok",
-      "Transit will fill in automatically as this map view settles."
+      "Routes will fill in automatically as this map view settles."
     );
   });
 
@@ -1625,12 +2043,14 @@ function bindEvents() {
     }
 
     state.areaCache.clear();
+    state.lineStopsCache.clear();
+    state.inFlightLineStopKeys.clear();
     resetViewAggregation();
 
     rebuildCombinedTransit();
     refreshUiFromState();
 
-    setBackendStatus("Local session cache cleared by user.");
+    setBackendStatus("Local session cache cleared by user (route tiles and route stops).");
 
     try {
       await loadVisibleTransit({ forceRefresh: false, reason: "clear-cache" });
@@ -1642,6 +2062,8 @@ function bindEvents() {
   els.stopTypeSelect.addEventListener("change", async () => {
     setStopTypePreset(els.stopTypeSelect.value);
 
+    state.lineStopsCache.clear();
+    state.inFlightLineStopKeys.clear();
     resetViewAggregation();
     rebuildCombinedTransit();
     refreshUiFromState();
@@ -1649,7 +2071,7 @@ function bindEvents() {
     setStatus(
       "Stop visibility updated.",
       "ok",
-      `Now using ${STOP_TYPE_PRESETS[state.stopTypePreset].label}.`
+      `Now using ${STOP_TYPE_PRESETS[state.stopTypePreset].label}. Route stops will reload on selection.`
     );
 
     try {
@@ -1664,7 +2086,7 @@ function bindEvents() {
     renderLineList();
     renderMapData();
     renderProgress();
-    setStatus("Showing all routes for the current filter.", "ok");
+    setStatus("Showing all routes for the current filter.", "ok", "Select a route to load stops.");
   });
 
   els.lineSearch.addEventListener("input", () => {
@@ -1780,9 +2202,9 @@ async function init() {
     await loadProgress();
 
     setStatus(
-      "Transit loading is automatic for the map area you are viewing.",
+      "Route loading is automatic for the map area you are viewing.",
       "ok",
-      `Current stop visibility: ${STOP_TYPE_PRESETS[state.stopTypePreset].label}.`
+      `Current stop visibility: ${STOP_TYPE_PRESETS[state.stopTypePreset].label}. Select a route to load stops.`
     );
   } catch (error) {
     setStatus(error.message, "error");

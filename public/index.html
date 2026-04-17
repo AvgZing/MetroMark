@@ -44,11 +44,7 @@
           <div class="inline-actions">
             <button id="gotoCityBtn" class="btn" type="button">Go To City</button>
           </div>
-          <div class="map-style-switch" role="group" aria-label="Map style">
-            <button id="streetsModeBtn" class="btn" type="button">Streets</button>
-            <button id="satelliteModeBtn" class="btn" type="button">Satellite</button>
-          </div>
-          <p class="microcopy">Transit loads automatically for what is visible and nearby.</p>
+          <p class="microcopy">Routes load automatically for what is visible. Select a route to load stops.</p>
         </section>
 
         <section class="panel">
@@ -68,6 +64,7 @@
           </label>
 
           <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
+          <div id="frequencyFilterBar" class="mode-filter-bar" aria-label="Frequency filters"></div>
           <div id="lineList" class="line-list" aria-live="polite"></div>
           <button id="resetLineFocusBtn" class="btn" type="button" hidden>Show All Routes</button>
         </section>
@@ -87,6 +84,16 @@
       </aside>
 
       <main class="map-stage">
+        <div class="map-overlay-controls" role="group" aria-label="Map style">
+          <button id="streetsModeBtn" class="btn btn-icon map-mode-btn" type="button" aria-label="Streets map">
+            <span class="mode-title">Streets</span>
+            <span class="mode-sub">Map</span>
+          </button>
+          <button id="satelliteModeBtn" class="btn btn-icon map-mode-btn" type="button" aria-label="Satellite map">
+            <span class="mode-title">Satellite</span>
+            <span class="mode-sub">Imagery</span>
+          </button>
+        </div>
         <div id="map"></div>
       </main>
 

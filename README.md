@@ -25,11 +25,12 @@ This stack keeps the MVP easy to understand while preserving flexibility for fut
 - Strictly normalized cache keys for city and viewport bbox fetches.
 - City presets with one-click jump-to-view (Seattle, Hong Kong, London, Paris, New York City, Tokyo).
 - International visible-area loading is always on (no manual load mode switch).
-- Route and stop rendering on a MapLibre globe.
+- Route-first rendering on a MapLibre globe (routes load first, stops load on focused route).
 - Sidebar-first controls with integrated route filters, progress, and status messaging.
-- Transitland-style route filtering with mode chips, route search, and per-route isolate/fade behavior.
+- Transitland-style route filtering with mode chips, frequency chips, route search, and per-route isolate/fade behavior.
 - Stop visibility presets: default Transitland-style types (0/1), optional entrances (2), or all (0-4).
 - Light and dark UI themes with a simple toggle next to profile controls.
+- Floating map overlay controls for streets/satellite toggles.
 - Profile dropdown for demo login, login/register, and logout.
 - Account auth (register/login) + seeded demo user.
 - Station click-to-toggle completion tracking.
@@ -76,6 +77,8 @@ Required for transit loading:
 
 Important defaults:
 - TRANSIT_CACHE_TTL_HOURS=168 (7 days)
+- ROUTE_STOP_PAGE_LIMIT=220
+- ROUTE_STOP_MAX_RESULTS=1400
 - STOP_ASSIGNMENT_MAX_METERS=140
 - STOP_DEDUP_MAX_METERS=55
 - BBOX_MAX_SPAN_DEGREES=2.2
@@ -87,6 +90,7 @@ Important defaults:
 - Per-city and per-bbox data is cached in SQLite for the configured TTL.
 - Viewport bbox requests are snapped to normalized keys so revisiting the same area does not refetch from Transitland.
 - Client keeps a session cache of area tiles and only fetches missing nearby tiles for the current viewport.
+- Focused-route stop payloads are cached separately (line + stop type preset) and reused across pans/zooms.
 - Nearby tile fetches are queue-limited and distance-prioritized to reduce timeouts and API spikes when zooming/panning.
 - Initial city jump now triggers visible-area loading automatically instead of waiting on manual fetch actions.
 - Clear Local Cache remains available for rare refresh scenarios (for example, newly published transit updates).
@@ -98,8 +102,7 @@ Result: normal use should not repeatedly consume Transitland calls.
 
 - Dateline-wrapping viewport bbox fetches are not enabled yet (around the 180-degree meridian).
 - Very wide world zooms are intentionally blocked from fetch to avoid expensive global pulls; zoom in for reliable loading.
-- Station assignment now prefers same-feed route matching before geometry fallback; dense multi-line overlap can still need additional logic in future iterations.
-- Transitland REST stops endpoint still does not expose direct route membership in this integration path, so matching uses feed-aware and geometry heuristics.
+- Frequency chips currently use route-type-informed buckets when explicit headway data is unavailable from REST payloads.
 
 ## Data Model Notes (Future-Proofing)
 
