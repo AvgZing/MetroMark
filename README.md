@@ -23,14 +23,14 @@ This stack keeps the MVP easy to understand while preserving flexibility for fut
 
 - Server-side proxy to Transitland (API key never sent to browser).
 - Strictly normalized cache keys for city and viewport bbox fetches.
-- City presets with one-click jump-to-view (Seattle, Hong Kong, London, Paris, New York City, Tokyo).
+- City presets used for initial fit-to-region defaults (Seattle, Hong Kong, London, Paris, New York City, Tokyo).
 - International visible-area loading is always on (no manual load mode switch).
 - Route-first rendering on a MapLibre globe (routes load first, stops load on focused route).
 - Sidebar-first controls with integrated route filters, progress, and status messaging.
 - Transitland-style route filtering with mode chips, frequency chips, route search, and per-route isolate/fade behavior.
-- Stop visibility presets: default Transitland-style types (0/1), optional entrances (2), or all (0-4).
+- Core stop rendering fixed to Transitland-style station/platform types (0/1) for route-focused clarity.
 - Light and dark UI themes with a simple toggle next to profile controls.
-- Floating map overlay controls for streets/satellite toggles.
+- Floating icon-based map overlay controls for streets/satellite toggles.
 - Profile dropdown for demo login, login/register, and logout.
 - Account auth (register/login) + seeded demo user.
 - Station click-to-toggle completion tracking.
@@ -76,9 +76,14 @@ Required for transit loading:
 - TRANSITLAND_API_KEY
 
 Important defaults:
+- TRANSITLAND_REQUEST_TIMEOUT_MS=15000
+- TRANSITLAND_REQUEST_RETRIES=1
 - TRANSIT_CACHE_TTL_HOURS=168 (7 days)
+- ROUTE_CATALOG_MAX_RESULTS=220
 - ROUTE_STOP_PAGE_LIMIT=220
 - ROUTE_STOP_MAX_RESULTS=1400
+- ROUTE_HEADWAY_TIMEOUT_MS=22000
+- ROUTE_HEADWAY_CACHE_TTL_HOURS=72
 - STOP_ASSIGNMENT_MAX_METERS=140
 - STOP_DEDUP_MAX_METERS=55
 - BBOX_MAX_SPAN_DEGREES=2.2
@@ -88,13 +93,13 @@ Important defaults:
 
 - Transit requests are done server-side only.
 - Per-city and per-bbox data is cached in SQLite for the configured TTL.
-- Viewport bbox requests are snapped to normalized keys so revisiting the same area does not refetch from Transitland.
-- Client keeps a session cache of area tiles and only fetches missing nearby tiles for the current viewport.
-- Focused-route stop payloads are cached separately (line + stop type preset) and reused across pans/zooms.
+- Viewport loads are planned on a slippy-tile grid (Uber-style tile keys), then translated to bbox API requests.
+- Client keeps a session cache of tile payloads and only fetches missing nearby tiles for the current viewport.
+- Focused-route stop payloads are cached separately per line (core stop types 0/1) and reused across pans/zooms.
 - Nearby tile fetches are queue-limited and distance-prioritized to reduce timeouts and API spikes when zooming/panning.
-- Initial city jump now triggers visible-area loading automatically instead of waiting on manual fetch actions.
+- Initial city fit triggers visible-area loading automatically.
 - Clear Local Cache remains available for rare refresh scenarios (for example, newly published transit updates).
-- Station-to-line assignment and stop dedup are computed once per fetch and then cached.
+- Route headway metadata is fetched asynchronously per focused route and cached separately.
 
 Result: normal use should not repeatedly consume Transitland calls.
 
@@ -102,7 +107,7 @@ Result: normal use should not repeatedly consume Transitland calls.
 
 - Dateline-wrapping viewport bbox fetches are not enabled yet (around the 180-degree meridian).
 - Very wide world zooms are intentionally blocked from fetch to avoid expensive global pulls; zoom in for reliable loading.
-- Frequency chips currently use route-type-informed buckets when explicit headway data is unavailable from REST payloads.
+- Route-level headway data is currently parsed from Transitland route pages because REST route payloads do not expose headway fields directly.
 
 ## Data Model Notes (Future-Proofing)
 

@@ -1,11 +1,14 @@
 const MIN_VIEWPORT_FETCH_ZOOM = 5;
-const MAX_BBOX_SPAN_DEGREES = 2.2;
-const MAX_TARGET_TILES_PER_VIEW = 30;
-const MAX_NEW_FETCHES_PER_VIEW = 12;
+const MAX_TARGET_TILES_PER_VIEW = 12;
+const MAX_NEW_FETCHES_PER_VIEW = 4;
 const MAX_PARALLEL_FETCHES = 2;
 const MAX_SESSION_AREAS = 220;
 const MAX_SESSION_ROUTE_STOP_PAYLOADS = 120;
-const MIN_MOVE_FETCH_INTERVAL_MS = 850;
+const MIN_MOVE_FETCH_INTERVAL_MS = 1100;
+
+const ROUTE_STOP_TYPES = [0, 1];
+const ROUTE_STOP_TYPES_KEY = ROUTE_STOP_TYPES.join("-");
+const ROUTE_STOP_TYPES_QUERY = ROUTE_STOP_TYPES.join(",");
 
 const MODE_FILTER_ALL = "all";
 const MODE_FILTER_NON_BUS = "non-bus";
@@ -27,37 +30,6 @@ const GTFS_MODE_LABELS = {
   11: "Trolleybus",
   12: "Monorail"
 };
-
-const STOP_TYPE_PRESETS = {
-  core: {
-    label: "Stations + Platforms",
-    values: [0, 1]
-  },
-  withEntrances: {
-    label: "Stations + Platforms + Entrances",
-    values: [0, 1, 2]
-  },
-  all: {
-    label: "All Stop Types",
-    values: [0, 1, 2, 3, 4]
-  }
-};
-
-function validStopPreset(value) {
-  return Object.prototype.hasOwnProperty.call(STOP_TYPE_PRESETS, value) ? value : "core";
-}
-
-function stopTypesForPreset(preset) {
-  return STOP_TYPE_PRESETS[validStopPreset(preset)].values;
-}
-
-function stopTypesKeyForPreset(preset) {
-  return stopTypesForPreset(preset).join("-");
-}
-
-function stopTypesQueryForPreset(preset) {
-  return stopTypesForPreset(preset).join(",");
-}
 
 const state = {
   map: null,
@@ -82,7 +54,7 @@ const state = {
   activeModeFilter: MODE_FILTER_NON_BUS,
   activeFrequencyFilter: FREQUENCY_FILTER_ALL,
   lineSearchQuery: "",
-  stopTypePreset: validStopPreset(localStorage.getItem("metromark_stop_types") || "core"),
+  initialCitySlug: localStorage.getItem("metromark_initial_city_slug") || "seattle",
   theme: localStorage.getItem("metromark_theme") || "light",
   lastMoveFetchAt: 0,
   activePopup: "",
@@ -103,12 +75,9 @@ const els = {
   statusText: document.getElementById("statusText"),
   statusMeta: document.getElementById("statusMeta"),
   backendStatusText: document.getElementById("backendStatusText"),
-  citySelect: document.getElementById("citySelect"),
-  gotoCityBtn: document.getElementById("gotoCityBtn"),
   clearSessionCacheBtn: document.getElementById("clearSessionCacheBtn"),
   resetLineFocusBtn: document.getElementById("resetLineFocusBtn"),
   lineSearch: document.getElementById("lineSearch"),
-  stopTypeSelect: document.getElementById("stopTypeSelect"),
   modeFilterBar: document.getElementById("modeFilterBar"),
   frequencyFilterBar: document.getElementById("frequencyFilterBar"),
   lineList: document.getElementById("lineList"),
@@ -213,7 +182,29 @@ function lineSortWeight(line) {
   return 3;
 }
 
+function frequencyBucketFromHeadwayMinutes(minutes) {
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return FREQUENCY_FILTER_UNKNOWN;
+  }
+
+  if (minutes <= 12) {
+    return FREQUENCY_FILTER_HIGHER;
+  }
+
+  return FREQUENCY_FILTER_LOWER;
+}
+
+function lineHeadwayBestMinutes(line) {
+  const minutes = Number(line?.headwayBestMinutes);
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : null;
+}
+
 function lineFrequencyBucket(line) {
+  const bestHeadwayMinutes = lineHeadwayBestMinutes(line);
+  if (bestHeadwayMinutes !== null) {
+    return frequencyBucketFromHeadwayMinutes(bestHeadwayMinutes);
+  }
+
   const explicit = String(line?.frequencyBucket || "").trim().toLowerCase();
   if (
     explicit === FREQUENCY_FILTER_HIGHER ||
@@ -240,6 +231,15 @@ function frequencyBucketLabel(bucket) {
   return "Frequency Unknown";
 }
 
+function lineHeadwayLabel(line) {
+  const bestHeadwayMinutes = lineHeadwayBestMinutes(line);
+  if (bestHeadwayMinutes !== null) {
+    return `Best headway ~${bestHeadwayMinutes} min`;
+  }
+
+  return frequencyBucketLabel(lineFrequencyBucket(line));
+}
+
 function lineOperatorLabel(line) {
   return String(line.operatorName || line.routeFeedId || "Operator unavailable");
 }
@@ -261,6 +261,7 @@ function lineSearchText(line) {
     line.lineShortName,
     line.lineLongName,
     line.routeOnestopId,
+    line.headwayBestMinutes,
     lineMode(line),
     lineServiceTier(line),
     frequencyBucketLabel(lineFrequencyBucket(line)),
@@ -314,12 +315,6 @@ function setTheme(theme) {
 
 function toggleTheme() {
   setTheme(state.theme === "dark" ? "light" : "dark");
-}
-
-function setStopTypePreset(preset) {
-  state.stopTypePreset = validStopPreset(preset);
-  localStorage.setItem("metromark_stop_types", state.stopTypePreset);
-  els.stopTypeSelect.value = state.stopTypePreset;
 }
 
 function setActivePopup(name) {
@@ -455,44 +450,51 @@ function expandBbox(bbox, paddingDegrees) {
   ];
 }
 
-function bboxStepFromZoom(zoom) {
-  if (zoom >= 13) return 0.025;
-  if (zoom >= 11) return 0.04;
-  if (zoom >= 9) return 0.06;
-  if (zoom >= 7) return 0.09;
-  if (zoom >= 5) return 0.12;
-  return 0.15;
+function tileZoomFromMapZoom(zoom) {
+  if (zoom >= 13) return 12;
+  if (zoom >= 11) return 11;
+  if (zoom >= 9) return 10;
+  if (zoom >= 7) return 9;
+  return 8;
 }
 
-function tileSpanFromZoom(zoom) {
-  if (zoom >= 13) return 0.6;
-  if (zoom >= 11) return 1.0;
-  if (zoom >= 9) return 1.4;
-  if (zoom >= 7) return 1.8;
-  return 2.0;
-}
-
-function normalizeBboxForClientCache(rawBbox, zoom) {
-  const step = bboxStepFromZoom(zoom);
-  const snapped = [
-    Math.floor(rawBbox[0] / step) * step,
-    Math.floor(rawBbox[1] / step) * step,
-    Math.ceil(rawBbox[2] / step) * step,
-    Math.ceil(rawBbox[3] / step) * step
-  ];
-
-  const normalizedBbox = [
-    clamp(snapped[0], -180, 180),
-    clamp(snapped[1], -85, 85),
-    clamp(snapped[2], -180, 180),
-    clamp(snapped[3], -85, 85)
-  ];
+function lngLatToTile(lon, lat, zoom) {
+  const latClamped = clamp(lat, -85.05112878, 85.05112878);
+  const n = 2 ** zoom;
+  const x = Math.floor(((lon + 180) / 360) * n);
+  const latRad = (latClamped * Math.PI) / 180;
+  const y = Math.floor(
+    ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n
+  );
 
   return {
-    areaKey: `bbox:${step.toFixed(3)}:${normalizedBbox.map((value) => value.toFixed(4)).join(",")}`,
-    bbox: normalizedBbox,
-    step
+    x,
+    y: clamp(y, 0, n - 1)
   };
+}
+
+function tileToBbox(x, y, zoom) {
+  const n = 2 ** zoom;
+  const west = (x / n) * 360 - 180;
+  const east = ((x + 1) / n) * 360 - 180;
+
+  const northRad = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n)));
+  const southRad = Math.atan(Math.sinh(Math.PI * (1 - (2 * (y + 1)) / n)));
+
+  const north = (northRad * 180) / Math.PI;
+  const south = (southRad * 180) / Math.PI;
+
+  return [west, south, east, north];
+}
+
+function normalizeTileX(x, zoom) {
+  const n = 2 ** zoom;
+  return ((x % n) + n) % n;
+}
+
+function normalizeTileY(y, zoom) {
+  const n = 2 ** zoom;
+  return clamp(y, 0, n - 1);
 }
 
 function bboxQueryText(bbox) {
@@ -500,42 +502,41 @@ function bboxQueryText(bbox) {
 }
 
 function buildViewportTileRequests(rawBbox, zoom) {
-  const span = Math.min(MAX_BBOX_SPAN_DEGREES, tileSpanFromZoom(zoom));
-  const padded = expandBbox(rawBbox, span * 0.28);
-  const viewCenter = bboxCenter(rawBbox);
+  const tileZoom = tileZoomFromMapZoom(zoom);
+  const padded = expandBbox(rawBbox, 0.18);
+  const center = bboxCenter(rawBbox);
+  const centerTile = lngLatToTile(center[0], center[1], tileZoom);
 
-  const westStart = Math.floor(padded[0] / span) * span;
-  const southStart = Math.floor(padded[1] / span) * span;
+  const northWest = lngLatToTile(padded[0], padded[3], tileZoom);
+  const southEast = lngLatToTile(padded[2], padded[1], tileZoom);
+
+  const minX = Math.min(northWest.x, southEast.x) - 1;
+  const maxX = Math.max(northWest.x, southEast.x) + 1;
+  const minY = Math.min(northWest.y, southEast.y) - 1;
+  const maxY = Math.max(northWest.y, southEast.y) + 1;
 
   const requestsByKey = new Map();
 
-  for (let west = westStart; west < padded[2]; west += span) {
-    const east = clamp(west + span, -180, 180);
-    if (east <= west) {
-      continue;
-    }
-
-    for (let south = southStart; south < padded[3]; south += span) {
-      const north = clamp(south + span, -85, 85);
-      if (north <= south) {
+  for (let x = minX; x <= maxX; x += 1) {
+    for (let y = minY; y <= maxY; y += 1) {
+      const nx = normalizeTileX(x, tileZoom);
+      const ny = normalizeTileY(y, tileZoom);
+      const areaKey = `tile:${tileZoom}:${nx}:${ny}`;
+      if (requestsByKey.has(areaKey)) {
         continue;
       }
 
-      const normalized = normalizeBboxForClientCache([west, south, east, north], zoom);
-      const center = bboxCenter(normalized.bbox);
-      const dx = center[0] - viewCenter[0];
-      const dy = center[1] - viewCenter[1];
+      const bbox = tileToBbox(nx, ny, tileZoom);
+      const dx = nx - centerTile.x;
+      const dy = ny - centerTile.y;
       const distanceScore = dx * dx + dy * dy;
 
-      const existing = requestsByKey.get(normalized.areaKey);
-      if (!existing || distanceScore < existing.distanceScore) {
-        requestsByKey.set(normalized.areaKey, {
-          areaKey: normalized.areaKey,
-          bbox: normalized.bbox,
-          zoom,
-          distanceScore
-        });
-      }
+      requestsByKey.set(areaKey, {
+        areaKey,
+        bbox,
+        zoom,
+        distanceScore
+      });
     }
   }
 
@@ -607,8 +608,8 @@ function pruneAreaCache() {
   }
 }
 
-function routeStopCacheKey(lineKey, preset = state.stopTypePreset) {
-  return `${String(lineKey || "")}|types:${stopTypesKeyForPreset(preset)}`;
+function routeStopCacheKey(lineKey) {
+  return `${String(lineKey || "")}|types:${ROUTE_STOP_TYPES_KEY}`;
 }
 
 function pruneLineStopsCache() {
@@ -616,9 +617,7 @@ function pruneLineStopsCache() {
     return;
   }
 
-  const focusedCacheKey = state.focusedLineKey
-    ? routeStopCacheKey(state.focusedLineKey, state.stopTypePreset)
-    : "";
+  const focusedCacheKey = state.focusedLineKey ? routeStopCacheKey(state.focusedLineKey) : "";
 
   const sorted = Array.from(state.lineStopsCache.entries()).sort(
     (a, b) => Number(a[1]?.lastUsedAt || 0) - Number(b[1]?.lastUsedAt || 0)
@@ -694,21 +693,6 @@ function rebuildCombinedTransit() {
       }
     }
 
-    for (const feature of payload?.stopsGeoJson?.features || []) {
-      const lineKey = feature?.properties?.line_key;
-      const stationKey = feature?.properties?.station_key;
-      if (!lineKey || !stationKey) {
-        continue;
-      }
-
-      const stopKey = `${lineKey}|${stationKey}`;
-      if (!stopByLineAndStation.has(stopKey)) {
-        stopByLineAndStation.set(stopKey, feature);
-      } else {
-        stopByLineAndStation.set(stopKey, mergeStopFeature(stopByLineAndStation.get(stopKey), feature));
-      }
-    }
-
     for (const line of payload?.lineSummaries || []) {
       const lineKey = line?.lineKey;
       if (!lineKey) {
@@ -734,6 +718,12 @@ function rebuildCombinedTransit() {
           routeFeedId: existing.routeFeedId || line.routeFeedId,
           serviceTier: existing.serviceTier || line.serviceTier,
           frequencyBucket: existing.frequencyBucket || line.frequencyBucket,
+          headwayBestMinutes: Number.isFinite(Number(existing.headwayBestMinutes))
+            ? Number(existing.headwayBestMinutes)
+            : Number.isFinite(Number(line.headwayBestMinutes))
+              ? Number(line.headwayBestMinutes)
+              : null,
+          headwaySource: existing.headwaySource || line.headwaySource || "",
           color: existing.color || line.color
         });
       }
@@ -745,7 +735,7 @@ function rebuildCombinedTransit() {
   }
 
   const stopByLineAndStation = new Map();
-  const activeStopTypeKey = stopTypesKeyForPreset(state.stopTypePreset);
+  const activeStopTypeKey = ROUTE_STOP_TYPES_KEY;
   const now = Date.now();
 
   for (const entry of state.lineStopsCache.values()) {
@@ -790,7 +780,9 @@ function rebuildCombinedTransit() {
     stopCount: stopCountsByLine.get(lineKey) || 0,
     mode: line.mode || modeLabelFromRouteType(line.routeType),
     serviceTier: line.serviceTier || lineServiceTier(line),
-    frequencyBucket: line.frequencyBucket || lineFrequencyBucket(line)
+    frequencyBucket: line.frequencyBucket || lineFrequencyBucket(line),
+    headwayBestMinutes: lineHeadwayBestMinutes(line),
+    headwaySource: String(line.headwaySource || "")
   }));
 
   lineSummaries.sort((a, b) => {
@@ -896,7 +888,7 @@ function getFilteredData() {
 
   const shownLines = getShownLines();
   const visibleLineKeys = getVisibleLineKeys(shownLines);
-  const allowedStopTypes = new Set(stopTypesForPreset(state.stopTypePreset));
+  const allowedStopTypes = new Set(ROUTE_STOP_TYPES);
 
   if (visibleLineKeys.size === 0) {
     return {
@@ -983,7 +975,7 @@ function renderProgress() {
   }
 
   if (!state.focusedLineKey) {
-    const activeStopTypeKey = stopTypesKeyForPreset(state.stopTypePreset);
+    const activeStopTypeKey = ROUTE_STOP_TYPES_KEY;
     const visibleLineKeys = new Set(state.lineSummaries.map((line) => line.lineKey));
     const cachedRouteStops = Array.from(state.lineStopsCache.values()).filter(
       (entry) => entry?.stopTypesKey === activeStopTypeKey && visibleLineKeys.has(entry.lineKey)
@@ -1163,7 +1155,7 @@ function renderFrequencyFilterBar() {
     },
     {
       key: FREQUENCY_FILTER_HIGHER,
-      label: "Higher Frequency",
+      label: "Frequent (<=12m)",
       count: buckets.get(FREQUENCY_FILTER_HIGHER) || 0
     },
     {
@@ -1215,7 +1207,7 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
     return false;
   }
 
-  const cacheKey = routeStopCacheKey(normalizedLineKey, state.stopTypePreset);
+  const cacheKey = routeStopCacheKey(normalizedLineKey);
   const existing = state.lineStopsCache.get(cacheKey);
   if (existing && !options.forceRefresh) {
     existing.lastUsedAt = Date.now();
@@ -1240,7 +1232,7 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
   try {
     const params = new URLSearchParams({
       lineKey: routeStopLookupKey,
-      stopTypes: stopTypesQueryForPreset(state.stopTypePreset)
+      stopTypes: ROUTE_STOP_TYPES_QUERY
     });
 
     if (options.forceRefresh) {
@@ -1253,7 +1245,7 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
 
     state.lineStopsCache.set(cacheKey, {
       lineKey: normalizedLineKey,
-      stopTypesKey: stopTypesKeyForPreset(state.stopTypePreset),
+      stopTypesKey: ROUTE_STOP_TYPES_KEY,
       payload,
       cacheStatus: payload.cacheStatus || "miss",
       lastUsedAt: Date.now()
@@ -1282,6 +1274,83 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
   } finally {
     state.inFlightLineStopKeys.delete(cacheKey);
     updateLoadingStatus();
+  }
+}
+
+async function ensureLineHeadwayLoaded(lineKey, options = {}) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return false;
+  }
+
+  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  if (!line) {
+    return false;
+  }
+
+  if (lineHeadwayBestMinutes(line) !== null && !options.forceRefresh) {
+    return true;
+  }
+
+  const routeLookupKey = String(line.routeOnestopId || normalizedLineKey).trim();
+
+  try {
+    const params = new URLSearchParams({
+      lineKey: routeLookupKey
+    });
+    if (options.forceRefresh) {
+      params.set("refresh", "1");
+    }
+
+    const payload = await apiRequest(`/api/transit/route-headway?${params.toString()}`, {
+      method: "GET"
+    });
+
+    const headwayBestMinutes = Number(payload?.headwayBestMinutes);
+    const normalizedHeadwayBestMinutes = Number.isFinite(headwayBestMinutes)
+      ? Number(headwayBestMinutes.toFixed(1))
+      : null;
+    const headwaySource = String(payload?.headwaySource || "");
+
+    const routeStopsEntry = state.lineStopsCache.get(routeStopCacheKey(normalizedLineKey));
+    if (routeStopsEntry?.payload?.lineSummaries?.[0]) {
+      routeStopsEntry.payload.lineSummaries[0].headwayBestMinutes = normalizedHeadwayBestMinutes;
+      routeStopsEntry.payload.lineSummaries[0].headwaySource = headwaySource;
+      routeStopsEntry.payload.lineSummaries[0].frequencyBucket =
+        payload?.frequencyBucket || routeStopsEntry.payload.lineSummaries[0].frequencyBucket;
+      routeStopsEntry.payload.headwaySummary = payload?.headwaySummary || null;
+      routeStopsEntry.lastUsedAt = Date.now();
+    }
+
+    for (const areaEntry of state.areaCache.values()) {
+      const summaries = areaEntry?.payload?.lineSummaries;
+      if (!Array.isArray(summaries)) {
+        continue;
+      }
+
+      const found = summaries.find((summary) => summary?.lineKey === normalizedLineKey);
+      if (!found) {
+        continue;
+      }
+
+      found.headwayBestMinutes = normalizedHeadwayBestMinutes;
+      found.headwaySource = headwaySource;
+      found.frequencyBucket = payload?.frequencyBucket || found.frequencyBucket;
+      areaEntry.lastUsedAt = Date.now();
+    }
+
+    rebuildCombinedTransit();
+    refreshUiFromState();
+    setBackendStatus(
+      normalizedHeadwayBestMinutes !== null
+        ? `Headway data ready for ${lineDisplayName(line)} (best ~${normalizedHeadwayBestMinutes} min).`
+        : `Headway data unavailable for ${lineDisplayName(line)}.`
+    );
+
+    return true;
+  } catch (error) {
+    setBackendStatus(`Headway fetch failed for ${lineDisplayName(line)}: ${error.message}`);
+    return false;
   }
 }
 
@@ -1321,6 +1390,10 @@ async function setFocusedLine(lineKey, options = {}) {
     forceRefresh: Boolean(options.forceRefresh),
     silent: false
   });
+
+  ensureLineHeadwayLoaded(normalizedLineKey, {
+    forceRefresh: Boolean(options.forceRefresh)
+  }).catch(() => {});
 
   renderMapData();
   renderProgress();
@@ -1377,9 +1450,7 @@ function renderLineList() {
 
     const meta = document.createElement("p");
     meta.className = "line-meta";
-    meta.textContent = `${lineMode(line)} - ${lineOperatorLabel(line)} - ${frequencyBucketLabel(
-      lineFrequencyBucket(line)
-    )}`;
+    meta.textContent = `${lineMode(line)} - ${lineOperatorLabel(line)} - ${lineHeadwayLabel(line)}`;
 
     labelBlock.append(name, meta);
 
@@ -1416,7 +1487,7 @@ function updateLoadingStatus() {
 
   if (areaLoadingCount > 0 || queuedCount > 0 || routeStopLoadingCount > 0) {
     setStatus(
-      "Loading transit for the current map view...",
+      "Loading routes for the current map view...",
       "ok",
       `${state.lastLoadStats.cached} route tiles cached - ${areaLoadingCount} tiles loading - ${routeStopLoadingCount} routes loading stops - ${Math.max(
         queuedCount,
@@ -1431,14 +1502,14 @@ function updateLoadingStatus() {
     setStatus(
       "Routes are ready for this view.",
       "ok",
-      `${state.activeAreaKeys.size} nearby areas in session cache (${STOP_TYPE_PRESETS[state.stopTypePreset].label}). ${focusLabel}`
+      `${state.activeAreaKeys.size} nearby areas in session cache. ${focusLabel}`
     );
     return;
   }
 
   if (state.lastLoadStats.failed > 0) {
     setStatus(
-      "Transit could not be loaded for this area.",
+      "Routes could not be loaded for this area.",
       "error",
       `${state.lastLoadStats.failed} area requests failed. Check the backend note below.`
     );
@@ -1654,7 +1725,7 @@ async function loadVisibleTransit(options = {}) {
   state.lastLoadStats.queued = queued;
 
   setStatus(
-    "Loading transit for the current map view...",
+    "Loading routes for the current map view...",
     "ok",
     `${cached} cached - ${queued} loading${
       state.lastLoadStats.deferred > 0 ? ` - ${state.lastLoadStats.deferred} deferred` : ""
@@ -1662,9 +1733,7 @@ async function loadVisibleTransit(options = {}) {
   );
 
   setBackendStatus(
-    `Route-first mode active. Stop visibility preset: ${STOP_TYPE_PRESETS[state.stopTypePreset].label} (${stopTypesQueryForPreset(
-      state.stopTypePreset
-    )}).`
+    `Route-first mode active. Stops are loaded only on focused routes (location types ${ROUTE_STOP_TYPES_QUERY}).`
   );
 }
 
@@ -1703,20 +1772,25 @@ function fitToArea(area) {
 }
 
 function selectedCityPreset() {
-  return state.cities.find((city) => city.slug === els.citySelect.value) || null;
+  if (!state.cities.length) {
+    return null;
+  }
+
+  return state.cities.find((city) => city.slug === state.initialCitySlug) || state.cities[0] || null;
 }
 
 async function loadCities() {
   const payload = await apiRequest("/api/catalog/cities", { method: "GET" });
   state.cities = Array.isArray(payload.cities) ? payload.cities : [];
 
-  els.citySelect.innerHTML = "";
+  if (!state.cities.length) {
+    return;
+  }
 
-  for (const city of state.cities) {
-    const option = document.createElement("option");
-    option.value = city.slug;
-    option.textContent = `${city.name}, ${city.country}`;
-    els.citySelect.append(option);
+  const exists = state.cities.some((city) => city.slug === state.initialCitySlug);
+  if (!exists) {
+    state.initialCitySlug = state.cities[0].slug;
+    localStorage.setItem("metromark_initial_city_slug", state.initialCitySlug);
   }
 }
 
@@ -2010,29 +2084,6 @@ function bindEvents() {
     }
   });
 
-  els.gotoCityBtn.addEventListener("click", () => {
-    const city = selectedCityPreset();
-    if (!city) {
-      setStatus("Select a preset city first.", "error");
-      return;
-    }
-
-    const trigger = () => {
-      loadVisibleTransit({ forceRefresh: false, reason: "goto-city" }).catch((error) => {
-        setBackendStatus(`City jump load failed: ${error.message}`);
-      });
-    };
-
-    state.map.once("moveend", trigger);
-    fitToArea(city);
-
-    setStatus(
-      `Moved to ${city.name}.`,
-      "ok",
-      "Routes will fill in automatically as this map view settles."
-    );
-  });
-
   els.clearSessionCacheBtn.addEventListener("click", async () => {
     const confirmed = window.confirm(
       "Clear local in-browser cache for this session? Use this only if you suspect stale transit data."
@@ -2054,28 +2105,6 @@ function bindEvents() {
 
     try {
       await loadVisibleTransit({ forceRefresh: false, reason: "clear-cache" });
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-
-  els.stopTypeSelect.addEventListener("change", async () => {
-    setStopTypePreset(els.stopTypeSelect.value);
-
-    state.lineStopsCache.clear();
-    state.inFlightLineStopKeys.clear();
-    resetViewAggregation();
-    rebuildCombinedTransit();
-    refreshUiFromState();
-
-    setStatus(
-      "Stop visibility updated.",
-      "ok",
-      `Now using ${STOP_TYPE_PRESETS[state.stopTypePreset].label}. Route stops will reload on selection.`
-    );
-
-    try {
-      await loadVisibleTransit({ forceRefresh: false, reason: "stop-type-change" });
     } catch (error) {
       setStatus(error.message, "error");
     }
@@ -2167,7 +2196,6 @@ function bindEvents() {
 
 async function init() {
   setTheme(state.theme);
-  setStopTypePreset(state.stopTypePreset);
 
   bindEvents();
   initializeMap();
@@ -2204,7 +2232,7 @@ async function init() {
     setStatus(
       "Route loading is automatic for the map area you are viewing.",
       "ok",
-      `Current stop visibility: ${STOP_TYPE_PRESETS[state.stopTypePreset].label}. Select a route to load stops.`
+      `Stops load only when you focus a route (location types ${ROUTE_STOP_TYPES_QUERY}).`
     );
   } catch (error) {
     setStatus(error.message, "error");

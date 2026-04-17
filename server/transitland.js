@@ -238,6 +238,12 @@ function bboxCenter(bbox) {
   return [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2];
 }
 
+function wait(milliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
 async function transitlandRequest(path, params) {
   if (!config.TRANSITLAND_API_KEY) {
     throw new Error("Transitland API key is missing. Set TRANSITLAND_API_KEY in .env.");
@@ -249,18 +255,57 @@ async function transitlandRequest(path, params) {
   });
 
   const url = `${TRANSITLAND_BASE_URL}${path}?${searchParams.toString()}`;
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json"
-    }
-  });
+  const retries = Math.max(0, Number(config.TRANSITLAND_REQUEST_RETRIES || 0));
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Transitland request failed (${response.status}): ${detail.slice(0, 220)}`);
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutMs = Math.max(1500, Number(config.TRANSITLAND_REQUEST_TIMEOUT_MS || 15000));
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: "application/json"
+        },
+        signal: controller.signal
+      });
+
+      if (!response.ok) {
+        const detail = await response.text();
+        const retryable = response.status === 429 || response.status >= 500;
+
+        if (retryable && attempt < retries) {
+          await wait(280 * (attempt + 1));
+          continue;
+        }
+
+        throw new Error(`Transitland request failed (${response.status}): ${detail.slice(0, 220)}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      const timedOut = error?.name === "AbortError";
+      if (timedOut && attempt < retries) {
+        await wait(220 * (attempt + 1));
+        continue;
+      }
+
+      if (timedOut) {
+        throw new Error(`Transitland request timed out after ${timeoutMs}ms.`);
+      }
+
+      if (attempt < retries) {
+        await wait(220 * (attempt + 1));
+        continue;
+      }
+
+      throw error;
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
   }
 
-  return response.json();
+  throw new Error("Transitland request failed after retries.");
 }
 
 function normalizeRoute(route, index) {
@@ -405,6 +450,152 @@ function routeSortWeight(routeType) {
   return 3;
 }
 
+function frequencyBucketFromHeadwayMinutes(minutes) {
+  const numeric = Number(minutes);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return "unknown";
+  }
+
+  if (numeric <= 12) {
+    return "higher";
+  }
+
+  return "lower";
+}
+
+function decodeHtmlEntities(text) {
+  return String(text || "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&#39;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function stripHtmlTags(text) {
+  return decodeHtmlEntities(String(text || "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+}
+
+function parseHeadwayCellMinutes(cellText) {
+  const values = String(cellText || "")
+    .match(/\d+(?:\.\d+)?/g)
+    ?.map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+
+  if (!values || !values.length) {
+    return null;
+  }
+
+  if (values.length === 1) {
+    return values[0];
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  return Number(((min + max) / 2).toFixed(1));
+}
+
+function parseHeadwaySummaryFromRoutePageHtml(html) {
+  const pageHtml = String(html || "");
+  const tableMatch = pageHtml.match(/<table[^>]*>[\s\S]*?<th>[\s\S]*?Headways[\s\S]*?<\/th>[\s\S]*?<\/table>/i);
+  const tableHtml = tableMatch ? tableMatch[0] : pageHtml;
+
+  const rowRegex =
+    /<tr>[\s\S]*?<td[^>]*>\s*(Weekday|Saturday|Sunday)\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>[\s\S]*?<\/tr>/gi;
+
+  const windows = ["7-9am", "9am-4pm", "4-6pm", "6pm-7am"];
+  const rows = {};
+  const allMinutes = [];
+
+  let match = rowRegex.exec(tableHtml);
+  while (match) {
+    const dayKey = String(match[1] || "").toLowerCase();
+    const cellsRaw = [match[2], match[3], match[4], match[5]];
+
+    const cells = cellsRaw.map((entry) => {
+      const text = stripHtmlTags(entry);
+      const minutes = parseHeadwayCellMinutes(text);
+      if (Number.isFinite(minutes)) {
+        allMinutes.push(minutes);
+      }
+      return {
+        text,
+        minutes
+      };
+    });
+
+    rows[dayKey] = {
+      label: stripHtmlTags(match[1]),
+      cells
+    };
+
+    match = rowRegex.exec(tableHtml);
+  }
+
+  if (!Object.keys(rows).length) {
+    return null;
+  }
+
+  const bestMinutes = allMinutes.length ? Math.min(...allMinutes) : null;
+
+  return {
+    source: "transitland-route-page",
+    windows,
+    rows,
+    bestMinutes: Number.isFinite(bestMinutes) ? Number(bestMinutes.toFixed(1)) : null,
+    frequencyBucket: frequencyBucketFromHeadwayMinutes(bestMinutes)
+  };
+}
+
+async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
+  const key = sanitizeText(routeLookupKey);
+  if (!key) {
+    return null;
+  }
+
+  const cacheKey = `${TRANSIT_CACHE_PREFIX}headway:${key}`;
+  if (!options.forceRefresh) {
+    const cached = db.getCache(cacheKey);
+    if (cached && cached.payload) {
+      return cached.payload;
+    }
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = Math.max(1500, Number(config.ROUTE_HEADWAY_TIMEOUT_MS || 9000));
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`https://www.transit.land/routes/${encodeURIComponent(key)}`, {
+      headers: {
+        Accept: "text/html",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) MetroMark/1.0"
+      },
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const html = await response.text();
+    const summary = parseHeadwaySummaryFromRoutePageHtml(html);
+    if (!summary) {
+      return null;
+    }
+
+    const ttlHours = Math.max(1, Number(config.ROUTE_HEADWAY_CACHE_TTL_HOURS || 72));
+    db.setCache(cacheKey, summary, ttlHours * 3600);
+    return summary;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
 function inferStopModeHint(stopName) {
   const normalized = normalizeName(stopName);
   if (!normalized) {
@@ -480,14 +671,14 @@ async function fetchRoutesAndStopsForBbox(bboxArray) {
   const latSpan = Math.max(0, Number(bboxArray[3]) - Number(bboxArray[1]));
   const span = Math.max(lonSpan, latSpan);
 
-  let routeLimit = 420;
+  let routeLimit = Math.max(80, Number(config.ROUTE_CATALOG_MAX_RESULTS || 220));
 
-  if (span > 1.7) {
-    routeLimit = 280;
-  } else if (span > 1.3) {
-    routeLimit = 340;
-  } else if (span > 0.9) {
-    routeLimit = 390;
+  if (span > 1.6) {
+    routeLimit = Math.max(80, Math.round(routeLimit * 0.55));
+  } else if (span > 1.2) {
+    routeLimit = Math.max(90, Math.round(routeLimit * 0.68));
+  } else if (span > 0.8) {
+    routeLimit = Math.max(100, Math.round(routeLimit * 0.82));
   }
 
   const routesResponse = await transitlandRequest("/routes", {
@@ -723,6 +914,7 @@ function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
       route_feed_id: route.routeFeedId,
       service_tier: routeServiceTier(route.routeType),
       frequency_bucket: routeFrequencyBucket(route.routeType),
+      headway_best_minutes: null,
       color: route.color
     }
   }));
@@ -842,6 +1034,8 @@ function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
       routeFeedId: route.routeFeedId,
       serviceTier: routeServiceTier(route.routeType),
       frequencyBucket: routeFrequencyBucket(route.routeType),
+      headwayBestMinutes: null,
+      headwaySource: "",
       color: route.color,
       stopCount: stopCountsByLine.get(route.lineKey) || 0
     }))
@@ -880,6 +1074,9 @@ function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
 }
 
 function routeFeatureFromLine(line) {
+  const frequencyBucket = sanitizeText(line?.frequencyBucket) || routeFrequencyBucket(line?.routeType);
+  const headwayBestMinutes = Number(line?.headwayBestMinutes);
+
   return {
     type: "Feature",
     geometry: line.geometry,
@@ -894,7 +1091,10 @@ function routeFeatureFromLine(line) {
       route_type: line.routeType,
       route_feed_id: line.routeFeedId,
       service_tier: routeServiceTier(line.routeType),
-      frequency_bucket: routeFrequencyBucket(line.routeType),
+      frequency_bucket: frequencyBucket,
+      headway_best_minutes: Number.isFinite(headwayBestMinutes)
+        ? Number(headwayBestMinutes.toFixed(1))
+        : null,
       color: line.color
     }
   };
@@ -975,6 +1175,14 @@ async function fetchStopsForRoute(lineKey) {
 function buildRouteStopsPayload(line, rawStops, options = {}) {
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
   const allowedStopLocationTypes = new Set(stopLocationTypes);
+  const headwaySummary = options.headwaySummary || null;
+  const headwayBestMinutes = Number(headwaySummary?.bestMinutes);
+  const normalizedHeadwayBestMinutes = Number.isFinite(headwayBestMinutes)
+    ? Number(headwayBestMinutes.toFixed(1))
+    : null;
+  const frequencyBucket = normalizedHeadwayBestMinutes
+    ? frequencyBucketFromHeadwayMinutes(normalizedHeadwayBestMinutes)
+    : routeFrequencyBucket(line.routeType);
 
   const routeStops = [];
 
@@ -1074,7 +1282,9 @@ function buildRouteStopsPayload(line, rawStops, options = {}) {
     routeType: line.routeType,
     routeFeedId: line.routeFeedId,
     serviceTier: routeServiceTier(line.routeType),
-    frequencyBucket: routeFrequencyBucket(line.routeType),
+    frequencyBucket,
+    headwayBestMinutes: normalizedHeadwayBestMinutes,
+    headwaySource: headwaySummary?.source || "",
     color: line.color,
     stopCount: stopFeatures.length
   };
@@ -1094,9 +1304,17 @@ function buildRouteStopsPayload(line, rawStops, options = {}) {
       hubSnapMaxMeters: config.STATION_HUB_SNAP_MAX_METERS,
       hubCount: new Set(hubStops.map((stop) => stop.hubKey)).size,
       fetchStrategy: "route-first-membership",
+      headwaySource: headwaySummary?.source || "",
       sourceStopsTruncated: options.sourceStopsTruncated ? 1 : 0
     },
-    routesGeoJson: asFeatureCollection([routeFeatureFromLine(line)]),
+    headwaySummary,
+    routesGeoJson: asFeatureCollection([
+      routeFeatureFromLine({
+        ...line,
+        frequencyBucket,
+        headwayBestMinutes: normalizedHeadwayBestMinutes
+      })
+    ]),
     stopsGeoJson: asFeatureCollection(stopFeatures),
     lineSummaries: [lineSummary]
   };
@@ -1145,6 +1363,37 @@ async function getRouteStopsTransit(lineKey, options = {}) {
     cacheStatus: "miss",
     cacheKey: `route:${normalizedLineKey}:types:${stopTypeKey}`,
     stopLocationTypes
+  };
+}
+
+async function getRouteHeadway(lineKey, options = {}) {
+  const normalizedLineKey = sanitizeText(lineKey);
+  if (!normalizedLineKey) {
+    throw new Error("lineKey is required.");
+  }
+
+  const line = await fetchRouteByLineKey(normalizedLineKey);
+  if (!line) {
+    throw new Error(`No route found for ${normalizedLineKey}.`);
+  }
+
+  const lookupKey = sanitizeText(line.routeOnestopId || normalizedLineKey);
+  const summary = await fetchRouteHeadwaySummary(lookupKey, {
+    forceRefresh: Boolean(options.forceRefresh)
+  });
+
+  const bestMinutes = Number(summary?.bestMinutes);
+  const normalizedBestMinutes = Number.isFinite(bestMinutes) ? Number(bestMinutes.toFixed(1)) : null;
+
+  return {
+    lineKey: normalizedLineKey,
+    routeOnestopId: lookupKey,
+    headwaySummary: summary,
+    headwayBestMinutes: normalizedBestMinutes,
+    headwaySource: summary?.source || "",
+    frequencyBucket: normalizedBestMinutes
+      ? frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)
+      : routeFrequencyBucket(line.routeType)
   };
 }
 
@@ -1236,5 +1485,6 @@ module.exports = {
   getCityTransit,
   getBboxTransit,
   getRouteStopsTransit,
+  getRouteHeadway,
   TRANSIT_CACHE_PREFIX
 };

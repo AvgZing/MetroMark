@@ -92,3 +92,15 @@
 - Added first-load trigger after initial city fit so transit starts loading without extra user actions.
 - Improved post-fetch status handling so failure cases no longer appear as endless "0 cached / 0 loading" states.
 - Kept stale queue trimming so rapid pans/zooms avoid fetching irrelevant off-screen tiles.
+
+### Milestone 11 - Route-first UX cleanup, slippy tile planning, and headway enrichment
+- Removed obsolete sidebar controls that no longer matched route-first behavior (map view panel and stop-visibility selector).
+- Simplified route-stop loading to fixed core stop types (0/1) so stops only appear after focusing a route.
+- Reworked viewport fetch planning from ad-hoc bbox spans to explicit slippy tile keys (`tile:z:x:y`) with smaller initial fetch batches.
+- Added Transitland request timeout and retry controls to avoid indefinite in-flight loading states.
+- Reduced route catalog query limits by span to improve first-paint speed and reduce API overload risk.
+- Added dedicated `/api/transit/route-headway` endpoint so headway retrieval runs asynchronously and does not block route-stop loading.
+- Implemented headway parsing from Transitland route pages and cached the extracted values in SQLite.
+- Wired client-side non-blocking headway enrichment for focused routes and updated frequency bucketing to prefer real headway values when available.
+- Switched map mode controls to icon-first overlay buttons and removed stale UI affordances.
+- Updated `.gitignore` to exclude temporary local probe scripts (`_tmp_*.js`).

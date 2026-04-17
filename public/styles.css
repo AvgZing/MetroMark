@@ -84,30 +84,35 @@ body[data-theme="dark"] {
   right: 14px;
   top: 14px;
   display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
 .map-mode-btn {
-  min-width: 112px;
+  min-width: 126px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
   text-align: left;
   border-color: rgba(14, 42, 60, 0.28);
   box-shadow: 0 8px 24px rgba(5, 18, 28, 0.26);
 }
 
-.mode-title {
-  display: block;
-  font-size: 12px;
-  line-height: 1.1;
-  font-weight: 600;
+.map-mode-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-.mode-sub {
-  display: block;
-  margin-top: 2px;
-  font-size: 10px;
-  color: var(--muted);
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+.mode-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 #map {
@@ -230,17 +235,6 @@ label {
 
 .inline-actions .btn {
   flex: 1 1 140px;
-}
-
-.map-style-switch {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0 6px;
-}
-
-.map-style-switch .btn {
-  flex: 1 1 120px;
 }
 
 .mode-filter-bar {
@@ -518,7 +512,7 @@ body[data-theme="dark"] .maplibregl-popup-content {
   }
 
   .map-mode-btn {
-    min-width: 96px;
+    min-width: 116px;
     padding: 8px 9px;
   }
 

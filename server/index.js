@@ -5,7 +5,13 @@ const config = require("./config");
 const db = require("./db");
 const { cities, getCityBySlug } = require("./city-presets");
 const { createAuthToken, authMiddleware } = require("./auth");
-const { getCityTransit, getBboxTransit, getRouteStopsTransit, TRANSIT_CACHE_PREFIX } = require("./transitland");
+const {
+  getCityTransit,
+  getBboxTransit,
+  getRouteStopsTransit,
+  getRouteHeadway,
+  TRANSIT_CACHE_PREFIX
+} = require("./transitland");
 
 const app = express();
 
@@ -47,11 +53,16 @@ app.get("/api/health", (req, res) => {
     status: "ok",
     app: "MetroMark",
     hasTransitlandKey: Boolean(config.TRANSITLAND_API_KEY),
+    transitlandRequestTimeoutMs: config.TRANSITLAND_REQUEST_TIMEOUT_MS,
+    transitlandRequestRetries: config.TRANSITLAND_REQUEST_RETRIES,
     cacheTtlHours: config.TRANSIT_CACHE_TTL_HOURS,
+    routeCatalogMaxResults: config.ROUTE_CATALOG_MAX_RESULTS,
     stopAssignmentMaxMeters: config.STOP_ASSIGNMENT_MAX_METERS,
     stopDedupMaxMeters: config.STOP_DEDUP_MAX_METERS,
     routeStopPageLimit: config.ROUTE_STOP_PAGE_LIMIT,
     routeStopMaxResults: config.ROUTE_STOP_MAX_RESULTS,
+    routeHeadwayTimeoutMs: config.ROUTE_HEADWAY_TIMEOUT_MS,
+    routeHeadwayCacheTtlHours: config.ROUTE_HEADWAY_CACHE_TTL_HOURS,
     stationHubMaxMeters: config.STATION_HUB_MAX_METERS,
     stationHubSnapMaxMeters: config.STATION_HUB_SNAP_MAX_METERS,
     bboxMaxSpanDegrees: config.BBOX_MAX_SPAN_DEGREES
@@ -154,6 +165,26 @@ app.get("/api/transit/route-stops", async (req, res) => {
   } catch (error) {
     return res.status(400).json({
       error: "Route stop fetch failed.",
+      detail: error.message
+    });
+  }
+});
+
+app.get("/api/transit/route-headway", async (req, res) => {
+  const lineKey = String(req.query.lineKey || "").trim();
+  if (!lineKey) {
+    return res.status(400).json({ error: "lineKey query parameter is required." });
+  }
+
+  try {
+    const data = await getRouteHeadway(lineKey, {
+      forceRefresh: asBoolean(req.query.refresh)
+    });
+
+    return res.json(data);
+  } catch (error) {
+    return res.status(400).json({
+      error: "Route headway fetch failed.",
       detail: error.message
     });
   }

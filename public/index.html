@@ -36,31 +36,10 @@
         </div>
 
         <section class="panel">
-          <h2>Map View</h2>
-          <label class="mono-label">
-            Jump To City
-            <select id="citySelect"></select>
-          </label>
-          <div class="inline-actions">
-            <button id="gotoCityBtn" class="btn" type="button">Go To City</button>
-          </div>
-          <p class="microcopy">Routes load automatically for what is visible. Select a route to load stops.</p>
-        </section>
-
-        <section class="panel">
-          <h2>Routes & Stops</h2>
+          <h2>Routes</h2>
           <label class="mono-label">
             Search Routes
             <input id="lineSearch" type="search" placeholder="Search route name, number, or operator" />
-          </label>
-
-          <label class="mono-label">
-            Stop Visibility
-            <select id="stopTypeSelect">
-              <option value="core">Stations + Platforms</option>
-              <option value="withEntrances">Add Entrances/Exits</option>
-              <option value="all">All Stop Types (0-4)</option>
-            </select>
           </label>
 
           <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
@@ -85,13 +64,22 @@
 
       <main class="map-stage">
         <div class="map-overlay-controls" role="group" aria-label="Map style">
-          <button id="streetsModeBtn" class="btn btn-icon map-mode-btn" type="button" aria-label="Streets map">
-            <span class="mode-title">Streets</span>
-            <span class="mode-sub">Map</span>
+          <button id="streetsModeBtn" class="btn btn-icon map-mode-btn" type="button" aria-label="Streets map view">
+            <svg class="map-mode-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 6.5 8.5 4l7 2.5L21 4v13.5L15.5 20l-7-2.5L3 20V6.5Zm5.5-1v12M15.5 6v12" />
+            </svg>
+            <span class="mode-label">Streets</span>
           </button>
-          <button id="satelliteModeBtn" class="btn btn-icon map-mode-btn" type="button" aria-label="Satellite map">
-            <span class="mode-title">Satellite</span>
-            <span class="mode-sub">Imagery</span>
+          <button
+            id="satelliteModeBtn"
+            class="btn btn-icon map-mode-btn"
+            type="button"
+            aria-label="Satellite map view"
+          >
+            <svg class="map-mode-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 15 6 4 8-10-6-4-8 10Zm2.6-.5 3.8 2.5m2.2-8.5 3.8 2.5" />
+            </svg>
+            <span class="mode-label">Satellite</span>
           </button>
         </div>
         <div id="map"></div>

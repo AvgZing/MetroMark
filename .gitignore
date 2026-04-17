@@ -15,6 +15,7 @@ node_modules/
 dist/
 coverage/
 *.log
+_tmp_*.js
 
 # Runtime data (cache, local DB)
 data/*.db
