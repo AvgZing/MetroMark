@@ -1,8 +1,6 @@
 const express = require("express");
 
-const { getCityBySlug } = require("../city-presets");
 const {
-  getCityTransit,
   getBboxTransit,
   getRouteStopsTransit,
   getRouteHeadway
@@ -15,41 +13,6 @@ const {
 } = require("./helpers");
 
 const router = express.Router();
-
-router.get("/transit/city/:slug", async (req, res) => {
-  const city = getCityBySlug(req.params.slug);
-  if (!city) {
-    return res.status(404).json({ error: "Unknown city slug." });
-  }
-
-  try {
-    const stopTypes = parseStopTypes(req.query.stopTypes);
-    const routeTypes = parseRouteTypes(req.query.routeTypes);
-    const data = await getCityTransit(city.slug, {
-      forceRefresh: asBoolean(req.query.refresh),
-      stopLocationTypes: stopTypes,
-      routeTypes
-    });
-
-    if (!data) {
-      return res.status(404).json({ error: "No transit data available for this city." });
-    }
-
-    return res.json(withTransitlandMetrics({
-      cacheStatus: data.cacheStatus,
-      cacheKey: data.cacheKey,
-      cacheExpiresAt: data.cacheExpiresAt || null,
-      stopLocationTypes: data.stopLocationTypes || [0, 1],
-      routeTypes: data.routeTypes || [],
-      ...data.payload
-    }));
-  } catch (error) {
-    return res.status(502).json({
-      error: "Transit fetch failed.",
-      detail: error.message
-    });
-  }
-});
 
 router.get("/transit/bbox", async (req, res) => {
   const bboxRaw = String(req.query.bbox || "").trim();

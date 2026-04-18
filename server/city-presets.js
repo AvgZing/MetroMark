@@ -43,11 +43,6 @@ const cities = [
   }
 ];
 
-const bySlug = new Map(cities.map((city) => [city.slug, city]));
-
 module.exports = {
-  cities,
-  getCityBySlug(slug) {
-    return bySlug.get(slug) || null;
-  }
+  cities
 };

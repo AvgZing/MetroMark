@@ -2,7 +2,6 @@ const config = require("../../config");
 const db = require("../../db");
 const { VectorTile } = require("@mapbox/vector-tile");
 const Pbf = require("pbf").default;
-const { getCityBySlug } = require("../../city-presets");
 const {
   normalizeName,
   stableStationKey,
@@ -1961,34 +1960,6 @@ async function getTransitForArea(area, options = {}) {
   };
 }
 
-async function getCityTransit(slug, options = {}) {
-  const city = getCityBySlug(slug);
-  if (!city) {
-    return null;
-  }
-
-  const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
-  const routeTypes = normalizeRouteTypes(options.routeTypes);
-  const routeTypeKey = routeTypes.length ? routeTypes.join("-") : "all";
-
-  const area = {
-    key: `city:${city.slug}:route-catalog:route-types:${routeTypeKey}`,
-    kind: "city",
-    slug: city.slug,
-    name: city.name,
-    country: city.country,
-    center: city.center,
-    bbox: city.bbox,
-    routeTypes
-  };
-
-  return getTransitForArea(area, {
-    ...options,
-    stopLocationTypes,
-    routeTypes
-  });
-}
-
 async function getBboxTransit(rawBbox, options = {}) {
   const zoom = Number(options.zoom);
   const bboxInfo = normalizeBboxForCache(rawBbox, zoom);
@@ -2022,7 +1993,6 @@ async function getBboxTransit(rawBbox, options = {}) {
 }
 
 module.exports = {
-  getCityTransit,
   getBboxTransit,
   getRouteStopsTransit,
   getRouteHeadway,
