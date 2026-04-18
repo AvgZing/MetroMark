@@ -1908,13 +1908,27 @@ async function getRouteHeadway(lineKey, options = {}) {
     }
   }
 
+  if (!summary) {
+    const routePageSummary = await fetchRouteHeadwaySummary(lookupKey, {
+      forceRefresh: Boolean(options.forceRefresh)
+    });
+
+    if (routePageSummary) {
+      summary = routePageSummary;
+      const summaryBestMinutes = Number(routePageSummary.bestMinutes);
+      normalizedBestMinutes = Number.isFinite(summaryBestMinutes) && summaryBestMinutes > 0
+        ? Number(summaryBestMinutes.toFixed(1))
+        : null;
+    }
+  }
+
   return {
     lineKey: normalizedLineKey,
     routeOnestopId: lookupKey,
     headwaySummary: summary,
     headwayBestMinutes: normalizedBestMinutes,
     headwaySource: summary?.source || "",
-    headwayChecked: summary ? 1 : 0,
+    headwayChecked: 1,
     frequencyBucket: normalizedBestMinutes
       ? frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)
       : "unknown"

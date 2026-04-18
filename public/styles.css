@@ -139,15 +139,18 @@ body[data-theme="dark"] {
   list-style: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
+  width: 100%;
   margin: 0;
-  padding: 9px 12px;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 12px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--muted);
+  padding: 10px 12px 8px;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink);
+  text-align: left;
   user-select: none;
 }
 
@@ -158,7 +161,10 @@ body[data-theme="dark"] {
 .panel-summary::before {
   content: "▾";
   display: inline-block;
-  margin-right: 8px;
+  margin-right: 2px;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  color: var(--muted);
   transition: transform 0.14s ease;
 }
 
@@ -1069,8 +1075,8 @@ body[data-theme="dark"] .route-select-btn {
     line-height: 1.24;
   }
 
-  body:not(.mobile-panels-open) .user-status-details dt:nth-of-type(n + 3),
-  body:not(.mobile-panels-open) .user-status-details dd:nth-of-type(n + 3),
+  body:not(.mobile-panels-open) .user-status-details dt:nth-of-type(n + 4),
+  body:not(.mobile-panels-open) .user-status-details dd:nth-of-type(n + 4),
   body:not(.mobile-panels-open) .user-status-actions,
   body:not(.mobile-panels-open) .clear-progress-confirm {
     display: none;

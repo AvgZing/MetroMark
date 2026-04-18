@@ -9,12 +9,6 @@ const MIN_MOVE_FETCH_INTERVAL_MS = 1800;
 const ROUTE_STOP_TYPES = [0, 1];
 const ROUTE_STOP_TYPES_KEY = ROUTE_STOP_TYPES.join("-");
 const ROUTE_STOP_TYPES_QUERY = ROUTE_STOP_TYPES.join(",");
-const ROUTE_INTERACTION_LAYERS = [
-  "interline-splits-main",
-  "interline-splits-background",
-  "routes-main",
-  "routes-background-main"
-];
 
 const MODE_FILTER_ALL = "all";
 const MODE_FILTER_BUS = "bus";
@@ -93,6 +87,7 @@ const state = {
   areaCache: new Map(),
   lineStopsCache: new Map(),
   inFlightLineStopKeys: new Set(),
+  inFlightHeadwayLineKeys: new Set(),
   requestedAreaKeys: new Set(),
   visibleAreaKeys: new Set(),
   activeAreaKeys: new Set(),
@@ -940,15 +935,11 @@ function setUserStatusFromLine(line) {
   const progress = lineProgressMetrics(line.lineKey, Number(line.stopCount || 0));
   const focusedLineActions = state.focusedLineKey === line.lineKey ? line.lineKey : "";
 
-  setUserStatus(lineDisplayName(line), "Line", {
+  setUserStatus(lineDisplayName(line), `${lineMode(line)} Line`, {
     details: [
       {
         label: "Operator",
         value: lineOperatorLabel(line)
-      },
-      {
-        label: "Mode",
-        value: lineMode(line)
       },
       {
         label: "Frequency",
@@ -974,6 +965,7 @@ function setUserStatusFromStation(properties, extraMessage = "") {
 
   const relatedLineKey = String(properties?.line_key || "").trim();
   const relatedLine = state.lineSummaries.find((entry) => entry.lineKey === relatedLineKey);
+  const stationHeadwayLine = relatedLine || lineFromPropertiesForHover(properties);
   const progress = relatedLine
     ? lineProgressMetrics(relatedLineKey, Number(relatedLine.stopCount || 0))
     : null;
@@ -989,8 +981,8 @@ function setUserStatusFromStation(properties, extraMessage = "") {
         value: relatedLine ? lineOperatorLabel(relatedLine) : "Operator unavailable"
       },
       {
-        label: "Mode",
-        value: properties?.mode || modeLabelFromRouteType(properties?.route_type)
+        label: "Frequency",
+        value: lineHeadwayLabel(stationHeadwayLine)
       },
       {
         label: "Stop type",
@@ -1060,7 +1052,7 @@ function setMobilePanelsOpen(open) {
     els.mobileDrawerTab.setAttribute("aria-expanded", nextOpen ? "true" : "false");
     els.mobileDrawerTab.setAttribute("aria-label", nextOpen ? "Close panels" : "Open panels");
     els.mobileDrawerTab.classList.toggle("is-open", nextOpen);
-    els.mobileDrawerTab.textContent = ">";
+    els.mobileDrawerTab.textContent = nextOpen ? "<" : ">";
   }
 }
 
@@ -1785,135 +1777,6 @@ function getVisibleLineKeys(shownLines) {
   return new Set(shownLines.map((line) => line.lineKey));
 }
 
-function roundedCoordForKey(point) {
-  if (!Array.isArray(point) || point.length < 2) {
-    return null;
-  }
-
-  const lng = Number(point[0]);
-  const lat = Number(point[1]);
-  if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
-    return null;
-  }
-
-  return [Number(lng.toFixed(5)), Number(lat.toFixed(5))];
-}
-
-function segmentKeyFromPoints(a, b) {
-  const pointA = roundedCoordForKey(a);
-  const pointB = roundedCoordForKey(b);
-  if (!pointA || !pointB) {
-    return null;
-  }
-
-  const keyA = `${pointA[0].toFixed(5)},${pointA[1].toFixed(5)}`;
-  const keyB = `${pointB[0].toFixed(5)},${pointB[1].toFixed(5)}`;
-  if (keyA === keyB) {
-    return null;
-  }
-
-  return keyA < keyB ? `${keyA}|${keyB}` : `${keyB}|${keyA}`;
-}
-
-function pushLineStringSegments(lineKey, coordinates, segmentMap, lineColors) {
-  if (!Array.isArray(coordinates) || coordinates.length < 2) {
-    return;
-  }
-
-  for (let index = 1; index < coordinates.length; index += 1) {
-    const start = coordinates[index - 1];
-    const end = coordinates[index];
-    const segmentKey = segmentKeyFromPoints(start, end);
-    if (!segmentKey) {
-      continue;
-    }
-
-    let segment = segmentMap.get(segmentKey);
-    if (!segment) {
-      segment = {
-        coordinates: [start, end],
-        lineKeys: new Set()
-      };
-      segmentMap.set(segmentKey, segment);
-    }
-
-    segment.lineKeys.add(lineKey);
-    if (!lineColors.has(lineKey)) {
-      lineColors.set(lineKey, "#d44d1f");
-    }
-  }
-}
-
-function buildInterlineSplitFeatureCollection(routeFeatures) {
-  const segmentMap = new Map();
-  const lineColors = new Map();
-  const hasFocus = Boolean(state.focusedLineKey);
-
-  for (const feature of routeFeatures || []) {
-    const lineKey = String(feature?.properties?.line_key || "").trim();
-    if (!lineKey) {
-      continue;
-    }
-
-    const color = String(feature?.properties?.color || "").trim() || "#d44d1f";
-    lineColors.set(lineKey, color);
-
-    const geometry = feature?.geometry;
-    if (!geometry || !geometry.type) {
-      continue;
-    }
-
-    if (geometry.type === "LineString") {
-      pushLineStringSegments(lineKey, geometry.coordinates, segmentMap, lineColors);
-      continue;
-    }
-
-    if (geometry.type === "MultiLineString") {
-      for (const lineCoordinates of geometry.coordinates || []) {
-        pushLineStringSegments(lineKey, lineCoordinates, segmentMap, lineColors);
-      }
-    }
-  }
-
-  const features = [];
-
-  for (const segment of segmentMap.values()) {
-    const lineKeys = Array.from(segment.lineKeys);
-    if (lineKeys.length < 2) {
-      continue;
-    }
-
-    lineKeys.sort((a, b) => a.localeCompare(b));
-    const center = (lineKeys.length - 1) / 2;
-
-    for (let index = 0; index < lineKeys.length; index += 1) {
-      const lineKey = lineKeys[index];
-      const focused = !hasFocus || lineKey === state.focusedLineKey ? 1 : 0;
-
-      features.push({
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: segment.coordinates
-        },
-        properties: {
-          line_key: lineKey,
-          color: lineColors.get(lineKey) || "#d44d1f",
-          split_total: lineKeys.length,
-          split_index: Number((index - center).toFixed(2)),
-          is_focused: focused,
-          has_focus: hasFocus ? 1 : 0
-        }
-      });
-    }
-  }
-
-  return {
-    type: "FeatureCollection",
-    features
-  };
-}
-
 function getVisitedSetForLine(lineKey) {
   const set = state.visitedByLine.get(lineKey);
   if (set) {
@@ -1929,7 +1792,6 @@ function getFilteredData() {
     return {
       routes: emptyFeatureCollection(),
       stops: emptyFeatureCollection(),
-      interlineSplits: emptyFeatureCollection(),
       shownLines: []
     };
   }
@@ -1942,7 +1804,6 @@ function getFilteredData() {
     return {
       routes: emptyFeatureCollection(),
       stops: emptyFeatureCollection(),
-      interlineSplits: emptyFeatureCollection(),
       shownLines
     };
   }
@@ -1990,8 +1851,6 @@ function getFilteredData() {
       };
     });
 
-  const interlineSplits = buildInterlineSplitFeatureCollection(routes);
-
   return {
     routes: {
       type: "FeatureCollection",
@@ -2001,7 +1860,6 @@ function getFilteredData() {
       type: "FeatureCollection",
       features: stops
     },
-    interlineSplits,
     shownLines
   };
 }
@@ -2015,7 +1873,6 @@ function renderMapData() {
   const routesSource = state.map.getSource("routes");
   const stopsSource = state.map.getSource("stops");
   const focusMaskSource = state.map.getSource("focus-mask");
-  const interlineSource = state.map.getSource("interline-splits");
 
   if (routesSource) {
     routesSource.setData(filtered.routes);
@@ -2025,9 +1882,6 @@ function renderMapData() {
   }
   if (focusMaskSource) {
     focusMaskSource.setData(focusMaskFeatureCollection(Boolean(state.focusedLineKey)));
-  }
-  if (interlineSource) {
-    interlineSource.setData(filtered.interlineSplits);
   }
 }
 
@@ -2364,6 +2218,182 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
   }
 }
 
+function lineNeedsHeadwayLookup(line) {
+  if (!line) {
+    return false;
+  }
+
+  if (lineHeadwayBestMinutes(line) !== null) {
+    return false;
+  }
+
+  return Number(line?.headwayChecked || 0) !== 1;
+}
+
+function normalizeHeadwayUpdate(payload) {
+  const headwayBestMinutes = Number(payload?.headwayBestMinutes);
+  const normalizedBestMinutes =
+    Number.isFinite(headwayBestMinutes) && headwayBestMinutes > 0
+      ? Number(headwayBestMinutes.toFixed(1))
+      : null;
+
+  const normalizedBucket = String(payload?.frequencyBucket || "").trim().toLowerCase();
+  const frequencyBucket = normalizedBestMinutes
+    ? frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)
+    : normalizedBucket || FREQUENCY_FILTER_UNKNOWN;
+
+  return {
+    headwayBestMinutes: normalizedBestMinutes,
+    frequencyBucket,
+    headwaySource: String(payload?.headwaySource || payload?.headwaySummary?.source || "").trim(),
+    headwayChecked: 1
+  };
+}
+
+function applyHeadwayUpdateToCachedTransit(lineKey, headwayUpdate) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return false;
+  }
+
+  let updated = false;
+
+  state.lineSummaries = state.lineSummaries.map((line) => {
+    if (line.lineKey !== normalizedLineKey) {
+      return line;
+    }
+
+    updated = true;
+    return {
+      ...line,
+      ...headwayUpdate
+    };
+  });
+
+  if (state.transit?.routesGeoJson?.features) {
+    for (const feature of state.transit.routesGeoJson.features) {
+      const featureLineKey = String(feature?.properties?.line_key || "").trim();
+      if (featureLineKey !== normalizedLineKey) {
+        continue;
+      }
+
+      feature.properties = {
+        ...feature.properties,
+        frequency_bucket: headwayUpdate.frequencyBucket,
+        headway_best_minutes: headwayUpdate.headwayBestMinutes,
+        headway_source: headwayUpdate.headwaySource,
+        headway_checked: headwayUpdate.headwayChecked
+      };
+    }
+  }
+
+  for (const cacheEntry of state.areaCache.values()) {
+    const payload = cacheEntry?.payload;
+    if (!payload) {
+      continue;
+    }
+
+    if (Array.isArray(payload.lineSummaries)) {
+      let didUpdateLineSummary = false;
+      payload.lineSummaries = payload.lineSummaries.map((line) => {
+        if (line?.lineKey !== normalizedLineKey) {
+          return line;
+        }
+
+        didUpdateLineSummary = true;
+        return {
+          ...line,
+          ...headwayUpdate
+        };
+      });
+
+      if (didUpdateLineSummary) {
+        updated = true;
+      }
+    }
+
+    const routeFeatures = payload?.routesGeoJson?.features;
+    if (Array.isArray(routeFeatures)) {
+      for (const feature of routeFeatures) {
+        const featureLineKey = String(feature?.properties?.line_key || "").trim();
+        if (featureLineKey !== normalizedLineKey) {
+          continue;
+        }
+
+        feature.properties = {
+          ...feature.properties,
+          frequency_bucket: headwayUpdate.frequencyBucket,
+          headway_best_minutes: headwayUpdate.headwayBestMinutes,
+          headway_source: headwayUpdate.headwaySource,
+          headway_checked: headwayUpdate.headwayChecked
+        };
+      }
+    }
+  }
+
+  return updated;
+}
+
+async function ensureLineHeadwayLoaded(lineKey, options = {}) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return false;
+  }
+
+  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  if (!line) {
+    return false;
+  }
+
+  if (!options.forceRefresh && !lineNeedsHeadwayLookup(line)) {
+    return false;
+  }
+
+  if (state.inFlightHeadwayLineKeys.has(normalizedLineKey)) {
+    return false;
+  }
+
+  const lineLabel = lineDisplayName(line);
+  const routeLookupKey = String(line.routeOnestopId || normalizedLineKey).trim();
+
+  state.inFlightHeadwayLineKeys.add(normalizedLineKey);
+
+  try {
+    const params = new URLSearchParams({
+      lineKey: routeLookupKey
+    });
+
+    if (options.forceRefresh) {
+      params.set("refresh", "1");
+    }
+
+    const payload = await apiRequest(`/api/transit/route-headway?${params.toString()}`, {
+      method: "GET"
+    });
+
+    const headwayUpdate = normalizeHeadwayUpdate(payload);
+    const didUpdate = applyHeadwayUpdateToCachedTransit(normalizedLineKey, headwayUpdate);
+
+    if (didUpdate) {
+      refreshUiFromState();
+      restoreUserStatusFromFocus();
+    }
+
+    if (!options.silent && headwayUpdate.headwayBestMinutes !== null) {
+      setStatus(`Updated frequency for ${lineLabel}.`, "ok");
+    }
+
+    return didUpdate;
+  } catch (error) {
+    if (!options.silent) {
+      setStatus(`Could not refresh frequency for ${lineLabel}.`, "error", error.message);
+    }
+    return false;
+  } finally {
+    state.inFlightHeadwayLineKeys.delete(normalizedLineKey);
+  }
+}
+
 function clearFocusedLine(statusMessage = "Route focus cleared.", statusMeta = "Click a route to focus it.") {
   if (!state.focusedLineKey) {
     closeRouteSelectionPopup();
@@ -2400,6 +2430,11 @@ async function setFocusedLine(lineKey, options = {}) {
 
   if (state.focusedLineKey === normalizedLineKey && !options.forceRefresh) {
     setUserStatusFromLine(line);
+    await ensureLineHeadwayLoaded(normalizedLineKey, {
+      forceRefresh: false,
+      silent: true
+    });
+    restoreUserStatusFromFocus();
     return;
   }
 
@@ -2415,10 +2450,17 @@ async function setFocusedLine(lineKey, options = {}) {
     "Loading route-linked stops. Other routes stay visible in a dimmed state."
   );
 
+  const headwayLookupPromise = ensureLineHeadwayLoaded(normalizedLineKey, {
+    forceRefresh: Boolean(options.forceRefresh),
+    silent: true
+  });
+
   await ensureLineStopsLoaded(normalizedLineKey, {
     forceRefresh: Boolean(options.forceRefresh),
     silent: false
   });
+
+  await headwayLookupPromise;
 
   renderMapData();
   renderProgress();
@@ -3116,7 +3158,7 @@ function onRouteHoverMove(event) {
   }
 
   const features = state.map.queryRenderedFeatures(event.point, {
-    layers: ROUTE_INTERACTION_LAYERS
+    layers: ["routes-main", "routes-background-main"]
   });
 
   const uniqueLines = new Map();
@@ -3205,11 +3247,6 @@ function initializeMap() {
     state.map.addSource("focus-mask", {
       type: "geojson",
       data: focusMaskFeatureCollection(false)
-    });
-
-    state.map.addSource("interline-splits", {
-      type: "geojson",
-      data: emptyFeatureCollection()
     });
 
     state.map.addLayer({
@@ -3327,92 +3364,6 @@ function initializeMap() {
     });
 
     state.map.addLayer({
-      id: "interline-splits-background",
-      type: "line",
-      source: "interline-splits",
-      filter: ["==", ["get", "is_focused"], 0],
-      paint: {
-        "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
-        "line-width": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          1,
-          0.6,
-          3,
-          0.9,
-          6,
-          1.6,
-          9,
-          2.35,
-          12,
-          3
-        ],
-        "line-opacity": 0.74,
-        "line-offset": [
-          "*",
-          ["coalesce", ["to-number", ["get", "split_index"]], 0],
-          [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            1,
-            0.18,
-            6,
-            0.42,
-            9,
-            0.72,
-            12,
-            1.02
-          ]
-        ]
-      }
-    });
-
-    state.map.addLayer({
-      id: "interline-splits-main",
-      type: "line",
-      source: "interline-splits",
-      filter: ["==", ["get", "is_focused"], 1],
-      paint: {
-        "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
-        "line-width": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          1,
-          0.82,
-          3,
-          1.2,
-          6,
-          2.2,
-          9,
-          3.25,
-          12,
-          4.1
-        ],
-        "line-opacity": 0.92,
-        "line-offset": [
-          "*",
-          ["coalesce", ["to-number", ["get", "split_index"]], 0],
-          [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            1,
-            0.22,
-            6,
-            0.5,
-            9,
-            0.82,
-            12,
-            1.18
-          ]
-        ]
-      }
-    });
-
-    state.map.addLayer({
       id: "stops-layer",
       type: "circle",
       source: "stops",
@@ -3438,7 +3389,7 @@ function initializeMap() {
       }
     });
 
-    const interactiveRouteLayers = ROUTE_INTERACTION_LAYERS;
+    const interactiveRouteLayers = ["routes-main", "routes-background-main"];
 
     for (const layerId of interactiveRouteLayers) {
       state.map.on("click", layerId, (event) => {
