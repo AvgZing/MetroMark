@@ -2,7 +2,7 @@
 
 MetroMark is a transit exploration tracker for people who like to discover and complete transit systems.
 
-## What You Can Do
+## Features
 
 - Explore routes on a live map.
 - Filter by mode, frequency, and search text.
@@ -10,7 +10,7 @@ MetroMark is a transit exploration tracker for people who like to discover and c
 - Click stations to mark them visited (when signed in).
 - Track progress across visible routes.
 
-## Quick Start
+## Run Locally
 
 1. Install Node.js 20+.
 2. Copy `.env.example` to `.env`.
@@ -22,11 +22,11 @@ npm install
 npm start
 ```
 
-Open:
+Then open:
 
 - http://localhost:8080
 
-## Demo Login
+## Demo Account
 
 Use the demo account from the Profile panel.
 
@@ -35,7 +35,7 @@ Default demo credentials are seeded from `.env.example`:
 - Email: `demo@metromark.local`
 - Password: `demo1234`
 
-## Caching (Important)
+## Data and Caching
 
 MetroMark uses **server-side caching** to control Transitland API usage.
 
@@ -45,7 +45,7 @@ MetroMark uses **server-side caching** to control Transitland API usage.
 
 This means repeated users/views should hit server cache instead of repeatedly calling Transitland for the same area.
 
-## Data Source and Attribution
+## Attribution
 
 - Transit data: Transitland
 - Terms: https://www.transit.land/terms
@@ -55,8 +55,3 @@ This means repeated users/views should hit server cache instead of repeatedly ca
 - Very wide zoom levels intentionally pause new fetches to avoid expensive global pulls.
 - Cached, in-view routes can still render while fetch is paused.
 - Route frequency quality depends on available upstream headway data.
-
-## For Maintainers
-
-- Internal architecture notes: `docs/ARCHITECTURE.md`
-- Canonical internal changelog: `docs/changelog/CHANGELOG.md`

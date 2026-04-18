@@ -1,6 +1,6 @@
 # Local prototypes and non-app reference material
 Reference/
-docs/
+Docs/
 
 # Environment and secrets
 .env

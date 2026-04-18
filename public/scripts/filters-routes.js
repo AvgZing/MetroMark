@@ -1,0 +1,1016 @@
+﻿function getShownLines(options = {}) {
+  const query = String(state.lineSearchQuery || "").trim().toLowerCase();
+  const ignoreFrequency = Boolean(options.ignoreFrequency);
+  const ignoreSearch = options.ignoreSearch === undefined ? true : Boolean(options.ignoreSearch);
+
+  const filtered = state.lineSummaries.filter((line) => {
+    if (!lineIsVisible(line, { ignoreFrequency })) {
+      return false;
+    }
+
+    if (!ignoreSearch && query && !lineSearchText(line).includes(query)) {
+      return false;
+    }
+    return true;
+  });
+
+  filtered.sort((a, b) => {
+    const tierDiff = lineSortWeight(a) - lineSortWeight(b);
+    if (tierDiff !== 0) {
+      return tierDiff;
+    }
+
+    const stopDiff = Number(b.stopCount || 0) - Number(a.stopCount || 0);
+    if (stopDiff !== 0) {
+      return stopDiff;
+    }
+    return lineDisplayName(a).localeCompare(lineDisplayName(b));
+  });
+
+  return filtered;
+}
+
+function getRouteListLines() {
+  const query = String(state.lineSearchQuery || "").trim().toLowerCase();
+  const hasQuery = Boolean(query);
+
+  const listed = state.lineSummaries.filter((line) => {
+    if (hasQuery) {
+      return lineSearchText(line).includes(query);
+    }
+
+    if (lineVisibilityOverride(line.lineKey)) {
+      return true;
+    }
+
+    return lineIsVisible(line);
+  });
+
+  listed.sort((a, b) => {
+    const tierDiff = lineSortWeight(a) - lineSortWeight(b);
+    if (tierDiff !== 0) {
+      return tierDiff;
+    }
+
+    const stopDiff = Number(b.stopCount || 0) - Number(a.stopCount || 0);
+    if (stopDiff !== 0) {
+      return stopDiff;
+    }
+
+    return lineDisplayName(a).localeCompare(lineDisplayName(b));
+  });
+
+  return listed;
+}
+
+function getVisibleLineKeys(shownLines) {
+  return new Set(shownLines.map((line) => line.lineKey));
+}
+
+function getVisitedSetForLine(lineKey) {
+  const set = state.visitedByLine.get(lineKey);
+  if (set) {
+    return set;
+  }
+  const fresh = new Set();
+  state.visitedByLine.set(lineKey, fresh);
+  return fresh;
+}
+
+function getFilteredData() {
+  if (!state.transit) {
+    return {
+      routes: emptyFeatureCollection(),
+      stops: emptyFeatureCollection(),
+      shownLines: []
+    };
+  }
+
+  const shownLines = getShownLines();
+  const visibleLineKeys = getVisibleLineKeys(shownLines);
+  const allowedStopTypes = new Set(ROUTE_STOP_TYPES);
+  const hasFocus = Boolean(state.focusedLineKey) && visibleLineKeys.has(state.focusedLineKey);
+
+  const routes = state.transit.routesGeoJson.features
+    .map((feature) => {
+      const lineKey = String(feature?.properties?.line_key || "").trim();
+      const targetVisible = visibleLineKeys.has(lineKey);
+      const focused = targetVisible && (!hasFocus || lineKey === state.focusedLineKey) ? 1 : 0;
+      const interactive = targetVisible ? 1 : 0;
+
+      return {
+        ...feature,
+        properties: {
+          ...feature.properties,
+          is_focused: focused,
+          has_focus: hasFocus ? 1 : 0,
+          is_interactive: interactive,
+          is_visible: targetVisible ? 1 : 0
+        }
+      };
+    });
+
+  const stopSource = hasFocus
+    ? state.transit.stopsGeoJson.features.filter(
+        (feature) => feature?.properties?.line_key === state.focusedLineKey
+      )
+    : [];
+
+  const stops = stopSource
+    .filter((feature) => {
+      const stopType = Number(feature.properties.stop_location_type);
+      const normalizedStopType = Number.isFinite(stopType) ? stopType : 0;
+      return allowedStopTypes.has(normalizedStopType);
+    })
+    .map((feature) => {
+      const visited = getVisitedSetForLine(feature.properties.line_key).has(feature.properties.station_key)
+        ? 1
+        : 0;
+
+      return {
+        ...feature,
+        properties: {
+          ...feature.properties,
+          visited,
+          is_focused: 1
+        }
+      };
+    });
+
+  return {
+    routes: {
+      type: "FeatureCollection",
+      features: routes
+    },
+    stops: {
+      type: "FeatureCollection",
+      features: stops
+    },
+    shownLines
+  };
+}
+
+function renderMapData() {
+  if (!state.mapReady || !state.map) {
+    return;
+  }
+
+  const filtered = getFilteredData();
+  const routesSource = state.map.getSource("routes");
+  const stopsSource = state.map.getSource("stops");
+  const focusMaskSource = state.map.getSource("focus-mask");
+
+  if (routesSource) {
+    routesSource.setData(filtered.routes);
+  }
+  if (stopsSource) {
+    stopsSource.setData(filtered.stops);
+  }
+  if (focusMaskSource) {
+    focusMaskSource.setData(focusMaskFeatureCollection(Boolean(state.focusedLineKey)));
+  }
+}
+
+function lineSummaryByKey() {
+  return new Map(state.lineSummaries.map((line) => [line.lineKey, line]));
+}
+
+function renderProgress() {
+  if (!state.transit) {
+    els.progressSummary.textContent = "Pan or zoom the map and routes will load automatically.";
+    els.lineProgressList.innerHTML = "";
+    return;
+  }
+
+  const visibleLines = getShownLines();
+  if (!visibleLines.length) {
+    els.progressSummary.textContent = "No routes are visible for the active mode/frequency filters.";
+    els.lineProgressList.innerHTML = "";
+    return;
+  }
+
+  const rows = visibleLines
+    .map((line) => {
+      const metrics = lineProgressMetrics(line.lineKey, Number(line.stopCount || 0));
+
+      return {
+        lineName: lineDisplayName(line),
+        visited: metrics.visited,
+        total: metrics.total,
+        percent: metrics.percent
+      };
+    })
+    .sort((a, b) => {
+      const percentDiff = b.percent - a.percent;
+      if (percentDiff !== 0) {
+        return percentDiff;
+      }
+
+      const visitedDiff = b.visited - a.visited;
+      if (visitedDiff !== 0) {
+        return visitedDiff;
+      }
+
+      return a.lineName.localeCompare(b.lineName);
+    });
+
+  const withKnownStops = rows.filter((row) => row.total > 0).length;
+  els.progressSummary.textContent = `${visibleLines.length} visible routes. ${withKnownStops} with loaded stop totals.`;
+
+  els.lineProgressList.innerHTML = "";
+
+  for (const row of rows) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "line-progress-row";
+
+    const label = document.createElement("div");
+    label.textContent =
+      row.total > 0
+        ? `${row.lineName} (${row.visited}/${row.total})`
+        : `${row.lineName} (${row.visited} visited, total unknown)`;
+
+    const meter = document.createElement("div");
+    meter.className = "progress-track";
+
+    const fill = document.createElement("div");
+    fill.className = "progress-fill";
+
+    const linePercent = row.total ? Math.round((row.visited / row.total) * 100) : 0;
+    fill.style.width = `${linePercent}%`;
+
+    meter.append(fill);
+    wrapper.append(label, document.createTextNode(`${linePercent}%`));
+    wrapper.append(meter);
+
+    els.lineProgressList.append(wrapper);
+  }
+}
+
+function renderModeFilterBar() {
+  els.modeFilterBar.innerHTML = "";
+
+  const query = String(state.lineSearchQuery || "").trim().toLowerCase();
+  const counts = new Map(MODE_DEFS.map((mode) => [mode.key, 0]));
+  let totalMatchingSearch = 0;
+
+  for (const line of state.lineSummaries) {
+    if (query && !lineSearchText(line).includes(query)) {
+      continue;
+    }
+
+    totalMatchingSearch += 1;
+
+    const modeKey = lineModeKey(line);
+    counts.set(modeKey, (counts.get(modeKey) || 0) + 1);
+  }
+
+  const chips = MODE_DEFS.map((modeDef) => ({
+    key: modeDef.key,
+    label: modeDef.label,
+    count: modeDef.key === MODE_FILTER_ALL ? totalMatchingSearch : counts.get(modeDef.key) || 0
+  }));
+  const uncertainCounts = areFilterCountsUncertain();
+
+  for (const chip of chips) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mode-chip";
+    button.textContent = `${chip.label} (${filterChipCountLabel(chip.count, uncertainCounts)})`;
+    if (uncertainCounts) {
+      button.title = "Route totals are still loading for this view.";
+    }
+
+    if (state.activeModeKeys.has(chip.key)) {
+      button.classList.add("is-active");
+    }
+
+    button.addEventListener("click", () => {
+      if (chip.key === MODE_FILTER_ALL) {
+        state.activeModeKeys = new Set([MODE_FILTER_ALL]);
+      } else {
+        if (state.activeModeKeys.has(chip.key)) {
+          state.activeModeKeys.delete(chip.key);
+        } else {
+          state.activeModeKeys.delete(MODE_FILTER_ALL);
+          state.activeModeKeys.add(chip.key);
+        }
+
+        if (!state.activeModeKeys.size) {
+          state.activeModeKeys.add(MODE_FILTER_ALL);
+        }
+      }
+
+      normalizeModeSelection();
+      clearStatusPin();
+      resetClearRouteProgressConfirmation();
+
+      const shown = getShownLines();
+      if (state.focusedLineKey && !shown.some((line) => line.lineKey === state.focusedLineKey)) {
+        state.focusedLineKey = "";
+      }
+
+      renderModeFilterBar();
+      renderLineList();
+      renderMapData();
+      renderProgress();
+      restoreUserStatusFromFocus();
+
+      const selectedLabels = MODE_DEFS.filter((modeDef) => state.activeModeKeys.has(modeDef.key)).map(
+        (modeDef) => modeDef.label
+      );
+
+      setStatus("Mode filter updated.", "ok", `Showing: ${selectedLabels.join(", ")}.`);
+
+      loadVisibleTransit({ forceRefresh: false, reason: "mode-filter-change" }).catch((error) => {
+        setBackendStatus(`Mode-filter fetch failed: ${error.message}`);
+      });
+    });
+
+    els.modeFilterBar.append(button);
+  }
+}
+
+function renderFrequencyFilterBar() {
+  els.frequencyFilterBar.innerHTML = "";
+
+  const baseLines = getShownLines({ ignoreFrequency: true });
+
+  const buckets = new Map([
+    [FREQUENCY_FILTER_FREQUENT, 0],
+    [FREQUENCY_FILTER_REGULAR, 0],
+    [FREQUENCY_FILTER_LOCAL, 0],
+    [FREQUENCY_FILTER_UNKNOWN, 0]
+  ]);
+
+  for (const line of baseLines) {
+    const bucket = lineFrequencyBucket(line);
+    buckets.set(bucket, (buckets.get(bucket) || 0) + 1);
+  }
+
+  const chips = [
+    {
+      key: FREQUENCY_FILTER_ALL,
+      label: frequencyBucketLabel(FREQUENCY_FILTER_ALL),
+      count: baseLines.length
+    },
+    {
+      key: FREQUENCY_FILTER_FREQUENT,
+      label: frequencyBucketLabel(FREQUENCY_FILTER_FREQUENT),
+      count: buckets.get(FREQUENCY_FILTER_FREQUENT) || 0
+    },
+    {
+      key: FREQUENCY_FILTER_REGULAR,
+      label: frequencyBucketLabel(FREQUENCY_FILTER_REGULAR),
+      count: buckets.get(FREQUENCY_FILTER_REGULAR) || 0
+    },
+    {
+      key: FREQUENCY_FILTER_LOCAL,
+      label: frequencyBucketLabel(FREQUENCY_FILTER_LOCAL),
+      count: buckets.get(FREQUENCY_FILTER_LOCAL) || 0
+    },
+    {
+      key: FREQUENCY_FILTER_UNKNOWN,
+      label: "Unknown",
+      count: buckets.get(FREQUENCY_FILTER_UNKNOWN) || 0
+    }
+  ];
+
+  for (const chip of chips) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mode-chip";
+    button.textContent = `${chip.label} (${chip.count})`;
+
+    if (state.activeFrequencyKeys.has(chip.key)) {
+      button.classList.add("is-active");
+    }
+
+    button.addEventListener("click", () => {
+      if (chip.key === FREQUENCY_FILTER_ALL) {
+        state.activeFrequencyKeys = new Set([FREQUENCY_FILTER_ALL]);
+      } else {
+        if (state.activeFrequencyKeys.has(chip.key)) {
+          state.activeFrequencyKeys.delete(chip.key);
+        } else {
+          state.activeFrequencyKeys.delete(FREQUENCY_FILTER_ALL);
+          state.activeFrequencyKeys.add(chip.key);
+        }
+
+        if (!state.activeFrequencyKeys.size) {
+          state.activeFrequencyKeys.add(FREQUENCY_FILTER_ALL);
+        }
+      }
+
+      normalizeFrequencySelection();
+      clearStatusPin();
+      resetClearRouteProgressConfirmation();
+
+      const shown = getShownLines();
+      if (state.focusedLineKey && !shown.some((line) => line.lineKey === state.focusedLineKey)) {
+        state.focusedLineKey = "";
+      }
+
+      renderFrequencyFilterBar();
+      renderLineList();
+      renderMapData();
+      renderProgress();
+      restoreUserStatusFromFocus();
+
+      const selected = Array.from(state.activeFrequencyKeys)
+        .map((value) => frequencyBucketLabel(value))
+        .join(", ");
+
+      setStatus("Frequency filter updated.", "ok", `Active frequencies: ${selected}.`);
+    });
+
+    els.frequencyFilterBar.append(button);
+  }
+}
+
+async function ensureLineStopsLoaded(lineKey, options = {}) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return false;
+  }
+
+  const cacheKey = routeStopCacheKey(normalizedLineKey);
+  const existing = state.lineStopsCache.get(cacheKey);
+  if (existing && !options.forceRefresh) {
+    existing.lastUsedAt = Date.now();
+    return true;
+  }
+
+  if (state.inFlightLineStopKeys.has(cacheKey)) {
+    return false;
+  }
+
+  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  const lineLabel = line ? lineDisplayName(line) : normalizedLineKey;
+  const routeStopLookupKey = String(line?.routeOnestopId || normalizedLineKey).trim();
+
+  state.inFlightLineStopKeys.add(cacheKey);
+  updateLoadingStatus();
+
+  if (!options.silent) {
+    setStatus(`Loading stops for ${lineLabel}...`, "ok", "Using route membership from Transitland.");
+  }
+
+  try {
+    const params = new URLSearchParams({
+      lineKey: routeStopLookupKey,
+      stopTypes: ROUTE_STOP_TYPES_QUERY
+    });
+
+    if (options.forceRefresh) {
+      params.set("refresh", "1");
+    }
+
+    const payload = await apiRequest(`/api/transit/route-stops?${params.toString()}`, {
+      method: "GET"
+    });
+
+    state.lineStopsCache.set(cacheKey, {
+      lineKey: normalizedLineKey,
+      stopTypesKey: ROUTE_STOP_TYPES_KEY,
+      payload,
+      cacheStatus: payload.cacheStatus || "miss",
+      lastUsedAt: Date.now()
+    });
+
+    pruneLineStopsCache();
+    rebuildCombinedTransit();
+    refreshUiFromState();
+    restoreUserStatusFromFocus();
+
+    const stationCount = Number(payload?.stopsGeoJson?.features?.length || 0);
+    setBackendStatus(
+      `Route stops ready for ${lineLabel} (${payload.cacheStatus || "miss"} cache, ${stationCount} stops).`
+    );
+
+    if (!options.silent) {
+      setStatus(`Loaded ${stationCount} route-linked stops for ${lineLabel}.`, "ok");
+    }
+
+    return true;
+  } catch (error) {
+    setBackendStatus(`Route stop fetch failed for ${lineLabel}: ${error.message}`);
+    if (!options.silent) {
+      setStatus(`Could not load stops for ${lineLabel}.`, "error", error.message);
+    }
+    return false;
+  } finally {
+    state.inFlightLineStopKeys.delete(cacheKey);
+    updateLoadingStatus();
+  }
+}
+
+function lineNeedsHeadwayLookup(line) {
+  if (!line) {
+    return false;
+  }
+
+  if (lineHeadwayBestMinutes(line) !== null) {
+    return false;
+  }
+
+  return Number(line?.headwayChecked || 0) !== 1;
+}
+
+function normalizeHeadwayUpdate(payload) {
+  const headwayBestMinutes = Number(payload?.headwayBestMinutes);
+  const normalizedBestMinutes =
+    Number.isFinite(headwayBestMinutes) && headwayBestMinutes > 0
+      ? Number(headwayBestMinutes.toFixed(1))
+      : null;
+
+  const normalizedBucket = String(payload?.frequencyBucket || "").trim().toLowerCase();
+  const frequencyBucket = normalizedBestMinutes
+    ? frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)
+    : normalizedBucket || FREQUENCY_FILTER_UNKNOWN;
+
+  return {
+    headwayBestMinutes: normalizedBestMinutes,
+    frequencyBucket,
+    headwaySource: String(payload?.headwaySource || payload?.headwaySummary?.source || "").trim(),
+    headwayChecked: 1
+  };
+}
+
+function applyHeadwayUpdateToCachedTransit(lineKey, headwayUpdate) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return false;
+  }
+
+  let updated = false;
+
+  state.lineSummaries = state.lineSummaries.map((line) => {
+    if (line.lineKey !== normalizedLineKey) {
+      return line;
+    }
+
+    updated = true;
+    return {
+      ...line,
+      ...headwayUpdate
+    };
+  });
+
+  if (state.transit?.routesGeoJson?.features) {
+    for (const feature of state.transit.routesGeoJson.features) {
+      const featureLineKey = String(feature?.properties?.line_key || "").trim();
+      if (featureLineKey !== normalizedLineKey) {
+        continue;
+      }
+
+      feature.properties = {
+        ...feature.properties,
+        frequency_bucket: headwayUpdate.frequencyBucket,
+        headway_best_minutes: headwayUpdate.headwayBestMinutes,
+        headway_source: headwayUpdate.headwaySource,
+        headway_checked: headwayUpdate.headwayChecked
+      };
+    }
+  }
+
+  for (const cacheEntry of state.areaCache.values()) {
+    const payload = cacheEntry?.payload;
+    if (!payload) {
+      continue;
+    }
+
+    if (Array.isArray(payload.lineSummaries)) {
+      let didUpdateLineSummary = false;
+      payload.lineSummaries = payload.lineSummaries.map((line) => {
+        if (line?.lineKey !== normalizedLineKey) {
+          return line;
+        }
+
+        didUpdateLineSummary = true;
+        return {
+          ...line,
+          ...headwayUpdate
+        };
+      });
+
+      if (didUpdateLineSummary) {
+        updated = true;
+      }
+    }
+
+    const routeFeatures = payload?.routesGeoJson?.features;
+    if (Array.isArray(routeFeatures)) {
+      for (const feature of routeFeatures) {
+        const featureLineKey = String(feature?.properties?.line_key || "").trim();
+        if (featureLineKey !== normalizedLineKey) {
+          continue;
+        }
+
+        feature.properties = {
+          ...feature.properties,
+          frequency_bucket: headwayUpdate.frequencyBucket,
+          headway_best_minutes: headwayUpdate.headwayBestMinutes,
+          headway_source: headwayUpdate.headwaySource,
+          headway_checked: headwayUpdate.headwayChecked
+        };
+      }
+    }
+  }
+
+  return updated;
+}
+
+async function ensureLineHeadwayLoaded(lineKey, options = {}) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return false;
+  }
+
+  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  if (!line) {
+    return false;
+  }
+
+  if (!options.forceRefresh && !lineNeedsHeadwayLookup(line)) {
+    return false;
+  }
+
+  if (state.inFlightHeadwayLineKeys.has(normalizedLineKey)) {
+    return false;
+  }
+
+  const lineLabel = lineDisplayName(line);
+  const routeLookupKey = String(line.routeOnestopId || normalizedLineKey).trim();
+
+  state.inFlightHeadwayLineKeys.add(normalizedLineKey);
+
+  try {
+    const params = new URLSearchParams({
+      lineKey: routeLookupKey
+    });
+
+    if (options.forceRefresh) {
+      params.set("refresh", "1");
+    }
+
+    const payload = await apiRequest(`/api/transit/route-headway?${params.toString()}`, {
+      method: "GET"
+    });
+
+    const headwayUpdate = normalizeHeadwayUpdate(payload);
+    const didUpdate = applyHeadwayUpdateToCachedTransit(normalizedLineKey, headwayUpdate);
+
+    if (didUpdate) {
+      refreshUiFromState();
+      restoreUserStatusFromFocus();
+    }
+
+    if (!options.silent && headwayUpdate.headwayBestMinutes !== null) {
+      setStatus(`Updated frequency for ${lineLabel}.`, "ok");
+    }
+
+    return didUpdate;
+  } catch (error) {
+    if (!options.silent) {
+      setStatus(`Could not refresh frequency for ${lineLabel}.`, "error", error.message);
+    }
+    return false;
+  } finally {
+    state.inFlightHeadwayLineKeys.delete(normalizedLineKey);
+  }
+}
+
+function clearFocusedLine(statusMessage = "Route focus cleared.", statusMeta = "Click a route to focus it.") {
+  if (!state.focusedLineKey) {
+    closeRouteSelectionPopup();
+    return;
+  }
+
+  closeRouteSelectionPopup();
+  clearStatusPin();
+  resetClearRouteProgressConfirmation();
+
+  state.focusedLineKey = "";
+  renderLineList();
+  renderMapData();
+  renderProgress();
+  restoreUserStatusFromFocus();
+  setStatus(statusMessage, "ok", statusMeta);
+}
+
+async function setFocusedLine(lineKey, options = {}) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return;
+  }
+
+  closeRouteSelectionPopup();
+
+  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  if (!line) {
+    return;
+  }
+
+  clearStatusPin();
+  resetClearRouteProgressConfirmation();
+
+  if (state.focusedLineKey === normalizedLineKey && !options.forceRefresh) {
+    setUserStatusFromLine(line);
+    await ensureLineHeadwayLoaded(normalizedLineKey, {
+      forceRefresh: false,
+      silent: true
+    });
+    restoreUserStatusFromFocus();
+    return;
+  }
+
+  state.focusedLineKey = normalizedLineKey;
+  setUserStatusFromLine(line);
+  renderLineList();
+  renderMapData();
+  renderProgress();
+
+  setStatus(
+    `Focused on ${lineDisplayName(line)}.`,
+    "ok",
+    "Loading route-linked stops. Other routes stay visible in a dimmed state."
+  );
+
+  const headwayLookupPromise = ensureLineHeadwayLoaded(normalizedLineKey, {
+    forceRefresh: Boolean(options.forceRefresh),
+    silent: true
+  });
+
+  await ensureLineStopsLoaded(normalizedLineKey, {
+    forceRefresh: Boolean(options.forceRefresh),
+    silent: false
+  });
+
+  await headwayLookupPromise;
+
+  renderMapData();
+  renderProgress();
+}
+
+function applyLineVisibilityPreference(line, targetVisibility) {
+  const lineKey = String(line?.lineKey || "").trim();
+  if (!lineKey) {
+    return;
+  }
+
+  const normalizedTarget = targetVisibility === "on" || targetVisibility === "off" ? targetVisibility : "";
+  const nextOverride = normalizedTarget;
+
+  setLineVisibilityOverride(lineKey, nextOverride);
+  clearStatusPin();
+  resetClearRouteProgressConfirmation();
+
+  const shown = getShownLines({ ignoreSearch: true });
+  if (state.focusedLineKey && !shown.some((entry) => entry.lineKey === state.focusedLineKey)) {
+    state.focusedLineKey = "";
+  }
+
+  refreshUiFromState();
+  restoreUserStatusFromFocus();
+
+  const effectiveVisible = lineIsVisible(line);
+  const sourceLabel =
+    nextOverride === "on"
+      ? "Forced ON override"
+      : nextOverride === "off"
+        ? "Forced OFF override"
+        : "Default mode/frequency behavior";
+
+  setStatus(
+    `${lineDisplayName(line)} visibility ${effectiveVisible ? "ON" : "OFF"}.`,
+    "ok",
+    sourceLabel
+  );
+}
+
+function renderLineList() {
+  els.lineList.innerHTML = "";
+
+  const query = String(state.lineSearchQuery || "").trim().toLowerCase();
+  const hasQuery = Boolean(query);
+  const visibleLines = getShownLines({ ignoreSearch: true });
+  const routeListLines = getRouteListLines();
+  const overrideCount = routeListLines.filter((line) => Boolean(lineVisibilityOverride(line.lineKey))).length;
+
+  if (els.routeListSummary) {
+    if (hasQuery) {
+      els.routeListSummary.textContent =
+        overrideCount > 0
+          ? `Search results (${routeListLines.length}, ${overrideCount} overrides)`
+          : `Search results (${routeListLines.length})`;
+    } else {
+      els.routeListSummary.textContent =
+        overrideCount > 0
+          ? `Filtered routes (${visibleLines.length} visible, ${overrideCount} overrides)`
+          : `Filtered routes (${visibleLines.length} visible)`;
+    }
+  }
+
+  if (els.routeListDropdown && hasQuery && routeListLines.length > 0) {
+    els.routeListDropdown.open = true;
+  }
+
+  if (!state.lineSummaries.length) {
+    const empty = document.createElement("p");
+    empty.className = "microcopy";
+    empty.textContent = "Routes appear here once nearby areas are loaded.";
+    els.lineList.append(empty);
+    return;
+  }
+
+  if (!routeListLines.length) {
+    const empty = document.createElement("p");
+    empty.className = "microcopy";
+    empty.textContent = hasQuery
+      ? "No loaded routes match this search yet. Pan/zoom to load more nearby routes."
+      : "No routes are visible. Adjust filters or search for a route and set it ON.";
+    els.lineList.append(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+
+  routeListLines.forEach((line) => {
+    const row = document.createElement("div");
+    row.className = "line-item";
+
+    const focused = state.focusedLineKey && state.focusedLineKey === line.lineKey;
+    const faded = state.focusedLineKey && state.focusedLineKey !== line.lineKey;
+    const override = lineVisibilityOverride(line.lineKey);
+    const visible = lineIsVisible(line);
+
+    if (focused) {
+      row.classList.add("is-focused");
+    }
+    if (faded) {
+      row.classList.add("is-faded");
+    }
+    if (!visible) {
+      row.classList.add("is-hidden");
+    }
+    if (override === "on") {
+      row.classList.add("is-manual-on");
+    }
+    if (override === "off") {
+      row.classList.add("is-manual-off");
+    }
+
+    const focusButton = document.createElement("button");
+    focusButton.type = "button";
+    focusButton.className = "line-item-focus";
+    focusButton.disabled = !visible;
+    focusButton.title = visible ? "Focus this route on the map" : "Set route visibility to ON to focus it";
+
+    const dot = document.createElement("span");
+    dot.className = "line-color-dot";
+    dot.style.backgroundColor = line.color;
+
+    const labelBlock = document.createElement("div");
+
+    const name = document.createElement("p");
+    name.className = "line-name";
+    name.textContent = lineDisplayName(line);
+
+    const meta = document.createElement("p");
+    meta.className = "line-meta";
+    meta.textContent = `${lineMode(line)} - ${lineOperatorLabel(line)} - ${lineHeadwayLabel(line)}`;
+
+    if (override === "on" || override === "off") {
+      meta.textContent = `${meta.textContent} - Manual ${override.toUpperCase()}`;
+    }
+
+    if (!visible && !override) {
+      meta.textContent = `${meta.textContent} - Hidden by filters`;
+    }
+
+    labelBlock.append(name, meta);
+
+    focusButton.append(dot, labelBlock);
+
+    focusButton.addEventListener("click", () => {
+      setFocusedLine(line.lineKey).catch((error) => {
+        setStatus(error.message, "error");
+      });
+    });
+
+    const sideStack = document.createElement("div");
+    sideStack.className = "line-side-stack";
+
+    const sideTop = document.createElement("div");
+    sideTop.className = "line-side-top";
+
+    const routeStopsCacheEntry = state.lineStopsCache.get(routeStopCacheKey(line.lineKey));
+    const routeStopsLoaded = Boolean(routeStopsCacheEntry);
+    const routeStopsCount = Number(routeStopsCacheEntry?.payload?.stopsGeoJson?.features?.length || 0);
+    const routeStopsLoading = state.inFlightLineStopKeys.has(routeStopCacheKey(line.lineKey));
+
+    if (routeStopsLoaded) {
+      const stopCount = document.createElement("span");
+      stopCount.className = "line-stop-count";
+      stopCount.textContent = `${routeStopsCount} stops`;
+      sideTop.append(stopCount);
+    } else if (routeStopsLoading) {
+      const loading = document.createElement("span");
+      loading.className = "line-stop-count";
+      loading.textContent = "Loading stops...";
+      sideTop.append(loading);
+    } else {
+      const loadStopsBtn = document.createElement("button");
+      loadStopsBtn.type = "button";
+      loadStopsBtn.className = "line-stop-load-btn";
+      loadStopsBtn.textContent = "Load stops";
+
+      loadStopsBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        ensureLineStopsLoaded(line.lineKey, {
+          forceRefresh: false,
+          silent: false
+        }).catch((error) => {
+          setStatus(error.message, "error");
+        });
+      });
+
+      sideTop.append(loadStopsBtn);
+    }
+
+    const controls = document.createElement("div");
+    controls.className = "line-visibility-controls";
+
+    const onButton = document.createElement("button");
+    onButton.type = "button";
+    onButton.className = "line-visibility-btn is-on";
+    onButton.textContent = "ON";
+
+    const defaultButton = document.createElement("button");
+    defaultButton.type = "button";
+    defaultButton.className = "line-visibility-btn is-default";
+    defaultButton.textContent = "-";
+
+    const offButton = document.createElement("button");
+    offButton.type = "button";
+    offButton.className = "line-visibility-btn is-off";
+    offButton.textContent = "OFF";
+
+    if (override === "on") {
+      onButton.classList.add("is-active");
+    } else if (override === "off") {
+      offButton.classList.add("is-active");
+    } else {
+      defaultButton.classList.add("is-active");
+    }
+
+    if (override === "on") {
+      onButton.classList.add("is-manual");
+    }
+    if (override === "off") {
+      offButton.classList.add("is-manual");
+    }
+
+    onButton.setAttribute("aria-pressed", override === "on" ? "true" : "false");
+    defaultButton.setAttribute("aria-pressed", !override ? "true" : "false");
+    offButton.setAttribute("aria-pressed", override === "off" ? "true" : "false");
+
+    onButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      applyLineVisibilityPreference(line, "on");
+    });
+
+    defaultButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      applyLineVisibilityPreference(line, "");
+    });
+
+    offButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      applyLineVisibilityPreference(line, "off");
+    });
+
+    controls.append(onButton, defaultButton, offButton);
+
+    sideStack.append(sideTop, controls);
+
+    row.append(focusButton, sideStack);
+
+    fragment.append(row);
+  });
+
+  els.lineList.append(fragment);
+}
+
+function refreshUiFromState() {
+  renderModeFilterBar();
+  renderFrequencyFilterBar();
+  renderLineList();
+  renderMapData();
+  renderProgress();
+}
+

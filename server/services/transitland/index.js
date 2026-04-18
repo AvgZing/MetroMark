@@ -1,9 +1,8 @@
-module.exports = require("./services/transitland");
-const config = require("./config");
-const db = require("./db");
+const config = require("../../config");
+const db = require("../../db");
 const { VectorTile } = require("@mapbox/vector-tile");
 const Pbf = require("pbf").default;
-const { getCityBySlug } = require("./city-presets");
+const { getCityBySlug } = require("../../city-presets");
 const {
   normalizeName,
   stableStationKey,
@@ -12,22 +11,14 @@ const {
   nearestPointOnGeometry,
   geometryBbox,
   pointInExpandedBbox
-} = require("./spatial");
-
-const TRANSITLAND_BASE_URL = "https://transit.land/api/v2/rest";
-const TRANSITLAND_VECTOR_BASE_URL = "https://transit.land/api/v2/tiles";
-const TRANSIT_CACHE_PREFIX = "transit-v4:";
-const transitlandMetrics = {
-  restApiRequestCount: 0,
-  restApiRequestFailureCount: 0,
-  vectorTileRequestCount: 0,
-  vectorTileRequestFailureCount: 0,
-  routingApiRequestCount: 0,
-  routingApiRequestFailureCount: 0,
-  lastRestRequestAt: "",
-  lastVectorTileRequestAt: "",
-  lastRoutingRequestAt: ""
-};
+} = require("../../spatial");
+const {
+  TRANSITLAND_BASE_URL,
+  TRANSITLAND_VECTOR_BASE_URL,
+  TRANSIT_CACHE_PREFIX,
+  transitlandMetrics,
+  getTransitlandMetrics: readTransitlandMetrics
+} = require("./metrics");
 
 const fallbackColors = [
   "#3f7cff",
@@ -181,9 +172,7 @@ function normalizeRouteTypes(rawValue) {
 }
 
 function getTransitlandMetrics() {
-  return {
-    ...transitlandMetrics
-  };
+  return readTransitlandMetrics();
 }
 
 function parseBboxArray(rawBbox) {
@@ -793,10 +782,6 @@ function routeServiceTier(routeType) {
   }
 
   return "other";
-}
-
-function routeFrequencyBucket(routeType) {
-  return "unknown";
 }
 
 function routeSortWeight(routeType) {
