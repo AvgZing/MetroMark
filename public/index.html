@@ -109,25 +109,33 @@
         <details class="panel panel-dropdown status-panel" id="advancedInfoPanel" open>
           <summary class="panel-summary"><span class="panel-summary-label">Advanced Information</span></summary>
           <div class="panel-dropdown-body">
-            <p id="statusText">Initializing map and API...</p>
-            <p id="statusMeta" class="microcopy"></p>
-            <p id="backendStatusText" class="backend-note"></p>
-            <p id="apiRequestCounter" class="backend-note"></p>
-            <p id="apiRequestCounterDetail" class="backend-note"></p>
-            <p class="backend-note legal-link-row">
-              <a href="https://www.transit.land/terms" target="_blank" rel="noopener noreferrer"
-                >Transitland Terms of Service and Data Attributions</a
-              >
-            </p>
-            <p class="backend-note legal-note">
-              Disclaimer: This is an in-development hobby app, with development help from AI. All services are
-              subject to change, do not store sensitive data on this website.
-            </p>
-            <p class="backend-note legal-note">
-              Copyright &copy; <script>document.write(new Date().getFullYear())</script> MetroMark by Zing. All Rights
-              Reserved.
-            </p>
-            <button id="clearSessionCacheBtn" class="btn btn-subtle" type="button">Clear Local Cache</button>
+            <div class="advanced-section">
+              <p id="statusText">Initializing map and API...</p>
+              <p id="statusMeta" class="microcopy"></p>
+            </div>
+            <div class="advanced-section">
+              <p id="backendStatusText" class="backend-note"></p>
+              <p id="apiRequestCounter" class="backend-note"></p>
+              <p id="apiRequestCounterDetail" class="backend-note"></p>
+            </div>
+            <div class="advanced-section">
+              <p class="backend-note legal-link-row">
+                <a href="https://www.transit.land/terms" target="_blank" rel="noopener noreferrer"
+                  >Transitland Terms of Service and Data Attributions</a
+                >
+              </p>
+              <p class="backend-note legal-note">
+                Disclaimer: This is an in-development hobby app, with development help from AI. All services are
+                subject to change, do not store sensitive data on this website.
+              </p>
+              <p class="backend-note legal-note">
+                Copyright &copy; <script>document.write(new Date().getFullYear())</script> MetroMark by Zing. All Rights
+                Reserved.
+              </p>
+            </div>
+            <div class="advanced-section">
+              <button id="clearSessionCacheBtn" class="btn btn-subtle" type="button">Clear Local Cache</button>
+            </div>
           </div>
         </details>
       </aside>

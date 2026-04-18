@@ -135,6 +135,8 @@ const state = {
   lineStopsCache: new Map(),
   inFlightLineStopKeys: new Set(),
   inFlightHeadwayLineKeys: new Set(),
+  routeVisibilityProgressByLine: new Map(),
+  routeVisibilityAnimationFrameId: 0,
   requestedAreaKeys: new Set(),
   visibleAreaKeys: new Set(),
   activeAreaKeys: new Set(),
@@ -1649,6 +1651,12 @@ function syncActiveAreaKeys(options = {}) {
 }
 
 function resetViewAggregation() {
+  if (state.routeVisibilityAnimationFrameId) {
+    window.cancelAnimationFrame(state.routeVisibilityAnimationFrameId);
+    state.routeVisibilityAnimationFrameId = 0;
+  }
+  state.routeVisibilityProgressByLine.clear();
+
   state.loadEpoch += 1;
   state.requestedAreaKeys = new Set();
   state.visibleAreaKeys = new Set();
@@ -1668,6 +1676,7 @@ function resetViewAggregation() {
 
 function rebuildCombinedTransit() {
   if (state.activeAreaKeys.size === 0) {
+    state.routeVisibilityProgressByLine.clear();
     state.transit = null;
     state.lineSummaries = [];
     state.focusedLineKey = "";
@@ -1925,6 +1934,53 @@ function getVisibleLineKeys(shownLines) {
   return new Set(shownLines.map((line) => line.lineKey));
 }
 
+function pruneRouteVisibilityProgress(validLineKeys) {
+  for (const lineKey of state.routeVisibilityProgressByLine.keys()) {
+    if (!validLineKeys.has(lineKey)) {
+      state.routeVisibilityProgressByLine.delete(lineKey);
+    }
+  }
+}
+
+function visibilityProgressForLine(lineKey, targetVisible) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return {
+      progress: targetVisible ? 1 : 0,
+      needsAnimation: false
+    };
+  }
+
+  const target = targetVisible ? 1 : 0;
+  const existing = Number(state.routeVisibilityProgressByLine.get(normalizedLineKey));
+  const current = Number.isFinite(existing) ? clamp(existing, 0, 1) : targetVisible ? 0 : 0;
+
+  let next = current;
+  if (Math.abs(target - current) <= 0.015) {
+    next = target;
+  } else {
+    next = Number((current + (target - current) * 0.26).toFixed(4));
+  }
+
+  state.routeVisibilityProgressByLine.set(normalizedLineKey, next);
+
+  return {
+    progress: next,
+    needsAnimation: next !== target
+  };
+}
+
+function scheduleRouteVisibilityAnimationFrame() {
+  if (state.routeVisibilityAnimationFrameId) {
+    return;
+  }
+
+  state.routeVisibilityAnimationFrameId = window.requestAnimationFrame(() => {
+    state.routeVisibilityAnimationFrameId = 0;
+    renderMapData();
+  });
+}
+
 function getVisitedSetForLine(lineKey) {
   const set = state.visitedByLine.get(lineKey);
   if (set) {
@@ -1940,37 +1996,47 @@ function getFilteredData() {
     return {
       routes: emptyFeatureCollection(),
       stops: emptyFeatureCollection(),
-      shownLines: []
+      shownLines: [],
+      needsAnimation: false
     };
   }
 
   const shownLines = getShownLines();
   const visibleLineKeys = getVisibleLineKeys(shownLines);
   const allowedStopTypes = new Set(ROUTE_STOP_TYPES);
-
-  if (visibleLineKeys.size === 0) {
-    return {
-      routes: emptyFeatureCollection(),
-      stops: emptyFeatureCollection(),
-      shownLines
-    };
-  }
-
-  const hasFocus = Boolean(state.focusedLineKey);
+  const hasFocus = Boolean(state.focusedLineKey) && visibleLineKeys.has(state.focusedLineKey);
+  const allRouteLineKeys = new Set();
+  let needsAnimation = false;
 
   const routes = state.transit.routesGeoJson.features
-    .filter((feature) => visibleLineKeys.has(feature.properties.line_key))
     .map((feature) => {
-      const focused = !hasFocus || feature.properties.line_key === state.focusedLineKey ? 1 : 0;
+      const lineKey = String(feature?.properties?.line_key || "").trim();
+      if (lineKey) {
+        allRouteLineKeys.add(lineKey);
+      }
+
+      const targetVisible = visibleLineKeys.has(lineKey);
+      const visibility = visibilityProgressForLine(lineKey, targetVisible);
+      if (visibility.needsAnimation) {
+        needsAnimation = true;
+      }
+
+      const focused = targetVisible && (!hasFocus || lineKey === state.focusedLineKey) ? 1 : 0;
+      const interactive = targetVisible && visibility.progress > 0.2 ? 1 : 0;
+
       return {
         ...feature,
         properties: {
           ...feature.properties,
           is_focused: focused,
-          has_focus: hasFocus ? 1 : 0
+          has_focus: hasFocus ? 1 : 0,
+          is_interactive: interactive,
+          visibility_progress: Number(visibility.progress.toFixed(3))
         }
       };
     });
+
+  pruneRouteVisibilityProgress(allRouteLineKeys);
 
   const stopSource = hasFocus
     ? state.transit.stopsGeoJson.features.filter(
@@ -2008,7 +2074,8 @@ function getFilteredData() {
       type: "FeatureCollection",
       features: stops
     },
-    shownLines
+    shownLines,
+    needsAnimation
   };
 }
 
@@ -2030,6 +2097,10 @@ function renderMapData() {
   }
   if (focusMaskSource) {
     focusMaskSource.setData(focusMaskFeatureCollection(Boolean(state.focusedLineKey)));
+  }
+
+  if (filtered.needsAnimation) {
+    scheduleRouteVisibilityAnimationFrame();
   }
 }
 
@@ -2620,10 +2691,8 @@ function applyLineVisibilityPreference(line, targetVisibility) {
     return;
   }
 
-  const normalizedTarget =
-    targetVisibility === "on" || targetVisibility === "off" ? targetVisibility : "";
-  const currentOverride = lineVisibilityOverride(lineKey);
-  const nextOverride = currentOverride === normalizedTarget ? "" : normalizedTarget;
+  const normalizedTarget = targetVisibility === "on" || targetVisibility === "off" ? targetVisibility : "";
+  const nextOverride = normalizedTarget;
 
   setLineVisibilityOverride(lineKey, nextOverride);
   clearStatusPin();
@@ -2638,9 +2707,12 @@ function applyLineVisibilityPreference(line, targetVisibility) {
   restoreUserStatusFromFocus();
 
   const effectiveVisible = lineIsVisible(line);
-  const sourceLabel = nextOverride
-    ? `Manual ${nextOverride.toUpperCase()} override`
-    : "Auto visibility (mode/frequency filters)";
+  const sourceLabel =
+    nextOverride === "on"
+      ? "Forced ON override"
+      : nextOverride === "off"
+        ? "Forced OFF override"
+        : "Default mode/frequency behavior";
 
   setStatus(
     `${lineDisplayName(line)} visibility ${effectiveVisible ? "ON" : "OFF"}.`,
@@ -2687,10 +2759,9 @@ function renderLineList() {
 
   const fragment = document.createDocumentFragment();
 
-  routeListLines.forEach((line, index) => {
+  routeListLines.forEach((line) => {
     const row = document.createElement("div");
     row.className = "line-item";
-    row.style.setProperty("--line-enter-delay", `${Math.min(index, 18) * 22}ms`);
 
     const focused = state.focusedLineKey && state.focusedLineKey === line.lineKey;
     const faded = state.focusedLineKey && state.focusedLineKey !== line.lineKey;
@@ -2743,17 +2814,54 @@ function renderLineList() {
 
     labelBlock.append(name, meta);
 
-    const stopCount = document.createElement("span");
-    stopCount.className = "line-stop-count";
-    stopCount.textContent = Number(line.stopCount || 0) > 0 ? `${line.stopCount} stops` : "Loaded route";
-
-    focusButton.append(dot, labelBlock, stopCount);
+    focusButton.append(dot, labelBlock);
 
     focusButton.addEventListener("click", () => {
       setFocusedLine(line.lineKey).catch((error) => {
         setStatus(error.message, "error");
       });
     });
+
+    const sideStack = document.createElement("div");
+    sideStack.className = "line-side-stack";
+
+    const sideTop = document.createElement("div");
+    sideTop.className = "line-side-top";
+
+    const routeStopsCacheEntry = state.lineStopsCache.get(routeStopCacheKey(line.lineKey));
+    const routeStopsLoaded = Boolean(routeStopsCacheEntry);
+    const routeStopsCount = Number(routeStopsCacheEntry?.payload?.stopsGeoJson?.features?.length || 0);
+    const routeStopsLoading = state.inFlightLineStopKeys.has(routeStopCacheKey(line.lineKey));
+
+    if (routeStopsLoaded) {
+      const stopCount = document.createElement("span");
+      stopCount.className = "line-stop-count";
+      stopCount.textContent = `${routeStopsCount} stops`;
+      sideTop.append(stopCount);
+    } else if (routeStopsLoading) {
+      const loading = document.createElement("span");
+      loading.className = "line-stop-count";
+      loading.textContent = "Loading stops...";
+      sideTop.append(loading);
+    } else {
+      const loadStopsBtn = document.createElement("button");
+      loadStopsBtn.type = "button";
+      loadStopsBtn.className = "line-stop-load-btn";
+      loadStopsBtn.textContent = "Load stops";
+
+      loadStopsBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        ensureLineStopsLoaded(line.lineKey, {
+          forceRefresh: false,
+          silent: false
+        }).catch((error) => {
+          setStatus(error.message, "error");
+        });
+      });
+
+      sideTop.append(loadStopsBtn);
+    }
 
     const controls = document.createElement("div");
     controls.className = "line-visibility-controls";
@@ -2763,15 +2871,22 @@ function renderLineList() {
     onButton.className = "line-visibility-btn is-on";
     onButton.textContent = "ON";
 
+    const defaultButton = document.createElement("button");
+    defaultButton.type = "button";
+    defaultButton.className = "line-visibility-btn is-default";
+    defaultButton.textContent = "-";
+
     const offButton = document.createElement("button");
     offButton.type = "button";
     offButton.className = "line-visibility-btn is-off";
     offButton.textContent = "OFF";
 
-    if (visible) {
+    if (override === "on") {
       onButton.classList.add("is-active");
-    } else {
+    } else if (override === "off") {
       offButton.classList.add("is-active");
+    } else {
+      defaultButton.classList.add("is-active");
     }
 
     if (override === "on") {
@@ -2781,13 +2896,20 @@ function renderLineList() {
       offButton.classList.add("is-manual");
     }
 
-    onButton.setAttribute("aria-pressed", visible ? "true" : "false");
-    offButton.setAttribute("aria-pressed", visible ? "false" : "true");
+    onButton.setAttribute("aria-pressed", override === "on" ? "true" : "false");
+    defaultButton.setAttribute("aria-pressed", !override ? "true" : "false");
+    offButton.setAttribute("aria-pressed", override === "off" ? "true" : "false");
 
     onButton.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       applyLineVisibilityPreference(line, "on");
+    });
+
+    defaultButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      applyLineVisibilityPreference(line, "");
     });
 
     offButton.addEventListener("click", (event) => {
@@ -2796,9 +2918,11 @@ function renderLineList() {
       applyLineVisibilityPreference(line, "off");
     });
 
-    controls.append(onButton, offButton);
+    controls.append(onButton, defaultButton, offButton);
 
-    row.append(focusButton, controls);
+    sideStack.append(sideTop, controls);
+
+    row.append(focusButton, sideStack);
 
     fragment.append(row);
   });
@@ -3426,7 +3550,7 @@ function onRouteHoverMove(event) {
   const uniqueLines = new Map();
   for (const feature of features || []) {
     const line = lineFromRouteFeature(feature);
-    if (!line || uniqueLines.has(line.lineKey)) {
+    if (!line || !lineIsVisible(line) || uniqueLines.has(line.lineKey)) {
       continue;
     }
     uniqueLines.set(line.lineKey, line);
@@ -3515,7 +3639,11 @@ function initializeMap() {
       id: "routes-background-casing",
       type: "line",
       source: "routes",
-      filter: ["==", ["get", "is_focused"], 0],
+      filter: [
+        "all",
+        ["==", ["get", "is_focused"], 0],
+        [">", ["coalesce", ["to-number", ["get", "visibility_progress"]], 0], 0.02]
+      ],
       paint: {
         "line-color": "#111920",
         "line-width": [
@@ -3541,7 +3669,11 @@ function initializeMap() {
       id: "routes-background-main",
       type: "line",
       source: "routes",
-      filter: ["==", ["get", "is_focused"], 0],
+      filter: [
+        "all",
+        ["==", ["get", "is_focused"], 0],
+        [">", ["coalesce", ["to-number", ["get", "visibility_progress"]], 0], 0.02]
+      ],
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
         "line-width": [
@@ -3559,7 +3691,11 @@ function initializeMap() {
           12,
           2.4
         ],
-        "line-opacity": 0.9
+        "line-opacity": [
+          "*",
+          0.9,
+          ["coalesce", ["to-number", ["get", "visibility_progress"]], 1]
+        ]
       }
     });
 
@@ -3577,7 +3713,11 @@ function initializeMap() {
       id: "routes-casing",
       type: "line",
       source: "routes",
-      filter: ["==", ["get", "is_focused"], 1],
+      filter: [
+        "all",
+        ["==", ["get", "is_focused"], 1],
+        [">", ["coalesce", ["to-number", ["get", "visibility_progress"]], 0], 0.02]
+      ],
       paint: {
         "line-color": "#0f1b22",
         "line-width": [
@@ -3595,7 +3735,11 @@ function initializeMap() {
           12,
           5.2
         ],
-        "line-opacity": 0.38
+        "line-opacity": [
+          "*",
+          0.38,
+          ["coalesce", ["to-number", ["get", "visibility_progress"]], 1]
+        ]
       }
     });
 
@@ -3603,7 +3747,11 @@ function initializeMap() {
       id: "routes-main",
       type: "line",
       source: "routes",
-      filter: ["==", ["get", "is_focused"], 1],
+      filter: [
+        "all",
+        ["==", ["get", "is_focused"], 1],
+        [">", ["coalesce", ["to-number", ["get", "visibility_progress"]], 0], 0.02]
+      ],
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
         "line-width": [
@@ -3621,7 +3769,11 @@ function initializeMap() {
           12,
           3.6
         ],
-        "line-opacity": 0.96
+        "line-opacity": [
+          "*",
+          0.96,
+          ["coalesce", ["to-number", ["get", "visibility_progress"]], 1]
+        ]
       }
     });
 
@@ -3683,7 +3835,7 @@ function initializeMap() {
         for (const hit of routeHits || []) {
           const line = lineFromRouteFeature(hit);
           const candidateLineKey = String(line?.lineKey || "").trim();
-          if (!line || !candidateLineKey || seenLineKeys.has(candidateLineKey)) {
+          if (!line || !lineIsVisible(line) || !candidateLineKey || seenLineKeys.has(candidateLineKey)) {
             continue;
           }
 
@@ -3837,45 +3989,6 @@ function waitForMapReady() {
 
 function bindEvents() {
   els.themeToggleBtn.addEventListener("click", toggleTheme);
-
-  const guardedPanelIds = ["routesPanel", "progressPanel", "advancedInfoPanel"];
-  for (const panelId of guardedPanelIds) {
-    const panel = document.getElementById(panelId);
-    if (!(panel instanceof HTMLDetailsElement)) {
-      continue;
-    }
-
-    const summary = panel.querySelector(".panel-summary");
-    let closeArmUntil = 0;
-
-    panel.addEventListener("toggle", () => {
-      if (panel.open) {
-        return;
-      }
-
-      const now = Date.now();
-      if (now > closeArmUntil) {
-        closeArmUntil = now + 1800;
-        panel.open = true;
-
-        if (summary) {
-          summary.classList.add("collapse-armed");
-          window.setTimeout(() => {
-            if (Date.now() >= closeArmUntil) {
-              summary.classList.remove("collapse-armed");
-            }
-          }, 1900);
-        }
-
-        return;
-      }
-
-      closeArmUntil = 0;
-      if (summary) {
-        summary.classList.remove("collapse-armed");
-      }
-    });
-  }
 
   if (els.mobileDrawerTab) {
     els.mobileDrawerTab.addEventListener("click", () => {
