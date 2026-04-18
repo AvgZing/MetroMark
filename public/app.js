@@ -135,8 +135,6 @@ const state = {
   lineStopsCache: new Map(),
   inFlightLineStopKeys: new Set(),
   inFlightHeadwayLineKeys: new Set(),
-  routeVisibilityProgressByLine: new Map(),
-  routeVisibilityAnimationFrameId: 0,
   requestedAreaKeys: new Set(),
   visibleAreaKeys: new Set(),
   activeAreaKeys: new Set(),
@@ -1132,8 +1130,8 @@ function restoreUserStatusFromFocus() {
     setUserStatus("No route selected.", "Select a route or station.", {
       details: [
         {
-          label: "Visible routes",
-          value: `${shownLines.length} matching current filters`
+          label: "Visible Routes",
+          value: `${shownLines.length} Matching Current Filters`
         }
       ],
       feedback: ""
@@ -1617,6 +1615,7 @@ function pruneLineStopsCache() {
 function syncActiveAreaKeys(options = {}) {
   const now = Date.now();
   const retainedVisibleKeys = options.retainVisibleKeys || null;
+  const allowRetainOutsideRequested = Boolean(options.allowRetainOutsideRequested);
 
   state.activeAreaKeys = new Set(state.areaCache.keys());
   state.visibleAreaKeys = new Set();
@@ -1633,13 +1632,19 @@ function syncActiveAreaKeys(options = {}) {
 
   if (retainedVisibleKeys instanceof Set && options.mergeRetainedVisibleKeys) {
     for (const key of retainedVisibleKeys) {
-      if (state.areaCache.has(key) && state.requestedAreaKeys.has(key)) {
+      if (!state.areaCache.has(key)) {
+        continue;
+      }
+      if (allowRetainOutsideRequested || state.requestedAreaKeys.has(key)) {
         state.visibleAreaKeys.add(key);
       }
     }
   } else if (state.visibleAreaKeys.size === 0 && retainedVisibleKeys instanceof Set) {
     for (const key of retainedVisibleKeys) {
-      if (state.areaCache.has(key) && state.requestedAreaKeys.has(key)) {
+      if (!state.areaCache.has(key)) {
+        continue;
+      }
+      if (allowRetainOutsideRequested || state.requestedAreaKeys.has(key)) {
         state.visibleAreaKeys.add(key);
       }
     }
@@ -1651,12 +1656,6 @@ function syncActiveAreaKeys(options = {}) {
 }
 
 function resetViewAggregation() {
-  if (state.routeVisibilityAnimationFrameId) {
-    window.cancelAnimationFrame(state.routeVisibilityAnimationFrameId);
-    state.routeVisibilityAnimationFrameId = 0;
-  }
-  state.routeVisibilityProgressByLine.clear();
-
   state.loadEpoch += 1;
   state.requestedAreaKeys = new Set();
   state.visibleAreaKeys = new Set();
@@ -1676,7 +1675,6 @@ function resetViewAggregation() {
 
 function rebuildCombinedTransit() {
   if (state.activeAreaKeys.size === 0) {
-    state.routeVisibilityProgressByLine.clear();
     state.transit = null;
     state.lineSummaries = [];
     state.focusedLineKey = "";
@@ -1817,6 +1815,13 @@ function rebuildCombinedTransit() {
         ? new Set(Array.from(lineByKeyAll.keys()))
         : new Set();
 
+  for (const [lineKey, override] of state.manualLineVisibility.entries()) {
+    const normalizedOverride = String(override || "").trim().toLowerCase();
+    if ((normalizedOverride === "on" || normalizedOverride === "off") && lineByKeyAll.has(lineKey)) {
+      effectiveVisibleLineKeys.add(lineKey);
+    }
+  }
+
   const lineSummaries = Array.from(effectiveVisibleLineKeys)
     .map((lineKey) => {
       const line = lineByKeyAll.get(lineKey);
@@ -1934,53 +1939,6 @@ function getVisibleLineKeys(shownLines) {
   return new Set(shownLines.map((line) => line.lineKey));
 }
 
-function pruneRouteVisibilityProgress(validLineKeys) {
-  for (const lineKey of state.routeVisibilityProgressByLine.keys()) {
-    if (!validLineKeys.has(lineKey)) {
-      state.routeVisibilityProgressByLine.delete(lineKey);
-    }
-  }
-}
-
-function visibilityProgressForLine(lineKey, targetVisible) {
-  const normalizedLineKey = String(lineKey || "").trim();
-  if (!normalizedLineKey) {
-    return {
-      progress: targetVisible ? 1 : 0,
-      needsAnimation: false
-    };
-  }
-
-  const target = targetVisible ? 1 : 0;
-  const existing = Number(state.routeVisibilityProgressByLine.get(normalizedLineKey));
-  const current = Number.isFinite(existing) ? clamp(existing, 0, 1) : targetVisible ? 0 : 0;
-
-  let next = current;
-  if (Math.abs(target - current) <= 0.015) {
-    next = target;
-  } else {
-    next = Number((current + (target - current) * 0.26).toFixed(4));
-  }
-
-  state.routeVisibilityProgressByLine.set(normalizedLineKey, next);
-
-  return {
-    progress: next,
-    needsAnimation: next !== target
-  };
-}
-
-function scheduleRouteVisibilityAnimationFrame() {
-  if (state.routeVisibilityAnimationFrameId) {
-    return;
-  }
-
-  state.routeVisibilityAnimationFrameId = window.requestAnimationFrame(() => {
-    state.routeVisibilityAnimationFrameId = 0;
-    renderMapData();
-  });
-}
-
 function getVisitedSetForLine(lineKey) {
   const set = state.visitedByLine.get(lineKey);
   if (set) {
@@ -1996,8 +1954,7 @@ function getFilteredData() {
     return {
       routes: emptyFeatureCollection(),
       stops: emptyFeatureCollection(),
-      shownLines: [],
-      needsAnimation: false
+      shownLines: []
     };
   }
 
@@ -2005,24 +1962,13 @@ function getFilteredData() {
   const visibleLineKeys = getVisibleLineKeys(shownLines);
   const allowedStopTypes = new Set(ROUTE_STOP_TYPES);
   const hasFocus = Boolean(state.focusedLineKey) && visibleLineKeys.has(state.focusedLineKey);
-  const allRouteLineKeys = new Set();
-  let needsAnimation = false;
 
   const routes = state.transit.routesGeoJson.features
     .map((feature) => {
       const lineKey = String(feature?.properties?.line_key || "").trim();
-      if (lineKey) {
-        allRouteLineKeys.add(lineKey);
-      }
-
       const targetVisible = visibleLineKeys.has(lineKey);
-      const visibility = visibilityProgressForLine(lineKey, targetVisible);
-      if (visibility.needsAnimation) {
-        needsAnimation = true;
-      }
-
       const focused = targetVisible && (!hasFocus || lineKey === state.focusedLineKey) ? 1 : 0;
-      const interactive = targetVisible && visibility.progress > 0.2 ? 1 : 0;
+      const interactive = targetVisible ? 1 : 0;
 
       return {
         ...feature,
@@ -2031,12 +1977,10 @@ function getFilteredData() {
           is_focused: focused,
           has_focus: hasFocus ? 1 : 0,
           is_interactive: interactive,
-          visibility_progress: Number(visibility.progress.toFixed(3))
+          is_visible: targetVisible ? 1 : 0
         }
       };
     });
-
-  pruneRouteVisibilityProgress(allRouteLineKeys);
 
   const stopSource = hasFocus
     ? state.transit.stopsGeoJson.features.filter(
@@ -2074,8 +2018,7 @@ function getFilteredData() {
       type: "FeatureCollection",
       features: stops
     },
-    shownLines,
-    needsAnimation
+    shownLines
   };
 }
 
@@ -2097,10 +2040,6 @@ function renderMapData() {
   }
   if (focusMaskSource) {
     focusMaskSource.setData(focusMaskFeatureCollection(Boolean(state.focusedLineKey)));
-  }
-
-  if (filtered.needsAnimation) {
-    scheduleRouteVisibilityAnimationFrame();
   }
 }
 
@@ -2728,11 +2667,20 @@ function renderLineList() {
   const hasQuery = Boolean(query);
   const visibleLines = getShownLines({ ignoreSearch: true });
   const routeListLines = getRouteListLines();
+  const overrideCount = routeListLines.filter((line) => Boolean(lineVisibilityOverride(line.lineKey))).length;
 
   if (els.routeListSummary) {
-    els.routeListSummary.textContent = hasQuery
-      ? `Search results (${routeListLines.length}/${state.lineSummaries.length})`
-      : `Filtered routes (${visibleLines.length} visible, ${routeListLines.length} listed)`;
+    if (hasQuery) {
+      els.routeListSummary.textContent =
+        overrideCount > 0
+          ? `Search results (${routeListLines.length}, ${overrideCount} overrides)`
+          : `Search results (${routeListLines.length})`;
+    } else {
+      els.routeListSummary.textContent =
+        overrideCount > 0
+          ? `Filtered routes (${visibleLines.length} visible, ${overrideCount} overrides)`
+          : `Filtered routes (${visibleLines.length} visible)`;
+    }
   }
 
   if (els.routeListDropdown && hasQuery && routeListLines.length > 0) {
@@ -3213,6 +3161,7 @@ async function loadVisibleTransit(options = {}) {
   syncActiveAreaKeys({
     retainVisibleKeys: previousVisibleKeys,
     mergeRetainedVisibleKeys: missingRequests.length > 0,
+    allowRetainOutsideRequested: missingRequests.length > 0,
     fallbackToAllCached: false
   });
   rebuildCombinedTransit();
@@ -3639,11 +3588,7 @@ function initializeMap() {
       id: "routes-background-casing",
       type: "line",
       source: "routes",
-      filter: [
-        "all",
-        ["==", ["get", "is_focused"], 0],
-        [">", ["coalesce", ["to-number", ["get", "visibility_progress"]], 0], 0.02]
-      ],
+      filter: ["==", ["get", "is_focused"], 0],
       paint: {
         "line-color": "#111920",
         "line-width": [
@@ -3661,7 +3606,19 @@ function initializeMap() {
           12,
           4.3
         ],
-        "line-opacity": 0
+        "line-opacity": [
+          "interpolate",
+          ["linear"],
+          ["coalesce", ["to-number", ["get", "is_visible"]], 0],
+          0,
+          0,
+          1,
+          0
+        ],
+        "line-opacity-transition": {
+          duration: 220,
+          delay: 0
+        }
       }
     });
 
@@ -3669,11 +3626,7 @@ function initializeMap() {
       id: "routes-background-main",
       type: "line",
       source: "routes",
-      filter: [
-        "all",
-        ["==", ["get", "is_focused"], 0],
-        [">", ["coalesce", ["to-number", ["get", "visibility_progress"]], 0], 0.02]
-      ],
+      filter: ["==", ["get", "is_focused"], 0],
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
         "line-width": [
@@ -3692,10 +3645,18 @@ function initializeMap() {
           2.4
         ],
         "line-opacity": [
-          "*",
-          0.9,
-          ["coalesce", ["to-number", ["get", "visibility_progress"]], 1]
-        ]
+          "interpolate",
+          ["linear"],
+          ["coalesce", ["to-number", ["get", "is_visible"]], 0],
+          0,
+          0,
+          1,
+          0.9
+        ],
+        "line-opacity-transition": {
+          duration: 220,
+          delay: 0
+        }
       }
     });
 
@@ -3713,11 +3674,7 @@ function initializeMap() {
       id: "routes-casing",
       type: "line",
       source: "routes",
-      filter: [
-        "all",
-        ["==", ["get", "is_focused"], 1],
-        [">", ["coalesce", ["to-number", ["get", "visibility_progress"]], 0], 0.02]
-      ],
+      filter: ["==", ["get", "is_focused"], 1],
       paint: {
         "line-color": "#0f1b22",
         "line-width": [
@@ -3736,10 +3693,18 @@ function initializeMap() {
           5.2
         ],
         "line-opacity": [
-          "*",
-          0.38,
-          ["coalesce", ["to-number", ["get", "visibility_progress"]], 1]
-        ]
+          "interpolate",
+          ["linear"],
+          ["coalesce", ["to-number", ["get", "is_visible"]], 0],
+          0,
+          0,
+          1,
+          0.38
+        ],
+        "line-opacity-transition": {
+          duration: 220,
+          delay: 0
+        }
       }
     });
 
@@ -3747,11 +3712,7 @@ function initializeMap() {
       id: "routes-main",
       type: "line",
       source: "routes",
-      filter: [
-        "all",
-        ["==", ["get", "is_focused"], 1],
-        [">", ["coalesce", ["to-number", ["get", "visibility_progress"]], 0], 0.02]
-      ],
+      filter: ["==", ["get", "is_focused"], 1],
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
         "line-width": [
@@ -3770,10 +3731,18 @@ function initializeMap() {
           3.6
         ],
         "line-opacity": [
-          "*",
-          0.96,
-          ["coalesce", ["to-number", ["get", "visibility_progress"]], 1]
-        ]
+          "interpolate",
+          ["linear"],
+          ["coalesce", ["to-number", ["get", "is_visible"]], 0],
+          0,
+          0,
+          1,
+          0.96
+        ],
+        "line-opacity-transition": {
+          duration: 220,
+          delay: 0
+        }
       }
     });
 
