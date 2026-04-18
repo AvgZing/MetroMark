@@ -401,6 +401,21 @@ body[data-theme="dark"] .user-status-card {
   line-height: 1.32;
 }
 
+.user-status-feedback {
+  margin: 5px 0 0;
+  font-size: 11px;
+  line-height: 1.32;
+  color: var(--muted);
+}
+
+.user-status-feedback.ok {
+  color: var(--ok);
+}
+
+.user-status-feedback.error {
+  color: var(--warn);
+}
+
 .user-status-details {
   margin: 8px 0 0;
   display: grid;
@@ -507,6 +522,7 @@ body[data-theme="dark"] .user-status-card {
   background: rgba(255, 255, 255, 0.62);
   overflow-y: auto;
   max-height: min(30vh, 320px);
+  padding-right: 4px;
 }
 
 body[data-theme="dark"] .line-list {
@@ -578,6 +594,47 @@ body[data-theme="dark"] .line-list {
   max-height: calc(100vh - 210px);
   min-height: 180px;
   overflow-y: auto;
+  padding-right: 6px;
+}
+
+.sidebar,
+.line-list,
+.line-progress-list,
+.dropdown-panel {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(23, 124, 162, 0.55) rgba(20, 53, 71, 0.12);
+}
+
+.sidebar::-webkit-scrollbar,
+.line-list::-webkit-scrollbar,
+.line-progress-list::-webkit-scrollbar,
+.dropdown-panel::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.sidebar::-webkit-scrollbar-track,
+.line-list::-webkit-scrollbar-track,
+.line-progress-list::-webkit-scrollbar-track,
+.dropdown-panel::-webkit-scrollbar-track {
+  background: rgba(20, 53, 71, 0.12);
+  border-radius: 999px;
+}
+
+.sidebar::-webkit-scrollbar-thumb,
+.line-list::-webkit-scrollbar-thumb,
+.line-progress-list::-webkit-scrollbar-thumb,
+.dropdown-panel::-webkit-scrollbar-thumb {
+  background: rgba(23, 124, 162, 0.55);
+  border-radius: 999px;
+  border: 2px solid rgba(20, 53, 71, 0.12);
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover,
+.line-list::-webkit-scrollbar-thumb:hover,
+.line-progress-list::-webkit-scrollbar-thumb:hover,
+.dropdown-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(23, 124, 162, 0.72);
 }
 
 .mobile-drawer-tab {
@@ -939,6 +996,29 @@ body[data-theme="dark"] .route-select-btn {
     padding: 8px;
   }
 
+  .user-status-card {
+    margin: 0;
+    padding: 6px 7px;
+  }
+
+  .user-status-title {
+    margin: 4px 0 2px;
+    font-size: 12px;
+  }
+
+  .user-status-subtitle,
+  .user-status-feedback {
+    font-size: 11px;
+    line-height: 1.24;
+  }
+
+  body:not(.mobile-panels-open) .user-status-details,
+  body:not(.mobile-panels-open) .user-status-route-progress,
+  body:not(.mobile-panels-open) .user-status-actions,
+  body:not(.mobile-panels-open) .clear-progress-confirm {
+    display: none;
+  }
+
   .mobile-drawer-tab {
     display: flex;
     align-items: center;
@@ -953,14 +1033,6 @@ body[data-theme="dark"] .route-select-btn {
     flex-direction: row;
   }
 
-  body.mobile-panels-open .app-shell::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: rgba(8, 16, 24, 0.36);
-    z-index: 9;
-  }
-
   body.mobile-panels-open .sidebar {
     position: fixed;
     top: 0;
@@ -969,19 +1041,11 @@ body[data-theme="dark"] .route-select-btn {
     width: min(88vw, 390px);
     height: 100vh;
     padding: 10px;
-    border-right: 1px solid var(--panel-border);
-    background: var(--shell);
+    border-right: none;
+    background: transparent;
     overflow-y: auto;
     z-index: 10;
-    backdrop-filter: blur(4px);
-  }
-
-  body.mobile-panels-open .mobile-drawer-tab {
-    left: min(88vw, 390px);
-    border-left: 1px solid var(--panel-border);
-    border-right: none;
-    border-radius: 10px 0 0 10px;
-    transform: translate(-100%, -50%);
+    backdrop-filter: none;
   }
 
   body.mobile-panels-open .routes-panel > h2,

@@ -1,4 +1,4 @@
-const MIN_VIEWPORT_FETCH_ZOOM = 11;
+const MIN_VIEWPORT_FETCH_ZOOM = 10.6;
 const MAX_TARGET_TILES_PER_VIEW = 6;
 const MAX_NEW_FETCHES_PER_VIEW = 6;
 const MAX_PARALLEL_FETCHES = 2;
@@ -114,10 +114,15 @@ const state = {
   userStatusPinnedKind: "",
   clearRouteProgressConfirmLineKey: "",
   clearRouteProgressConfirmTimeoutId: null,
+  userFeedback: {
+    message: "",
+    meta: "",
+    kind: "neutral"
+  },
   visitedByLine: new Map(),
   userStatus: {
     title: "No route selected.",
-    subtitle: "Click a route or station to inspect it here.",
+    subtitle: "Map status - Click a route or station to inspect it here.",
     details: [],
     routeLineKey: "",
     progress: null
@@ -151,6 +156,7 @@ const els = {
   mobileDrawerTab: document.getElementById("mobileDrawerTab"),
   userStatusTitle: document.getElementById("userStatusTitle"),
   userStatusSubtitle: document.getElementById("userStatusSubtitle"),
+  userStatusFeedback: document.getElementById("userStatusFeedback"),
   userStatusDetails: document.getElementById("userStatusDetails"),
   userStatusRouteProgress: document.getElementById("userStatusRouteProgress"),
   userStatusRouteProgressText: document.getElementById("userStatusRouteProgressText"),
@@ -237,6 +243,13 @@ function setStatus(message, kind = "neutral", meta = "") {
   if (kind === "ok") {
     els.statusText.classList.add("ok");
   }
+
+  state.userFeedback = {
+    message: String(message || "").trim(),
+    meta: String(meta || "").trim(),
+    kind
+  };
+  renderUserFeedback();
 }
 
 function setBackendStatus(message) {
@@ -277,6 +290,28 @@ function setStatusPin(kind) {
 
 function clearStatusPin() {
   state.userStatusPinnedKind = "";
+}
+
+function renderUserFeedback() {
+  if (!els.userStatusFeedback) {
+    return;
+  }
+
+  const message = String(state.userFeedback?.message || "").trim();
+  const meta = String(state.userFeedback?.meta || "").trim();
+  const combined = `${message}${meta ? ` ${meta}` : ""}`.trim();
+
+  els.userStatusFeedback.classList.remove("ok", "error");
+  if (state.userFeedback?.kind === "ok") {
+    els.userStatusFeedback.classList.add("ok");
+  }
+  if (state.userFeedback?.kind === "error") {
+    els.userStatusFeedback.classList.add("error");
+  }
+
+  const fallback = "Ready. Pan, zoom, or select a route.";
+  const text = combined || fallback;
+  els.userStatusFeedback.textContent = text.length > 180 ? `${text.slice(0, 177)}...` : text;
 }
 
 function renderUserStatus() {
@@ -337,12 +372,14 @@ function renderUserStatus() {
   if (els.deselectRouteBtn) {
     els.deselectRouteBtn.hidden = !state.focusedLineKey;
   }
+
+  renderUserFeedback();
 }
 
 function setUserStatus(title, subtitle, options = {}) {
   state.userStatus = {
     title: String(title || "").trim() || "No route selected.",
-    subtitle: String(subtitle || "").trim() || "Click a route or station to inspect it here.",
+    subtitle: String(subtitle || "").trim() || "Map status - Click a route or station to inspect it here.",
     details: Array.isArray(options.details) ? options.details : [],
     routeLineKey: String(options.routeLineKey || "").trim(),
     progress: options.progress || null
@@ -600,35 +637,16 @@ function canFetchViewportRoutes() {
   return state.map.getZoom() >= MIN_VIEWPORT_FETCH_ZOOM;
 }
 
-function viewportHasUnloadedTilesForActiveMode() {
-  if (!canFetchViewportRoutes()) {
-    return false;
-  }
-
-  const rawBbox = mapBoundsToBbox();
-  if (!rawBbox) {
-    return false;
-  }
-
-  const zoom = state.map.getZoom();
-  const requests = viewportRequestsForMode(rawBbox, zoom, selectedRouteTypesForFetch());
-  if (!requests.length) {
-    return false;
-  }
-
-  return requests.some((request) => !state.areaCache.has(request.areaKey));
-}
-
 function areFilterCountsUncertain() {
   if (!canFetchViewportRoutes()) {
     return false;
   }
 
-  if (state.inFlightAreaKeys.size > 0 || state.fetchQueue.length > 0) {
-    return true;
-  }
-
-  return viewportHasUnloadedTilesForActiveMode();
+  return (
+    state.inFlightAreaKeys.size > 0 ||
+    state.fetchQueue.length > 0 ||
+    Number(state.lastLoadStats?.deferred || 0) > 0
+  );
 }
 
 function filterChipCountLabel(count, uncertain) {
@@ -895,7 +913,7 @@ function lineProgressMetrics(lineKey, fallbackTotal = 0) {
 
 function setUserStatusFromLine(line, sourceLabel) {
   if (!line) {
-    setUserStatus("No route selected.", "Click a route or station to inspect it here.");
+    setUserStatus("No route selected.", "Map status - Click a route or station to inspect it here.");
     return;
   }
 
@@ -904,8 +922,12 @@ function setUserStatusFromLine(line, sourceLabel) {
   const progress = lineProgressMetrics(line.lineKey, Number(line.stopCount || 0));
   const focusedLineActions = state.focusedLineKey === line.lineKey ? line.lineKey : "";
 
-  setUserStatus(lineDisplayName(line), sourceLabel, {
+  setUserStatus(lineDisplayName(line), `Line status - ${sourceLabel}`, {
     details: [
+      {
+        label: "Viewing",
+        value: "Line"
+      },
       {
         label: "Mode",
         value: lineMode(line)
@@ -940,8 +962,12 @@ function setUserStatusFromStation(properties, extraMessage = "") {
     ? lineProgressMetrics(relatedLineKey, Number(relatedLine.stopCount || 0))
     : null;
 
-  setUserStatus(stationName, extraMessage || "Station details", {
+  setUserStatus(stationName, `Station status - ${extraMessage || "Station details"}`, {
     details: [
+      {
+        label: "Viewing",
+        value: "Station"
+      },
       {
         label: "Line",
         value: lineLabel || properties?.line_name || properties?.line_key || "Unknown line"
@@ -973,8 +999,12 @@ function restoreUserStatusFromFocus() {
 
   if (!state.focusedLineKey) {
     const shownLines = getShownLines();
-    setUserStatus("No route selected.", "Click a route or station to inspect it here.", {
+    setUserStatus("No route selected.", "Map status - Click a route or station to inspect it here.", {
       details: [
+        {
+          label: "Viewing",
+          value: "Map"
+        },
         {
           label: "Routes",
           value: `${shownLines.length} visible in current filters`
@@ -1016,7 +1046,7 @@ function setMobilePanelsOpen(open) {
     els.mobileDrawerTab.setAttribute("aria-expanded", nextOpen ? "true" : "false");
     els.mobileDrawerTab.setAttribute("aria-label", nextOpen ? "Close panels" : "Open panels");
     els.mobileDrawerTab.classList.toggle("is-open", nextOpen);
-    els.mobileDrawerTab.textContent = nextOpen ? "<" : ">";
+    els.mobileDrawerTab.textContent = ">";
   }
 }
 
@@ -1182,6 +1212,82 @@ function mapBoundsToBbox() {
 
 function bboxCenter(bbox) {
   return [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2];
+}
+
+function normalizeBboxArray(candidate) {
+  if (!Array.isArray(candidate) || candidate.length !== 4) {
+    return null;
+  }
+
+  const parsed = candidate.map((value) => Number(value));
+  if (parsed.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+
+  const [west, south, east, north] = parsed;
+  if (west >= east || south >= north) {
+    return null;
+  }
+
+  return [west, south, east, north];
+}
+
+function bboxIntersects(a, b) {
+  return a[0] <= b[2] && a[2] >= b[0] && a[1] <= b[3] && a[3] >= b[1];
+}
+
+function cacheEntryBbox(cacheKey, entry) {
+  const payload = entry?.payload;
+  const fromArea =
+    normalizeBboxArray(payload?.area?.bbox) ||
+    normalizeBboxArray(payload?.normalizedBbox) ||
+    normalizeBboxArray(payload?.bbox);
+
+  if (fromArea) {
+    return fromArea;
+  }
+
+  const tileMatch = /^tile:(\d+):(\d+):(\d+):modes:/.exec(String(cacheKey || ""));
+  if (!tileMatch) {
+    return null;
+  }
+
+  const zoom = Number.parseInt(tileMatch[1], 10);
+  const x = Number.parseInt(tileMatch[2], 10);
+  const y = Number.parseInt(tileMatch[3], 10);
+
+  if (!Number.isFinite(zoom) || !Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+
+  return tileToBbox(x, y, zoom);
+}
+
+function visibleCachedAreaKeysForViewport(rawBbox, routeTypes) {
+  const normalizedViewportBbox = normalizeBboxArray(rawBbox);
+  if (!normalizedViewportBbox) {
+    return new Set();
+  }
+
+  const modeSuffix = `:modes:${modeCacheKeyFromRouteTypes(routeTypes)}`;
+  const visible = new Set();
+
+  for (const [cacheKey, entry] of state.areaCache.entries()) {
+    if (!String(cacheKey).endsWith(modeSuffix)) {
+      continue;
+    }
+
+    const cachedBbox = cacheEntryBbox(cacheKey, entry);
+    if (!cachedBbox) {
+      continue;
+    }
+
+    if (bboxIntersects(normalizedViewportBbox, cachedBbox)) {
+      visible.add(cacheKey);
+    }
+  }
+
+  return visible;
 }
 
 function expandBbox(bbox, paddingDegrees) {
@@ -1872,22 +1978,14 @@ function renderModeFilterBar() {
     count: modeDef.key === MODE_FILTER_ALL ? totalMatchingSearch : counts.get(modeDef.key) || 0
   }));
   const uncertainCounts = areFilterCountsUncertain();
-  const canFetchMore = canFetchViewportRoutes();
-  const selectedAllModes = state.activeModeKeys.has(MODE_FILTER_ALL);
 
   for (const chip of chips) {
-    const unresolvedByModeSelection =
-      canFetchMore && !selectedAllModes && !state.activeModeKeys.has(chip.key);
-    const chipUncertain = uncertainCounts || unresolvedByModeSelection;
-
     const button = document.createElement("button");
     button.type = "button";
     button.className = "mode-chip";
-    button.textContent = `${chip.label} (${filterChipCountLabel(chip.count, chipUncertain)})`;
-    if (chipUncertain) {
-      button.title = unresolvedByModeSelection
-        ? "Select this mode to load its current-view route totals."
-        : "Route totals are still loading for this view.";
+    button.textContent = `${chip.label} (${filterChipCountLabel(chip.count, uncertainCounts)})`;
+    if (uncertainCounts) {
+      button.title = "Route totals are still loading for this view.";
     }
 
     if (state.activeModeKeys.has(chip.key)) {
@@ -2476,7 +2574,7 @@ async function loadVisibleTransit(options = {}) {
   const requests = viewportRequestsForMode(rawBbox, zoom, modeRouteTypes);
 
   if (zoom < MIN_VIEWPORT_FETCH_ZOOM) {
-    state.requestedAreaKeys = new Set(requests.map((request) => request.areaKey));
+    state.requestedAreaKeys = visibleCachedAreaKeysForViewport(rawBbox, modeRouteTypes);
     trimQueuedFetchesToCurrentView();
 
     syncActiveAreaKeys({
@@ -2497,9 +2595,9 @@ async function loadVisibleTransit(options = {}) {
     };
 
     setStatus(
-      "World-scale view: showing cached in-view routes only.",
+      "Low-zoom view: showing cached in-view routes only.",
       "ok",
-      `${cachedVisible}/${requests.length} nearby cached areas visible. Zoom in further to search for new routes.`
+      `${cachedVisible} cached nearby areas visible. Zoom in a bit further to search for new routes.`
     );
 
     setBackendStatus(
