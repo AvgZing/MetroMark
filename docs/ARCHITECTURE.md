@@ -125,8 +125,9 @@ Focus behavior:
 - Non-focused routes are dimmed using a mask overlay (not heavy per-line translucency).
 
 Interlined routes:
-- Small deterministic line offsets are applied to reduce perfect overlap.
-- Repeated clicks on the same overlap location cycle through matching routes.
+- No geometry offsetting is applied by default.
+- If multiple routes overlap at a click point, UI opens a route selector popup.
+- User chooses the intended route explicitly from that popup.
 
 Status panel contract:
 - Status context is click-driven, not hover-driven.
@@ -141,7 +142,8 @@ Progress contract:
 
 Filter count contract:
 - Mode chip counts show exact values only after the current viewport load settles.
-- During pending/deferred area loading, mode counts show ? to avoid false precision.
+- During unresolved loading, mode counts can show ? to avoid false precision.
+- At low zoom where new fetches are paused, mode counts should stay numeric (no forced ?).
 
 Frequency labels contract:
 - Frequent: Up to 10m

@@ -1,6 +1,6 @@
-const MIN_VIEWPORT_FETCH_ZOOM = 8;
-const MAX_TARGET_TILES_PER_VIEW = 8;
-const MAX_NEW_FETCHES_PER_VIEW = 2;
+const MIN_VIEWPORT_FETCH_ZOOM = 11;
+const MAX_TARGET_TILES_PER_VIEW = 6;
+const MAX_NEW_FETCHES_PER_VIEW = 6;
 const MAX_PARALLEL_FETCHES = 2;
 const MAX_SESSION_AREAS = 220;
 const MAX_SESSION_ROUTE_STOP_PAYLOADS = 120;
@@ -107,10 +107,9 @@ const state = {
   activePopup: "",
   hoverPopup: null,
   routeHoverPopup: null,
+  routeSelectPopup: null,
   lastStopClickAt: 0,
   lastRouteClickAt: 0,
-  lastRouteInterlineCycleKey: "",
-  lastRouteInterlineCycleIndex: -1,
   mobilePanelsOpen: false,
   userStatusPinnedKind: "",
   clearRouteProgressConfirmLineKey: "",
@@ -149,7 +148,7 @@ const els = {
   lineSearch: document.getElementById("lineSearch"),
   modeFilterBar: document.getElementById("modeFilterBar"),
   frequencyFilterBar: document.getElementById("frequencyFilterBar"),
-  mobilePanelsToggleBtn: document.getElementById("mobilePanelsToggleBtn"),
+  mobileDrawerTab: document.getElementById("mobileDrawerTab"),
   userStatusTitle: document.getElementById("userStatusTitle"),
   userStatusSubtitle: document.getElementById("userStatusSubtitle"),
   userStatusDetails: document.getElementById("userStatusDetails"),
@@ -425,21 +424,6 @@ function lineSortWeight(line) {
   return 3;
 }
 
-function interlineOffsetForLineKey(lineKey) {
-  const text = String(lineKey || "").trim();
-  if (!text) {
-    return 0;
-  }
-
-  let hash = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    hash = (hash * 31 + text.charCodeAt(i)) | 0;
-  }
-
-  const offsets = [-1.8, -1.1, -0.5, 0, 0.5, 1.1, 1.8];
-  return offsets[Math.abs(hash) % offsets.length];
-}
-
 function normalizeModeSelection() {
   const valid = new Set(
     Array.from(state.activeModeKeys).filter((modeKey) => MODE_DEF_BY_KEY.has(modeKey))
@@ -519,6 +503,22 @@ function selectedRouteTypesForFetch() {
   return Array.from(selectedRouteTypes).sort((a, b) => a - b);
 }
 
+function modeCacheKeyFromRouteTypes(routeTypes) {
+  const normalized = Array.isArray(routeTypes) ? routeTypes : [];
+  return normalized.length ? normalized.join("-") : "all";
+}
+
+function viewportRequestsForMode(rawBbox, zoom, routeTypes) {
+  const selectedTypes = Array.isArray(routeTypes) ? routeTypes : [];
+  const modeCacheKey = modeCacheKeyFromRouteTypes(selectedTypes);
+
+  return buildViewportTileRequests(rawBbox, zoom).map((request) => ({
+    ...request,
+    routeTypes: selectedTypes,
+    areaKey: `${request.areaKey}:modes:${modeCacheKey}`
+  }));
+}
+
 function lineMatchesModeSelection(line) {
   if (state.activeModeKeys.has(MODE_FILTER_ALL)) {
     return true;
@@ -592,12 +592,43 @@ function lineHeadwayLabel(line) {
   return frequencyBucketLabel(lineFrequencyBucket(line));
 }
 
+function canFetchViewportRoutes() {
+  if (!state.mapReady || !state.map) {
+    return false;
+  }
+
+  return state.map.getZoom() >= MIN_VIEWPORT_FETCH_ZOOM;
+}
+
+function viewportHasUnloadedTilesForActiveMode() {
+  if (!canFetchViewportRoutes()) {
+    return false;
+  }
+
+  const rawBbox = mapBoundsToBbox();
+  if (!rawBbox) {
+    return false;
+  }
+
+  const zoom = state.map.getZoom();
+  const requests = viewportRequestsForMode(rawBbox, zoom, selectedRouteTypesForFetch());
+  if (!requests.length) {
+    return false;
+  }
+
+  return requests.some((request) => !state.areaCache.has(request.areaKey));
+}
+
 function areFilterCountsUncertain() {
-  return (
-    state.inFlightAreaKeys.size > 0 ||
-    state.fetchQueue.length > 0 ||
-    Number(state.lastLoadStats?.deferred || 0) > 0
-  );
+  if (!canFetchViewportRoutes()) {
+    return false;
+  }
+
+  if (state.inFlightAreaKeys.size > 0 || state.fetchQueue.length > 0) {
+    return true;
+  }
+
+  return viewportHasUnloadedTilesForActiveMode();
 }
 
 function filterChipCountLabel(count, uncertain) {
@@ -743,7 +774,11 @@ function lineHoverHtml(lines, totalLineCount = lines.length) {
   return `
     <div class="station-hover">
       <h4>Routes Under Cursor</h4>
-      <p class="hover-subtitle">Click to focus. Click again to cycle interlined routes.</p>
+      <p class="hover-subtitle">${
+        totalLineCount > 1
+          ? "Interlined segment. Tap/click to pick a route."
+          : "Tap/click to focus this route."
+      }</p>
       <ul class="hover-route-list">${rows || "<li class=\"hover-route-row\">No route details available.</li>"}</ul>
       ${
         hiddenCount > 0
@@ -752,6 +787,68 @@ function lineHoverHtml(lines, totalLineCount = lines.length) {
       }
     </div>
   `;
+}
+
+function routeSelectionPopupHtml(lines) {
+  const rows = lines
+    .map(
+      (line) =>
+        `<button class="route-select-btn" type="button" data-route-select="${escapeHtml(
+          line.lineKey
+        )}">
+          <span class="route-select-name">${escapeHtml(lineDisplayName(line))}</span>
+          <span class="route-select-meta">${escapeHtml(lineMode(line))} | ${escapeHtml(
+          lineOperatorLabel(line)
+        )} | ${escapeHtml(lineHeadwayLabel(line))}</span>
+        </button>`
+    )
+    .join("");
+
+  return `
+    <div class="station-hover route-select-popup">
+      <h4>Select Route</h4>
+      <p class="hover-subtitle">${lines.length} routes overlap here.</p>
+      <div class="route-select-list">${rows}</div>
+    </div>
+  `;
+}
+
+function closeRouteSelectionPopup() {
+  if (state.routeSelectPopup) {
+    state.routeSelectPopup.remove();
+  }
+}
+
+function openRouteSelectionPopup(lines, lngLat) {
+  if (!state.routeSelectPopup || !state.map) {
+    return;
+  }
+
+  closeRouteSelectionPopup();
+  state.routeSelectPopup.setLngLat(lngLat).setHTML(routeSelectionPopupHtml(lines)).addTo(state.map);
+
+  const popupElement = state.routeSelectPopup.getElement();
+  if (!popupElement) {
+    return;
+  }
+
+  const buttons = popupElement.querySelectorAll("[data-route-select]");
+  buttons.forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const lineKey = String(button.getAttribute("data-route-select") || "").trim();
+      if (!lineKey) {
+        return;
+      }
+
+      closeRouteSelectionPopup();
+      setFocusedLine(lineKey).catch((error) => {
+        setStatus(error.message, "error");
+      });
+    });
+  });
 }
 
 function lineProgressMetrics(lineKey, fallbackTotal = 0) {
@@ -901,6 +998,10 @@ function toggleTheme() {
   setTheme(state.theme === "dark" ? "light" : "dark");
 }
 
+function hoverInteractionsEnabled() {
+  return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+
 function isPortraitMobileLayout() {
   return window.matchMedia("(max-width: 900px) and (orientation: portrait)").matches;
 }
@@ -911,9 +1012,11 @@ function setMobilePanelsOpen(open) {
 
   document.body.classList.toggle("mobile-panels-open", nextOpen);
 
-  if (els.mobilePanelsToggleBtn) {
-    els.mobilePanelsToggleBtn.setAttribute("aria-expanded", nextOpen ? "true" : "false");
-    els.mobilePanelsToggleBtn.textContent = nextOpen ? "Close Panels" : "Open Panels";
+  if (els.mobileDrawerTab) {
+    els.mobileDrawerTab.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+    els.mobileDrawerTab.setAttribute("aria-label", nextOpen ? "Close panels" : "Open panels");
+    els.mobileDrawerTab.classList.toggle("is-open", nextOpen);
+    els.mobileDrawerTab.textContent = nextOpen ? "<" : ">";
   }
 }
 
@@ -1293,13 +1396,13 @@ function syncActiveAreaKeys(options = {}) {
 
   if (retainedVisibleKeys instanceof Set && options.mergeRetainedVisibleKeys) {
     for (const key of retainedVisibleKeys) {
-      if (state.areaCache.has(key)) {
+      if (state.areaCache.has(key) && state.requestedAreaKeys.has(key)) {
         state.visibleAreaKeys.add(key);
       }
     }
   } else if (state.visibleAreaKeys.size === 0 && retainedVisibleKeys instanceof Set) {
     for (const key of retainedVisibleKeys) {
-      if (state.areaCache.has(key)) {
+      if (state.areaCache.has(key) && state.requestedAreaKeys.has(key)) {
         state.visibleAreaKeys.add(key);
       }
     }
@@ -1462,8 +1565,13 @@ function rebuildCombinedTransit() {
     stopCountsByLine.set(lineKey, (stopCountsByLine.get(lineKey) || 0) + 1);
   }
 
+  const allowGlobalFallbackLines = state.requestedAreaKeys.size === 0;
   const effectiveVisibleLineKeys =
-    visibleLineKeys.size > 0 ? visibleLineKeys : new Set(Array.from(lineByKeyAll.keys()));
+    visibleLineKeys.size > 0
+      ? visibleLineKeys
+      : allowGlobalFallbackLines
+        ? new Set(Array.from(lineByKeyAll.keys()))
+        : new Set();
 
   const lineSummaries = Array.from(effectiveVisibleLineKeys)
     .map((lineKey) => {
@@ -1595,8 +1703,7 @@ function getFilteredData() {
         properties: {
           ...feature.properties,
           is_focused: focused,
-          has_focus: hasFocus ? 1 : 0,
-          interline_offset: interlineOffsetForLineKey(feature.properties.line_key)
+          has_focus: hasFocus ? 1 : 0
         }
       };
     });
@@ -1765,14 +1872,22 @@ function renderModeFilterBar() {
     count: modeDef.key === MODE_FILTER_ALL ? totalMatchingSearch : counts.get(modeDef.key) || 0
   }));
   const uncertainCounts = areFilterCountsUncertain();
+  const canFetchMore = canFetchViewportRoutes();
+  const selectedAllModes = state.activeModeKeys.has(MODE_FILTER_ALL);
 
   for (const chip of chips) {
+    const unresolvedByModeSelection =
+      canFetchMore && !selectedAllModes && !state.activeModeKeys.has(chip.key);
+    const chipUncertain = uncertainCounts || unresolvedByModeSelection;
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "mode-chip";
-    button.textContent = `${chip.label} (${filterChipCountLabel(chip.count, uncertainCounts)})`;
-    if (uncertainCounts) {
-      button.title = "Route totals are still loading for this view.";
+    button.textContent = `${chip.label} (${filterChipCountLabel(chip.count, chipUncertain)})`;
+    if (chipUncertain) {
+      button.title = unresolvedByModeSelection
+        ? "Select this mode to load its current-view route totals."
+        : "Route totals are still loading for this view.";
     }
 
     if (state.activeModeKeys.has(chip.key)) {
@@ -2005,12 +2120,11 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
 
 function clearFocusedLine(statusMessage = "Route focus cleared.", statusMeta = "Click a route to focus it.") {
   if (!state.focusedLineKey) {
+    closeRouteSelectionPopup();
     return;
   }
 
-  state.lastRouteInterlineCycleKey = "";
-  state.lastRouteInterlineCycleIndex = -1;
-
+  closeRouteSelectionPopup();
   clearStatusPin();
   resetClearRouteProgressConfirmation();
 
@@ -2027,6 +2141,8 @@ async function setFocusedLine(lineKey, options = {}) {
   if (!normalizedLineKey) {
     return;
   }
+
+  closeRouteSelectionPopup();
 
   const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
   if (!line) {
@@ -2047,20 +2163,10 @@ async function setFocusedLine(lineKey, options = {}) {
   renderMapData();
   renderProgress();
 
-  let focusMeta = "Loading route-linked stops. Other routes stay visible in a dimmed state.";
-  const interlineCycleTotal = Number(options.interlineCycleTotal || 0);
-  if (interlineCycleTotal > 1) {
-    const cycleIndex = Number(options.interlineCycleIndex || 0);
-    const cyclePosition = Math.min(interlineCycleTotal, Math.max(1, cycleIndex + 1));
-    focusMeta =
-      `Interlined overlap ${cyclePosition}/${interlineCycleTotal} selected. ` +
-      "Loading route-linked stops. Other routes stay visible in a dimmed state.";
-  }
-
   setStatus(
     `Focused on ${lineDisplayName(line)}.`,
     "ok",
-    focusMeta
+    "Loading route-linked stops. Other routes stay visible in a dimmed state."
   );
 
   await ensureLineStopsLoaded(normalizedLineKey, {
@@ -2291,7 +2397,7 @@ async function fetchTile(job) {
     syncActiveAreaKeys({
       retainVisibleKeys: previousVisibleKeys,
       mergeRetainedVisibleKeys: hasPendingTiles,
-      fallbackToAllCached: true
+      fallbackToAllCached: false
     });
     rebuildCombinedTransit();
     refreshUiFromState();
@@ -2356,26 +2462,6 @@ async function loadVisibleTransit(options = {}) {
   }
 
   const zoom = state.map.getZoom();
-  if (zoom < MIN_VIEWPORT_FETCH_ZOOM) {
-    state.requestedAreaKeys = new Set([
-      ...state.areaCache.keys(),
-      ...state.inFlightAreaKeys,
-      ...state.queuedAreaKeys
-    ]);
-    syncActiveAreaKeys({
-      fallbackToAllCached: true
-    });
-    rebuildCombinedTransit();
-    refreshUiFromState();
-
-    setStatus(
-      "World-scale view: showing cached routes only.",
-      "ok",
-      "New fetches are paused at this zoom to protect API limits. Zoom in to update routes."
-    );
-    return;
-  }
-
   const rawBbox = mapBoundsToBbox();
   if (!rawBbox) {
     setStatus(
@@ -2387,13 +2473,40 @@ async function loadVisibleTransit(options = {}) {
   }
 
   const modeRouteTypes = selectedRouteTypesForFetch();
-  const modeCacheKey = modeRouteTypes.length ? modeRouteTypes.join("-") : "all";
+  const requests = viewportRequestsForMode(rawBbox, zoom, modeRouteTypes);
 
-  const requests = buildViewportTileRequests(rawBbox, zoom).map((request) => ({
-    ...request,
-    routeTypes: modeRouteTypes,
-    areaKey: `${request.areaKey}:modes:${modeCacheKey}`
-  }));
+  if (zoom < MIN_VIEWPORT_FETCH_ZOOM) {
+    state.requestedAreaKeys = new Set(requests.map((request) => request.areaKey));
+    trimQueuedFetchesToCurrentView();
+
+    syncActiveAreaKeys({
+      fallbackToAllCached: false
+    });
+    rebuildCombinedTransit();
+    refreshUiFromState();
+
+    const cachedVisible = requests.filter((request) => state.areaCache.has(request.areaKey)).length;
+
+    state.lastLoadStats = {
+      requested: requests.length,
+      cached: cachedVisible,
+      queued: 0,
+      deferred: 0,
+      failed: 0,
+      successful: 0
+    };
+
+    setStatus(
+      "World-scale view: showing cached in-view routes only.",
+      "ok",
+      `${cachedVisible}/${requests.length} nearby cached areas visible. Zoom in further to search for new routes.`
+    );
+
+    setBackendStatus(
+      "Viewport fetch paused at low zoom. Server/client caches are still used for already-loaded in-view tiles."
+    );
+    return;
+  }
 
   const cachedRequestCount = requests.filter((request) => state.areaCache.has(request.areaKey)).length;
   const missingRequests = requests.filter(
@@ -2408,7 +2521,7 @@ async function loadVisibleTransit(options = {}) {
   syncActiveAreaKeys({
     retainVisibleKeys: previousVisibleKeys,
     mergeRetainedVisibleKeys: missingRequests.length > 0,
-    fallbackToAllCached: true
+    fallbackToAllCached: false
   });
   rebuildCombinedTransit();
   refreshUiFromState();
@@ -2620,6 +2733,9 @@ async function onStopClicked(event) {
     return;
   }
 
+  closeRouteSelectionPopup();
+  onRouteHoverLeave();
+
   state.lastStopClickAt = Date.now();
   resetClearRouteProgressConfirmation();
 
@@ -2670,6 +2786,11 @@ async function onStopClicked(event) {
 }
 
 function onStopHoverMove(event) {
+  if (!hoverInteractionsEnabled()) {
+    onStopHoverLeave();
+    return;
+  }
+
   const feature = event.features && event.features[0];
   if (!feature || !state.hoverPopup) {
     return;
@@ -2716,6 +2837,11 @@ function lineFromRouteFeature(feature) {
 }
 
 function onRouteHoverMove(event) {
+  if (!hoverInteractionsEnabled()) {
+    onRouteHoverLeave();
+    return;
+  }
+
   if (!state.routeHoverPopup || !state.map) {
     return;
   }
@@ -2781,6 +2907,13 @@ function initializeMap() {
     closeOnClick: false,
     offset: 10
   });
+  state.routeSelectPopup = new maplibregl.Popup({
+    closeButton: true,
+    closeOnClick: true,
+    closeOnMove: true,
+    offset: 12,
+    maxWidth: "340px"
+  });
 
   state.map.on("style.load", () => {
     state.map.setProjection({ type: "globe" });
@@ -2816,7 +2949,6 @@ function initializeMap() {
       filter: ["==", ["get", "is_focused"], 0],
       paint: {
         "line-color": "#111920",
-        "line-offset": ["coalesce", ["get", "interline_offset"], 0],
         "line-width": [
           "interpolate",
           ["linear"],
@@ -2832,7 +2964,7 @@ function initializeMap() {
           12,
           4.3
         ],
-        "line-opacity": 0.92
+        "line-opacity": 0
       }
     });
 
@@ -2843,7 +2975,6 @@ function initializeMap() {
       filter: ["==", ["get", "is_focused"], 0],
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
-        "line-offset": ["coalesce", ["get", "interline_offset"], 0],
         "line-width": [
           "interpolate",
           ["linear"],
@@ -2859,7 +2990,7 @@ function initializeMap() {
           12,
           2.4
         ],
-        "line-opacity": 0.96
+        "line-opacity": 0.9
       }
     });
 
@@ -2869,7 +3000,7 @@ function initializeMap() {
       source: "focus-mask",
       paint: {
         "fill-color": "#1f262d",
-        "fill-opacity": ["case", ["==", ["get", "active"], 1], 0.42, 0]
+        "fill-opacity": ["case", ["==", ["get", "active"], 1], 0.48, 0]
       }
     });
 
@@ -2880,7 +3011,6 @@ function initializeMap() {
       filter: ["==", ["get", "is_focused"], 1],
       paint: {
         "line-color": "#0f1b22",
-        "line-offset": ["coalesce", ["get", "interline_offset"], 0],
         "line-width": [
           "interpolate",
           ["linear"],
@@ -2907,7 +3037,6 @@ function initializeMap() {
       filter: ["==", ["get", "is_focused"], 1],
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
-        "line-offset": ["coalesce", ["get", "interline_offset"], 0],
         "line-width": [
           "interpolate",
           ["linear"],
@@ -2961,6 +3090,9 @@ function initializeMap() {
         if (now - state.lastStopClickAt < 260) {
           return;
         }
+        if (now - state.lastRouteClickAt < 160) {
+          return;
+        }
 
         const stopHits = state.map.queryRenderedFeatures(event.point, {
           layers: ["stops-layer"]
@@ -2973,49 +3105,54 @@ function initializeMap() {
           layers: interactiveRouteLayers
         });
 
-        const orderedLineKeys = [];
         const seenLineKeys = new Set();
+        const overlappedLines = [];
         for (const hit of routeHits || []) {
-          const candidateLineKey = String(hit?.properties?.line_key || "").trim();
-          if (!candidateLineKey || seenLineKeys.has(candidateLineKey)) {
+          const line = lineFromRouteFeature(hit);
+          const candidateLineKey = String(line?.lineKey || "").trim();
+          if (!line || !candidateLineKey || seenLineKeys.has(candidateLineKey)) {
             continue;
           }
+
           seenLineKeys.add(candidateLineKey);
-          orderedLineKeys.push(candidateLineKey);
+          overlappedLines.push(line);
         }
 
-        if (!orderedLineKeys.length) {
+        if (!overlappedLines.length) {
           return;
         }
 
-        const clickBucketX = Math.round(Number(event.point?.x || 0) / 10);
-        const clickBucketY = Math.round(Number(event.point?.y || 0) / 10);
-        const cycleKey = `${clickBucketX}:${clickBucketY}:${orderedLineKeys.join("|")}`;
-
-        let selectedIndex = 0;
-        if (cycleKey === state.lastRouteInterlineCycleKey) {
-          selectedIndex = (state.lastRouteInterlineCycleIndex + 1) % orderedLineKeys.length;
-        }
-
-        state.lastRouteInterlineCycleKey = cycleKey;
-        state.lastRouteInterlineCycleIndex = selectedIndex;
-
-        const lineKey = orderedLineKeys[selectedIndex];
+        overlappedLines.sort((a, b) => lineDisplayName(a).localeCompare(lineDisplayName(b)));
         state.lastRouteClickAt = now;
 
-        setFocusedLine(lineKey, {
-          interlineCycleTotal: orderedLineKeys.length,
-          interlineCycleIndex: selectedIndex
-        }).catch((error) => {
-          setStatus(error.message, "error");
-        });
+        if (overlappedLines.length === 1) {
+          closeRouteSelectionPopup();
+          setFocusedLine(overlappedLines[0].lineKey).catch((error) => {
+            setStatus(error.message, "error");
+          });
+          return;
+        }
+
+        onRouteHoverLeave();
+        openRouteSelectionPopup(overlappedLines, event.lngLat);
+        setStatus(
+          "Multiple routes overlap here.",
+          "ok",
+          `Pick one from the selector (${overlappedLines.length} routes).`
+        );
       });
 
       state.map.on("mouseenter", layerId, () => {
-        state.map.getCanvas().style.cursor = "pointer";
+        if (hoverInteractionsEnabled()) {
+          state.map.getCanvas().style.cursor = "pointer";
+        }
       });
 
-      state.map.on("mousemove", layerId, onRouteHoverMove);
+      state.map.on("mousemove", layerId, (event) => {
+        if (hoverInteractionsEnabled()) {
+          onRouteHoverMove(event);
+        }
+      });
 
       state.map.on("mouseleave", layerId, () => {
         state.map.getCanvas().style.cursor = "";
@@ -3025,30 +3162,53 @@ function initializeMap() {
 
     state.map.on("click", "stops-layer", onStopClicked);
     state.map.on("mouseenter", "stops-layer", () => {
-      state.map.getCanvas().style.cursor = "pointer";
+      if (hoverInteractionsEnabled()) {
+        state.map.getCanvas().style.cursor = "pointer";
+      }
     });
-    state.map.on("mousemove", "stops-layer", onStopHoverMove);
+    state.map.on("mousemove", "stops-layer", (event) => {
+      if (hoverInteractionsEnabled()) {
+        onStopHoverMove(event);
+      }
+    });
     state.map.on("mouseleave", "stops-layer", () => {
       state.map.getCanvas().style.cursor = "";
       onStopHoverLeave();
     });
 
     state.map.on("click", (event) => {
-      if (!state.focusedLineKey) {
-        return;
-      }
-
       const now = Date.now();
       if (now - state.lastStopClickAt < 260 || now - state.lastRouteClickAt < 220) {
         return;
       }
 
       const point = event.point;
-      const padding = 14;
+      const closePadding = 14;
+
+      if (state.routeSelectPopup) {
+        const nearbyRoutes = state.map.queryRenderedFeatures(
+          [
+            [point.x - closePadding, point.y - closePadding],
+            [point.x + closePadding, point.y + closePadding]
+          ],
+          {
+            layers: interactiveRouteLayers
+          }
+        );
+
+        if (!Array.isArray(nearbyRoutes) || nearbyRoutes.length === 0) {
+          closeRouteSelectionPopup();
+        }
+      }
+
+      if (!state.focusedLineKey) {
+        return;
+      }
+
       const nearby = state.map.queryRenderedFeatures(
         [
-          [point.x - padding, point.y - padding],
-          [point.x + padding, point.y + padding]
+          [point.x - closePadding, point.y - closePadding],
+          [point.x + closePadding, point.y + closePadding]
         ],
         {
           layers: ["stops-layer", "routes-main", "routes-background-main"]
@@ -3063,6 +3223,20 @@ function initializeMap() {
         "Route focus cleared.",
         "Clicked away from routes/stations. Click a route to focus it again."
       );
+    });
+
+    state.map.on("touchstart", () => {
+      onStopHoverLeave();
+      onRouteHoverLeave();
+      closeRouteSelectionPopup();
+    });
+
+    state.map.on("movestart", () => {
+      closeRouteSelectionPopup();
+      if (!hoverInteractionsEnabled()) {
+        onStopHoverLeave();
+        onRouteHoverLeave();
+      }
     });
 
     state.map.on("moveend", onMapMoveEnd);
@@ -3091,8 +3265,8 @@ function waitForMapReady() {
 function bindEvents() {
   els.themeToggleBtn.addEventListener("click", toggleTheme);
 
-  if (els.mobilePanelsToggleBtn) {
-    els.mobilePanelsToggleBtn.addEventListener("click", () => {
+  if (els.mobileDrawerTab) {
+    els.mobileDrawerTab.addEventListener("click", () => {
       setMobilePanelsOpen(!state.mobilePanelsOpen);
     });
   }
@@ -3108,6 +3282,9 @@ function bindEvents() {
       if (state.mobilePanelsOpen) {
         setMobilePanelsOpen(false);
       }
+      closeRouteSelectionPopup();
+      onStopHoverLeave();
+      onRouteHoverLeave();
       closePopups();
     }
   });
@@ -3117,7 +3294,8 @@ function bindEvents() {
 
     if (state.mobilePanelsOpen && isPortraitMobileLayout()) {
       const clickedInsideSidebar = target.closest(".sidebar");
-      if (!clickedInsideSidebar) {
+      const clickedDrawerTab = els.mobileDrawerTab && els.mobileDrawerTab.contains(target);
+      if (!clickedInsideSidebar && !clickedDrawerTab) {
         setMobilePanelsOpen(false);
       }
     }

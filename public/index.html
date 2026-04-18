@@ -89,10 +89,6 @@
             <p id="clearRouteProgressConfirmText" class="clear-progress-confirm" hidden></p>
           </div>
 
-          <button id="mobilePanelsToggleBtn" class="btn mobile-panels-toggle" type="button" aria-expanded="false">
-            Open Panels
-          </button>
-
           <details id="routeListDropdown" class="route-list-dropdown">
             <summary id="routeListSummary" class="route-list-summary">Filtered Routes (0)</summary>
             <div id="lineList" class="line-list" aria-live="polite"></div>
@@ -129,6 +125,9 @@
       </aside>
 
       <main class="map-stage">
+        <button id="mobileDrawerTab" class="mobile-drawer-tab" type="button" aria-expanded="false" aria-label="Open panels">
+          &gt;
+        </button>
         <div class="map-overlay-controls" role="group" aria-label="Map style">
           <button id="streetsModeBtn" class="btn btn-icon map-mode-btn" type="button" aria-label="Streets map view">
             <svg class="map-mode-icon" viewBox="0 0 24 24" aria-hidden="true">
