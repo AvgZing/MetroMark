@@ -13,6 +13,7 @@
       font-family: "Segoe UI", Tahoma, sans-serif;
       background: linear-gradient(145deg, #f1f8f8, #dde9ee);
       color: #153042;
+      animation: pageFadeIn 420ms ease-out;
     }
 
     .card {
@@ -22,11 +23,50 @@
       padding: 20px;
       max-width: 560px;
       box-shadow: 0 8px 28px rgba(13, 45, 65, 0.12);
+      transform: translateY(0);
+      transition: transform 180ms ease, box-shadow 180ms ease;
+      animation: cardLiftIn 520ms ease-out;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(13, 45, 65, 0.18);
     }
 
     h1 {
       margin: 0 0 10px;
       font-size: 28px;
+    }
+
+    @keyframes pageFadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes cardLiftIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      body,
+      .card {
+        animation: none;
+      }
+
+      .card {
+        transition: none;
+      }
     }
   </style>
 </head>

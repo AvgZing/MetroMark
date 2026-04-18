@@ -74,6 +74,53 @@ function persistSetToStorage(storageKey, values) {
   localStorage.setItem(storageKey, JSON.stringify(Array.from(values)));
 }
 
+function parseVisibilityOverridesFromStorage(storageKey) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) {
+      return new Map();
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return new Map();
+    }
+
+    const visibilityMap = new Map();
+    for (const [lineKeyRaw, valueRaw] of Object.entries(parsed)) {
+      const lineKey = String(lineKeyRaw || "").trim();
+      const value = String(valueRaw || "").trim().toLowerCase();
+      if (!lineKey) {
+        continue;
+      }
+      if (value === "on" || value === "off") {
+        visibilityMap.set(lineKey, value);
+      }
+    }
+
+    return visibilityMap;
+  } catch {
+    return new Map();
+  }
+}
+
+function persistVisibilityOverridesToStorage(storageKey, visibilityMap) {
+  const payload = {};
+  for (const [lineKeyRaw, valueRaw] of visibilityMap.entries()) {
+    const lineKey = String(lineKeyRaw || "").trim();
+    const value = String(valueRaw || "").trim().toLowerCase();
+    if (!lineKey) {
+      continue;
+    }
+    if (value !== "on" && value !== "off") {
+      continue;
+    }
+    payload[lineKey] = value;
+  }
+
+  localStorage.setItem(storageKey, JSON.stringify(payload));
+}
+
 const state = {
   map: null,
   mapReady: false,
@@ -101,6 +148,7 @@ const state = {
     "metromark_frequency_filter_keys",
     DEFAULT_ACTIVE_FREQUENCY_KEYS
   ),
+  manualLineVisibility: parseVisibilityOverridesFromStorage("metromark_route_visibility_overrides"),
   lineSearchQuery: "",
   initialCitySlug: localStorage.getItem("metromark_initial_city_slug") || "seattle",
   theme: localStorage.getItem("metromark_theme") || "light",
@@ -527,6 +575,77 @@ function normalizeFrequencySelection() {
 
   state.activeFrequencyKeys = valid;
   persistSetToStorage("metromark_frequency_filter_keys", state.activeFrequencyKeys);
+}
+
+function normalizeManualVisibilityOverrides() {
+  const normalized = new Map();
+
+  for (const [lineKeyRaw, valueRaw] of state.manualLineVisibility.entries()) {
+    const lineKey = String(lineKeyRaw || "").trim();
+    const value = String(valueRaw || "").trim().toLowerCase();
+    if (!lineKey) {
+      continue;
+    }
+    if (value === "on" || value === "off") {
+      normalized.set(lineKey, value);
+    }
+  }
+
+  state.manualLineVisibility = normalized;
+  persistVisibilityOverridesToStorage("metromark_route_visibility_overrides", state.manualLineVisibility);
+}
+
+function lineVisibilityOverride(lineKey) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return "";
+  }
+
+  const value = String(state.manualLineVisibility.get(normalizedLineKey) || "").trim().toLowerCase();
+  return value === "on" || value === "off" ? value : "";
+}
+
+function setLineVisibilityOverride(lineKey, value) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return;
+  }
+
+  const normalizedValue = String(value || "").trim().toLowerCase();
+  if (normalizedValue === "on" || normalizedValue === "off") {
+    state.manualLineVisibility.set(normalizedLineKey, normalizedValue);
+  } else {
+    state.manualLineVisibility.delete(normalizedLineKey);
+  }
+
+  persistVisibilityOverridesToStorage("metromark_route_visibility_overrides", state.manualLineVisibility);
+}
+
+function lineVisibleFromFilters(line, options = {}) {
+  const ignoreMode = Boolean(options.ignoreMode);
+  const ignoreFrequency = Boolean(options.ignoreFrequency);
+
+  if (!ignoreMode && !lineMatchesModeSelection(line)) {
+    return false;
+  }
+
+  if (!ignoreFrequency && !lineMatchesFrequencySelection(line)) {
+    return false;
+  }
+
+  return true;
+}
+
+function lineIsVisible(line, options = {}) {
+  const override = lineVisibilityOverride(line?.lineKey);
+  if (override === "on") {
+    return true;
+  }
+  if (override === "off") {
+    return false;
+  }
+
+  return lineVisibleFromFilters(line, options);
 }
 
 function selectedRouteTypesForFetch() {
@@ -1740,14 +1859,10 @@ function rebuildCombinedTransit() {
 function getShownLines(options = {}) {
   const query = String(state.lineSearchQuery || "").trim().toLowerCase();
   const ignoreFrequency = Boolean(options.ignoreFrequency);
-  const ignoreSearch = Boolean(options.ignoreSearch);
+  const ignoreSearch = options.ignoreSearch === undefined ? true : Boolean(options.ignoreSearch);
 
   const filtered = state.lineSummaries.filter((line) => {
-    if (!lineMatchesModeSelection(line)) {
-      return false;
-    }
-
-    if (!ignoreFrequency && !lineMatchesFrequencySelection(line)) {
+    if (!lineIsVisible(line, { ignoreFrequency })) {
       return false;
     }
 
@@ -1771,6 +1886,39 @@ function getShownLines(options = {}) {
   });
 
   return filtered;
+}
+
+function getRouteListLines() {
+  const query = String(state.lineSearchQuery || "").trim().toLowerCase();
+  const hasQuery = Boolean(query);
+
+  const listed = state.lineSummaries.filter((line) => {
+    if (hasQuery) {
+      return lineSearchText(line).includes(query);
+    }
+
+    if (lineVisibilityOverride(line.lineKey)) {
+      return true;
+    }
+
+    return lineIsVisible(line);
+  });
+
+  listed.sort((a, b) => {
+    const tierDiff = lineSortWeight(a) - lineSortWeight(b);
+    if (tierDiff !== 0) {
+      return tierDiff;
+    }
+
+    const stopDiff = Number(b.stopCount || 0) - Number(a.stopCount || 0);
+    if (stopDiff !== 0) {
+      return stopDiff;
+    }
+
+    return lineDisplayName(a).localeCompare(lineDisplayName(b));
+  });
+
+  return listed;
 }
 
 function getVisibleLineKeys(shownLines) {
@@ -2466,10 +2614,57 @@ async function setFocusedLine(lineKey, options = {}) {
   renderProgress();
 }
 
+function applyLineVisibilityPreference(line, targetVisibility) {
+  const lineKey = String(line?.lineKey || "").trim();
+  if (!lineKey) {
+    return;
+  }
+
+  const normalizedTarget =
+    targetVisibility === "on" || targetVisibility === "off" ? targetVisibility : "";
+  const currentOverride = lineVisibilityOverride(lineKey);
+  const nextOverride = currentOverride === normalizedTarget ? "" : normalizedTarget;
+
+  setLineVisibilityOverride(lineKey, nextOverride);
+  clearStatusPin();
+  resetClearRouteProgressConfirmation();
+
+  const shown = getShownLines({ ignoreSearch: true });
+  if (state.focusedLineKey && !shown.some((entry) => entry.lineKey === state.focusedLineKey)) {
+    state.focusedLineKey = "";
+  }
+
+  refreshUiFromState();
+  restoreUserStatusFromFocus();
+
+  const effectiveVisible = lineIsVisible(line);
+  const sourceLabel = nextOverride
+    ? `Manual ${nextOverride.toUpperCase()} override`
+    : "Auto visibility (mode/frequency filters)";
+
+  setStatus(
+    `${lineDisplayName(line)} visibility ${effectiveVisible ? "ON" : "OFF"}.`,
+    "ok",
+    sourceLabel
+  );
+}
+
 function renderLineList() {
   els.lineList.innerHTML = "";
+
+  const query = String(state.lineSearchQuery || "").trim().toLowerCase();
+  const hasQuery = Boolean(query);
+  const visibleLines = getShownLines({ ignoreSearch: true });
+  const routeListLines = getRouteListLines();
+
   if (els.routeListSummary) {
-    els.routeListSummary.textContent = "Filtered routes (0/0)";
+    els.routeListSummary.textContent = hasQuery
+      ? `Search results (${routeListLines.length}/${state.lineSummaries.length})`
+      : `Filtered routes (${visibleLines.length} visible, ${routeListLines.length} listed)`;
+  }
+
+  if (els.routeListDropdown && hasQuery && routeListLines.length > 0) {
+    els.routeListDropdown.open = true;
   }
 
   if (!state.lineSummaries.length) {
@@ -2480,28 +2675,27 @@ function renderLineList() {
     return;
   }
 
-  const shownLines = getShownLines();
-  if (els.routeListSummary) {
-    els.routeListSummary.textContent = `Filtered routes (${shownLines.length}/${state.lineSummaries.length})`;
-  }
-
-  if (!shownLines.length) {
+  if (!routeListLines.length) {
     const empty = document.createElement("p");
     empty.className = "microcopy";
-    empty.textContent = "No routes match this search/filter in the current view.";
+    empty.textContent = hasQuery
+      ? "No loaded routes match this search yet. Pan/zoom to load more nearby routes."
+      : "No routes are visible. Adjust filters or search for a route and set it ON.";
     els.lineList.append(empty);
     return;
   }
 
   const fragment = document.createDocumentFragment();
 
-  for (const line of shownLines) {
-    const row = document.createElement("button");
-    row.type = "button";
+  routeListLines.forEach((line, index) => {
+    const row = document.createElement("div");
     row.className = "line-item";
+    row.style.setProperty("--line-enter-delay", `${Math.min(index, 18) * 22}ms`);
 
     const focused = state.focusedLineKey && state.focusedLineKey === line.lineKey;
     const faded = state.focusedLineKey && state.focusedLineKey !== line.lineKey;
+    const override = lineVisibilityOverride(line.lineKey);
+    const visible = lineIsVisible(line);
 
     if (focused) {
       row.classList.add("is-focused");
@@ -2509,6 +2703,21 @@ function renderLineList() {
     if (faded) {
       row.classList.add("is-faded");
     }
+    if (!visible) {
+      row.classList.add("is-hidden");
+    }
+    if (override === "on") {
+      row.classList.add("is-manual-on");
+    }
+    if (override === "off") {
+      row.classList.add("is-manual-off");
+    }
+
+    const focusButton = document.createElement("button");
+    focusButton.type = "button";
+    focusButton.className = "line-item-focus";
+    focusButton.disabled = !visible;
+    focusButton.title = visible ? "Focus this route on the map" : "Set route visibility to ON to focus it";
 
     const dot = document.createElement("span");
     dot.className = "line-color-dot";
@@ -2524,22 +2733,75 @@ function renderLineList() {
     meta.className = "line-meta";
     meta.textContent = `${lineMode(line)} - ${lineOperatorLabel(line)} - ${lineHeadwayLabel(line)}`;
 
+    if (override === "on" || override === "off") {
+      meta.textContent = `${meta.textContent} - Manual ${override.toUpperCase()}`;
+    }
+
+    if (!visible && !override) {
+      meta.textContent = `${meta.textContent} - Hidden by filters`;
+    }
+
     labelBlock.append(name, meta);
 
     const stopCount = document.createElement("span");
     stopCount.className = "line-stop-count";
-    stopCount.textContent = Number(line.stopCount || 0) > 0 ? `${line.stopCount} stops` : "Load stops";
+    stopCount.textContent = Number(line.stopCount || 0) > 0 ? `${line.stopCount} stops` : "Loaded route";
 
-    row.append(dot, labelBlock, stopCount);
+    focusButton.append(dot, labelBlock, stopCount);
 
-    row.addEventListener("click", () => {
+    focusButton.addEventListener("click", () => {
       setFocusedLine(line.lineKey).catch((error) => {
         setStatus(error.message, "error");
       });
     });
 
+    const controls = document.createElement("div");
+    controls.className = "line-visibility-controls";
+
+    const onButton = document.createElement("button");
+    onButton.type = "button";
+    onButton.className = "line-visibility-btn is-on";
+    onButton.textContent = "ON";
+
+    const offButton = document.createElement("button");
+    offButton.type = "button";
+    offButton.className = "line-visibility-btn is-off";
+    offButton.textContent = "OFF";
+
+    if (visible) {
+      onButton.classList.add("is-active");
+    } else {
+      offButton.classList.add("is-active");
+    }
+
+    if (override === "on") {
+      onButton.classList.add("is-manual");
+    }
+    if (override === "off") {
+      offButton.classList.add("is-manual");
+    }
+
+    onButton.setAttribute("aria-pressed", visible ? "true" : "false");
+    offButton.setAttribute("aria-pressed", visible ? "false" : "true");
+
+    onButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      applyLineVisibilityPreference(line, "on");
+    });
+
+    offButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      applyLineVisibilityPreference(line, "off");
+    });
+
+    controls.append(onButton, offButton);
+
+    row.append(focusButton, controls);
+
     fragment.append(row);
-  }
+  });
 
   els.lineList.append(fragment);
 }
@@ -3799,15 +4061,23 @@ function bindEvents() {
 }
 
 async function init() {
+  document.body.classList.remove("app-ready");
   setTheme(state.theme);
   syncMobilePanelLayout();
   normalizeModeSelection();
   normalizeFrequencySelection();
+  normalizeManualVisibilityOverrides();
   renderApiCounter();
   restoreUserStatusFromFocus();
 
   bindEvents();
   initializeMap();
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      document.body.classList.add("app-ready");
+    });
+  });
 
   try {
     await Promise.all([loadCities(), hydrateSession()]);
