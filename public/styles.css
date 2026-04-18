@@ -129,6 +129,14 @@ body[data-theme="dark"] {
   margin-bottom: 12px;
 }
 
+.sidebar-head.panel {
+  box-shadow: 0 8px 14px rgba(8, 22, 32, 0.12);
+}
+
+body[data-theme="dark"] .sidebar-head.panel {
+  box-shadow: 0 10px 18px rgba(4, 11, 17, 0.4);
+}
+
 .sidebar-head {
   position: sticky;
   top: 0;
@@ -256,6 +264,13 @@ label {
   min-width: 80px;
 }
 
+.btn-icon.theme-icon-btn {
+  min-width: 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+
 .btn-subtle {
   width: 100%;
   margin-top: 8px;
@@ -276,11 +291,11 @@ label {
 }
 
 .filter-sections {
-  margin-top: 8px;
+  margin-top: 6px;
   border: 1px solid rgba(20, 53, 71, 0.12);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.4);
-  padding: 8px 8px 7px;
+  padding: 6px 6px 5px;
 }
 
 body[data-theme="dark"] .filter-sections {
@@ -288,7 +303,7 @@ body[data-theme="dark"] .filter-sections {
 }
 
 .filter-section-title {
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   color: var(--muted);
   font-family: "IBM Plex Mono", monospace;
   font-size: 11px;
@@ -298,7 +313,7 @@ body[data-theme="dark"] .filter-sections {
 
 .filter-section-divider {
   height: 1px;
-  margin: 6px 0 7px;
+  margin: 5px 0 6px;
   background: rgba(20, 53, 71, 0.2);
 }
 
@@ -309,7 +324,7 @@ body[data-theme="dark"] .filter-section-divider {
 .mode-filter-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 6px;
   align-items: center;
   overflow: visible;
   padding: 1px 0 0;
@@ -323,10 +338,10 @@ body[data-theme="dark"] .filter-section-divider {
   flex: 0 0 auto;
   border: 1px solid var(--panel-border);
   border-radius: 999px;
-  padding: 5px 11px;
+  padding: 4px 9px;
   background: rgba(255, 255, 255, 0.52);
   color: var(--ink);
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
@@ -339,12 +354,30 @@ body[data-theme="dark"] .mode-chip {
   border-color: var(--accent);
 }
 
+.routes-panel {
+  padding: 9px 10px;
+}
+
+.routes-panel h2 {
+  margin: 0 0 5px;
+  font-size: 18px;
+}
+
+.routes-top-controls {
+  margin-bottom: 6px;
+}
+
+.routes-top-controls input {
+  margin-top: 3px;
+  padding: 8px 9px;
+}
+
 .user-status-card {
-  margin: 10px 0;
+  margin: 8px 0;
   border: 1px solid rgba(20, 53, 71, 0.14);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.46);
-  padding: 8px 9px;
+  padding: 7px 8px;
 }
 
 body[data-theme="dark"] .user-status-card {
@@ -405,19 +438,26 @@ body[data-theme="dark"] .user-status-card {
 }
 
 .user-status-actions {
-  margin-top: 8px;
+  margin-top: 6px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
 }
 
 .user-status-actions .btn {
   width: 100%;
   min-width: 0;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border-style: solid;
 }
 
 .user-status-actions .btn-subtle {
   margin-top: 0;
+  color: var(--ink);
+  border-style: solid;
 }
 
 .clear-progress-confirm {
@@ -428,7 +468,7 @@ body[data-theme="dark"] .user-status-card {
 }
 
 .route-list-dropdown {
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .route-list-summary {
@@ -535,8 +575,18 @@ body[data-theme="dark"] .line-list {
 }
 
 .line-progress-list {
-  max-height: clamp(172px, 31vh, 360px);
+  max-height: calc(100vh - 170px);
+  min-height: 220px;
   overflow-y: auto;
+}
+
+.mobile-panels-toggle {
+  display: none;
+  margin-top: 7px;
+  font-size: 11px;
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .line-progress-row {
@@ -652,19 +702,72 @@ body[data-theme="dark"] .maplibregl-popup-content {
 }
 
 .station-hover {
-  min-width: 210px;
-  max-width: 290px;
+  min-width: 230px;
+  max-width: 320px;
   font-size: 12px;
-  line-height: 1.34;
+  line-height: 1.3;
 }
 
 .station-hover h4 {
-  margin: 0 0 6px;
-  font-size: 13px;
+  margin: 0;
+  font-size: 14px;
 }
 
-.station-hover p {
-  margin: 3px 0;
+.station-hover .hover-subtitle {
+  margin: 3px 0 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.station-hover .hover-grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 8px;
+  font-size: 11px;
+}
+
+.station-hover .hover-grid dt {
+  margin: 0;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.station-hover .hover-grid dd {
+  margin: 0;
+}
+
+.station-hover .hover-route-list {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.station-hover .hover-route-row {
+  margin: 0;
+  border-top: 1px solid rgba(20, 53, 71, 0.14);
+  padding-top: 6px;
+}
+
+.station-hover .hover-route-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.station-hover .hover-route-name {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.station-hover .hover-route-meta {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .station-hover .muted {
@@ -714,7 +817,8 @@ body[data-theme="dark"] .maplibregl-popup-content {
   }
 
   .line-progress-list {
-    max-height: clamp(172px, 34vh, 400px);
+    max-height: min(62vh, 560px);
+    min-height: 190px;
   }
 
   .line-list {
@@ -727,6 +831,105 @@ body[data-theme="dark"] .maplibregl-popup-content {
     top: 10px;
     width: auto;
     max-height: min(70vh, 640px);
+  }
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+  body {
+    overflow: hidden;
+  }
+
+  .app-shell {
+    display: block;
+    position: relative;
+    width: 100%;
+    height: 100vh;
+  }
+
+  .map-stage {
+    width: 100%;
+    height: 100vh;
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    z-index: 8;
+    padding: 0;
+    border: none;
+    background: transparent;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .sidebar .panel {
+    margin-bottom: 8px;
+  }
+
+  .routes-panel > h2,
+  .routes-top-controls,
+  .route-list-dropdown,
+  .progress-panel,
+  .status-panel {
+    display: none;
+  }
+
+  .routes-panel {
+    padding: 8px;
+  }
+
+  .mobile-panels-toggle {
+    display: block;
+  }
+
+  .map-overlay-controls {
+    top: auto;
+    bottom: 12px;
+    right: 10px;
+    flex-direction: row;
+  }
+
+  body.mobile-panels-open .app-shell::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 16, 24, 0.36);
+    z-index: 9;
+  }
+
+  body.mobile-panels-open .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: auto;
+    width: min(88vw, 390px);
+    height: 100vh;
+    padding: 10px;
+    border-right: 1px solid var(--panel-border);
+    background: var(--shell);
+    overflow-y: auto;
+    z-index: 10;
+    backdrop-filter: blur(4px);
+  }
+
+  body.mobile-panels-open .routes-panel > h2,
+  body.mobile-panels-open .routes-top-controls,
+  body.mobile-panels-open .route-list-dropdown,
+  body.mobile-panels-open .progress-panel,
+  body.mobile-panels-open .status-panel {
+    display: block;
+  }
+
+  body.mobile-panels-open .routes-panel {
+    padding: 9px 10px;
+  }
+
+  body.mobile-panels-open .line-progress-list {
+    max-height: min(54vh, 520px);
+    min-height: 170px;
   }
 }
 

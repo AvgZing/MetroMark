@@ -15,7 +15,7 @@ const {
 
 const TRANSITLAND_BASE_URL = "https://transit.land/api/v2/rest";
 const TRANSITLAND_VECTOR_BASE_URL = "https://transit.land/api/v2/tiles";
-const TRANSIT_CACHE_PREFIX = "transit-v3:";
+const TRANSIT_CACHE_PREFIX = "transit-v4:";
 const transitlandMetrics = {
   restApiRequestCount: 0,
   restApiRequestFailureCount: 0,
@@ -436,15 +436,55 @@ function normalizeRouteLookupKey(value) {
 }
 
 function routeLookupKeysFromObject(route) {
+  const routeId = sanitizeText(route?.route_id || route?.id);
+  const shortName = sanitizeText(
+    route?.route_short_name || route?.short_name || route?.line_short_name || route?.lineShortName
+  );
+  const longName = sanitizeText(
+    route?.route_long_name ||
+      route?.long_name ||
+      route?.line_long_name ||
+      route?.lineLongName ||
+      route?.route_name ||
+      route?.line_name ||
+      route?.lineName ||
+      route?.name
+  );
+  const feedId = sanitizeText(
+    route?.route_feed_id ||
+      route?.routeFeedId ||
+      route?.feed_onestop_id ||
+      route?.feedOnestopId ||
+      route?.feed?.onestop_id
+  );
+
   const candidates = [
     route?.onestop_id,
     route?.route_onestop_id,
-    route?.route_id,
+    routeId,
     route?.line_key,
     route?.lineKey,
     route?.id,
-    route?.routeFeedId
+    route?.routeFeedId,
+    route?.route_feed_id,
+    shortName,
+    longName,
+    route?.route_name,
+    route?.line_name,
+    route?.lineName,
+    route?.line_short_name,
+    route?.lineShortName
   ];
+
+  if (feedId && routeId) {
+    candidates.push(`${feedId}:${routeId}`);
+  }
+  if (feedId && shortName) {
+    candidates.push(`${feedId}:${shortName}`);
+  }
+  if (feedId && longName) {
+    candidates.push(`${feedId}:${longName}`);
+  }
 
   const unique = new Set();
   for (const candidate of candidates) {

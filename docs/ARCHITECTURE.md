@@ -107,3 +107,44 @@ For stronger 3D city context later:
 - Move basemap to vector style with building layers.
 - Add building extrusion layers by zoom/pitch.
 - Keep transit overlays and auth/progress unchanged.
+
+## Route Visibility and Progress Rules (UI Contract)
+
+These UI rules are intentionally explicit because they affect usability and should not drift in future refactors.
+
+Visibility pipeline:
+1. Start from currently loaded route summaries.
+2. Apply mode filter.
+3. Apply frequency filter.
+4. Apply search query.
+5. Render resulting shown routes in list, map, and progress panel.
+
+Focus behavior:
+- No focused route: all shown routes render as active and station dots are hidden.
+- Focused route: all shown routes remain visible, but only focused-route stations render.
+- Non-focused routes are dimmed using a mask overlay (not heavy per-line translucency).
+
+Interlined routes:
+- Small deterministic line offsets are applied to reduce perfect overlap.
+- Repeated clicks on the same overlap location cycle through matching routes.
+
+Status panel contract:
+- Status context is click-driven, not hover-driven.
+- Route click updates route status.
+- Station click updates station status and pins it until changed.
+
+Progress contract:
+- Progress is tracked by line key + stable station key.
+- Route denominator is unique station count for that route.
+- Numerator is visited stations that belong to that route.
+- Clear Route Progress uses a two-click confirm flow.
+
+Filter count contract:
+- Mode chip counts show exact values only after the current viewport load settles.
+- During pending/deferred area loading, mode counts show ? to avoid false precision.
+
+Frequency labels contract:
+- Frequent: Up to 10m
+- Regular: 11-29m
+- Local: 30m+
+- Unknown: Frequency Unknown
