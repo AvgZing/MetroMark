@@ -649,24 +649,9 @@ function lineIsVisible(line, options = {}) {
 }
 
 function selectedRouteTypesForFetch() {
-  if (state.activeModeKeys.has(MODE_FILTER_ALL)) {
-    return [];
-  }
-
-  const selectedRouteTypes = new Set();
-
-  for (const modeKey of state.activeModeKeys) {
-    const modeDef = MODE_DEF_BY_KEY.get(modeKey);
-    if (!modeDef) {
-      continue;
-    }
-
-    for (const routeType of modeDef.routeTypes || []) {
-      selectedRouteTypes.add(routeType);
-    }
-  }
-
-  return Array.from(selectedRouteTypes).sort((a, b) => a - b);
+  // Always fetch all route types for the loaded viewport tiles.
+  // Mode chips then act as instant client-side visibility filters.
+  return [];
 }
 
 function modeCacheKeyFromRouteTypes(routeTypes) {
@@ -3909,7 +3894,18 @@ function initializeMap() {
         }
       );
 
-      if (Array.isArray(nearby) && nearby.length > 0) {
+      const hasVisibleNearbyFeature = Array.isArray(nearby)
+        ? nearby.some((feature) => {
+            if (feature?.layer?.id === "stops-layer") {
+              return true;
+            }
+
+            const line = lineFromRouteFeature(feature);
+            return Boolean(line && lineIsVisible(line));
+          })
+        : false;
+
+      if (hasVisibleNearbyFeature) {
         return;
       }
 
