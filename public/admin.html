@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MetroMark Admin Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/admin.css" />
+  </head>
+  <body>
+    <main class="admin-shell">
+      <header class="admin-header card">
+        <div>
+          <p class="kicker">MetroMark Operations</p>
+          <h1>Admin Console</h1>
+          <p class="subtle">Supabase/PostGIS runtime tracking and manual operations.</p>
+        </div>
+      </header>
+
+      <section class="card auth-card">
+        <h2>Admin Access</h2>
+        <label for="adminKeyInput">Stats/Actions x-admin-key</label>
+        <div class="row">
+          <input id="adminKeyInput" type="password" placeholder="Paste admin key" autocomplete="off" />
+        </div>
+        <label for="overrideKeyInput">Override x-admin-key (optional)</label>
+        <div class="row">
+          <input
+            id="overrideKeyInput"
+            type="password"
+            placeholder="Leave blank to reuse stats key"
+            autocomplete="off"
+          />
+          <button id="saveKeyBtn" type="button">Save Key</button>
+          <button id="refreshAllBtn" type="button">Refresh</button>
+        </div>
+        <p id="statusMessage" class="status">Waiting for key.</p>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h2>Usage Burn</h2>
+          <dl id="usageStats" class="kv"></dl>
+        </article>
+
+        <article class="card">
+          <h2>Harvest State</h2>
+          <dl id="harvestStats" class="kv"></dl>
+        </article>
+
+        <article class="card">
+          <h2>Cache and Database</h2>
+          <dl id="storageStats" class="kv"></dl>
+        </article>
+      </section>
+
+      <section class="card">
+        <h2>Manual Actions</h2>
+        <div class="action-grid">
+          <button id="runHarvestBtn" type="button">Run Harvest Cycle</button>
+          <button id="runBackupBtn" type="button">Run Nonrecoverable Backup</button>
+          <div class="inline-action">
+            <label for="queueCitySelect">Queue City Refresh</label>
+            <select id="queueCitySelect"></select>
+            <button id="queueCityBtn" type="button">Queue</button>
+          </div>
+        </div>
+
+        <h3>Station Override</h3>
+        <div class="override-grid">
+          <input id="overrideStationKey" type="text" placeholder="stationKey (required)" />
+          <input id="overrideManualName" type="text" placeholder="manualName" />
+          <input id="overrideManualLat" type="number" step="any" placeholder="manualLat" />
+          <input id="overrideManualLon" type="number" step="any" placeholder="manualLon" />
+          <input id="overrideNote" type="text" placeholder="note" />
+          <button id="applyOverrideBtn" type="button">Apply Override + Clear Cache</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Pending Harvest Queue</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>City</th>
+              <th>Status</th>
+              <th>Pending</th>
+              <th>Priority</th>
+              <th>Updated</th>
+              <th>Error</th>
+            </tr>
+          </thead>
+          <tbody id="queueBody"></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>Action Log</h2>
+        <pre id="actionLog"></pre>
+      </section>
+    </main>
+
+    <script src="/scripts/admin.js" defer></script>
+  </body>
+</html>

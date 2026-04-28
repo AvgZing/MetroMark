@@ -14,6 +14,48 @@ const cities = [
     bbox: [-74.28, 40.49, -73.67, 40.93]
   },
   {
+    slug: "san-francisco",
+    name: "San Francisco",
+    country: "USA",
+    center: [-122.4194, 37.7749],
+    bbox: [-122.58, 37.69, -122.31, 37.84]
+  },
+  {
+    slug: "chicago",
+    name: "Chicago",
+    country: "USA",
+    center: [-87.6298, 41.8781],
+    bbox: [-87.95, 41.64, -87.5, 42.04]
+  },
+  {
+    slug: "minneapolis-st-paul",
+    name: "Minneapolis-Saint Paul",
+    country: "USA",
+    center: [-93.265, 44.9778],
+    bbox: [-93.48, 44.8, -92.98, 45.1]
+  },
+  {
+    slug: "vancouver-bc",
+    name: "Vancouver (BC)",
+    country: "Canada",
+    center: [-123.1207, 49.2827],
+    bbox: [-123.3, 49.19, -122.96, 49.33]
+  },
+  {
+    slug: "portland",
+    name: "Portland",
+    country: "USA",
+    center: [-122.6765, 45.5231],
+    bbox: [-122.86, 45.43, -122.5, 45.62]
+  },
+  {
+    slug: "los-angeles",
+    name: "Los Angeles",
+    country: "USA",
+    center: [-118.2437, 34.0522],
+    bbox: [-118.67, 33.7, -117.9, 34.34]
+  },
+  {
     slug: "london",
     name: "London",
     country: "UK",
@@ -43,6 +85,24 @@ const cities = [
   }
 ];
 
+const bySlug = new Map(cities.map((city) => [city.slug, city]));
+const defaultCoreHarvestCitySlugs = [
+  "seattle",
+  "new-york",
+  "san-francisco",
+  "paris",
+  "london",
+  "chicago",
+  "minneapolis-st-paul",
+  "vancouver-bc",
+  "portland",
+  "los-angeles"
+];
+
 module.exports = {
-  cities
+  cities,
+  defaultCoreHarvestCitySlugs,
+  getCityBySlug(slug) {
+    return bySlug.get(String(slug || "").trim()) || null;
+  }
 };

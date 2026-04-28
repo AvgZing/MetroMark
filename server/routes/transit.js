@@ -1,6 +1,8 @@
 const express = require("express");
 
+const { getCityBySlug } = require("../city-presets");
 const {
+  getCityTransit,
   getBboxTransit,
   getRouteStopsTransit,
   getRouteHeadway
@@ -13,6 +15,44 @@ const {
 } = require("./helpers");
 
 const router = express.Router();
+
+router.get("/transit/city/:slug", async (req, res) => {
+  const city = getCityBySlug(req.params.slug);
+  if (!city) {
+    return res.status(404).json({ error: "Unknown city slug." });
+  }
+
+  try {
+    const stopTypes = parseStopTypes(req.query.stopTypes);
+    const routeTypes = parseRouteTypes(req.query.routeTypes);
+    const data = await getCityTransit(city.slug, {
+      forceRefresh: asBoolean(req.query.refresh),
+      stopLocationTypes: stopTypes,
+      routeTypes,
+      requestSource: "user"
+    });
+
+    if (!data) {
+      return res.status(404).json({ error: "No transit data available for this city." });
+    }
+
+    return res.json(withTransitlandMetrics({
+      cacheStatus: data.cacheStatus,
+      cacheKey: data.cacheKey,
+      cacheExpiresAt: data.cacheExpiresAt || null,
+      cacheVerifiedAt: data.cacheVerifiedAt || null,
+      feedFingerprint: data.feedFingerprint || "",
+      stopLocationTypes: data.stopLocationTypes || [0, 1],
+      routeTypes: data.routeTypes || [],
+      ...data.payload
+    }));
+  } catch (error) {
+    return res.status(502).json({
+      error: "City transit fetch failed.",
+      detail: error.message
+    });
+  }
+});
 
 router.get("/transit/bbox", async (req, res) => {
   const bboxRaw = String(req.query.bbox || "").trim();
@@ -30,7 +70,8 @@ router.get("/transit/bbox", async (req, res) => {
       forceRefresh: asBoolean(req.query.refresh),
       zoom: Number.isFinite(zoom) ? zoom : null,
       stopLocationTypes: stopTypes,
-      routeTypes
+      routeTypes,
+      requestSource: "user"
     });
 
     return res.json(withTransitlandMetrics({
@@ -62,7 +103,8 @@ router.get("/transit/route-stops", async (req, res) => {
   try {
     const data = await getRouteStopsTransit(lineKey, {
       forceRefresh: asBoolean(req.query.refresh),
-      stopLocationTypes: stopTypes
+      stopLocationTypes: stopTypes,
+      requestSource: "user"
     });
 
     return res.json(withTransitlandMetrics({
@@ -88,7 +130,8 @@ router.get("/transit/route-headway", async (req, res) => {
 
   try {
     const data = await getRouteHeadway(lineKey, {
-      forceRefresh: asBoolean(req.query.refresh)
+      forceRefresh: asBoolean(req.query.refresh),
+      requestSource: "user"
     });
 
     return res.json(withTransitlandMetrics(data));

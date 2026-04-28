@@ -5,15 +5,19 @@ const { authMiddleware } = require("../auth");
 
 const router = express.Router();
 
-router.get("/progress", authMiddleware, (req, res) => {
+router.get("/progress", authMiddleware, async (req, res) => {
   const lineKey = String(req.query.lineKey || "").trim();
-  const items = db.getVisitedStations(req.user.id, lineKey);
-  return res.json({ items });
+  try {
+    const items = await db.getVisitedStations(req.user.id, lineKey);
+    return res.json({ items });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 });
 
-router.post("/progress/toggle", authMiddleware, (req, res) => {
+router.post("/progress/toggle", authMiddleware, async (req, res) => {
   try {
-    db.setVisitedState(req.user.id, {
+    await db.setVisitedState(req.user.id, {
       lineKey: req.body.lineKey,
       stationKey: req.body.stationKey,
       stationName: req.body.stationName,
@@ -28,14 +32,14 @@ router.post("/progress/toggle", authMiddleware, (req, res) => {
   }
 });
 
-router.post("/progress/clear-route", authMiddleware, (req, res) => {
+router.post("/progress/clear-route", authMiddleware, async (req, res) => {
   const lineKey = String(req.body.lineKey || "").trim();
   if (!lineKey) {
     return res.status(400).json({ error: "lineKey is required." });
   }
 
   try {
-    const clearedCount = db.clearVisitedStationsForLine(req.user.id, lineKey);
+    const clearedCount = await db.clearVisitedStationsForLine(req.user.id, lineKey);
     return res.json({ ok: true, lineKey, clearedCount });
   } catch (error) {
     return res.status(400).json({ error: error.message });

@@ -1,11 +1,15 @@
 # Local prototypes and non-app reference material
 Reference/
 Docs/
+!docs/
+!docs/**
 
 # Environment and secrets
 .env
 .env.*
 !.env.example
+!.env.development.example
+!.env.production.example
 config.js
 config.local.js
 *.local.env
@@ -22,6 +26,7 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 data/cache/
+data/backups/
 
 # OS/editor noise
 .DS_Store

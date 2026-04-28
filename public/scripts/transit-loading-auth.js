@@ -472,6 +472,9 @@ async function clearRouteProgress(lineKey) {
 
 async function loginWithPayload(payloadPromise) {
   const payload = await payloadPromise;
+  if (typeof setAuthFeedback === "function") {
+    setAuthFeedback();
+  }
   setToken(payload.token);
   state.user = payload.user;
   updateAuthUi();

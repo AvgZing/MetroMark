@@ -227,6 +227,7 @@ const els = {
   themeToggleBtn: document.getElementById("themeToggleBtn"),
   authLoggedOut: document.getElementById("authLoggedOut"),
   authLoggedIn: document.getElementById("authLoggedIn"),
+  authFeedback: document.getElementById("authFeedback"),
   currentUserLabel: document.getElementById("currentUserLabel"),
   demoLoginBtn: document.getElementById("demoLoginBtn"),
   loginForm: document.getElementById("loginForm"),

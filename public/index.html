@@ -120,6 +120,9 @@
             </div>
             <div class="advanced-section">
               <p class="backend-note legal-link-row">
+                <a href="/admin" target="_blank" rel="noopener noreferrer">Open Admin Console</a>
+              </p>
+              <p class="backend-note legal-link-row">
                 <a href="https://www.transit.land/terms" target="_blank" rel="noopener noreferrer"
                   >Transitland Terms of Service and Data Attributions</a
                 >
@@ -173,7 +176,7 @@
         </div>
 
         <div id="authLoggedOut">
-          <button id="demoLoginBtn" class="btn btn-primary" type="button">Use Demo Account</button>
+          <p id="authFeedback" class="auth-feedback" hidden></p>
 
           <form id="loginForm" class="stack-form">
             <label>
@@ -186,6 +189,8 @@
             </label>
             <button class="btn" type="submit">Login</button>
           </form>
+
+          <p class="auth-separator">Don't Have an Account? Create account:</p>
 
           <form id="registerForm" class="stack-form">
             <label>
@@ -202,8 +207,6 @@
             </label>
             <button class="btn" type="submit">Create Account</button>
           </form>
-
-          <p class="microcopy">Demo credentials are seeded automatically from server settings.</p>
         </div>
 
         <div id="authLoggedIn" hidden>

@@ -6,19 +6,21 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
+    "start:prod": "set METROMARK_ENV_FILE=.env.production&& node server/index.js",
+    "start:dev": "set METROMARK_ENV_FILE=.env.development&& node --watch server/index.js",
     "dev": "node --watch server/index.js",
-    "check": "node --check server/index.js"
+    "check": "node --check server/index.js",
+    "harvest:core": "node scripts/harvest-core.js",
+    "backup:nonrecoverable": "node scripts/backup-nonrecoverable.js"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.49.8",
     "@mapbox/vector-tile": "^2.0.4",
-    "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.8.1",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
-    "jsonwebtoken": "^9.0.2",
     "pbf": "^4.0.1"
   }
 }

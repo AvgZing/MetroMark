@@ -1,13 +1,12 @@
 const express = require("express");
 
-const config = require("../config");
 const db = require("../db");
-const { createAuthToken, authMiddleware } = require("../auth");
+const { authMiddleware } = require("../auth");
 const { userResponse } = require("./helpers");
 
 const router = express.Router();
 
-router.post("/auth/register", (req, res) => {
+router.post("/auth/register", async (req, res) => {
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
   const displayName = String(req.body.displayName || "").trim();
@@ -20,36 +19,39 @@ router.post("/auth/register", (req, res) => {
     return res.status(400).json({ error: "Password must be at least 6 characters." });
   }
 
-  const created = db.createUser(email, password, displayName);
-  if (!created) {
-    return res.status(409).json({ error: "User already exists or payload is invalid." });
+  try {
+    const result = await db.registerAccount(email, password, displayName);
+    return res.status(201).json(userResponse(result.user, result.token));
+  } catch (error) {
+    const message = String(error.message || "Registration failed.");
+    if (message.toLowerCase().includes("already")) {
+      return res.status(409).json({ error: message });
+    }
+    return res.status(400).json({ error: message });
   }
-
-  const token = createAuthToken(created);
-  return res.status(201).json(userResponse(created, token));
 });
 
-router.post("/auth/login", (req, res) => {
+router.post("/auth/login", async (req, res) => {
   const email = String(req.body.email || "").trim().toLowerCase();
   const password = String(req.body.password || "");
 
-  const user = db.verifyUser(email, password);
-  if (!user) {
-    return res.status(401).json({ error: "Invalid email or password." });
+  try {
+    const result = await db.loginAccount(email, password);
+    return res.json(userResponse(result.user, result.token));
+  } catch (error) {
+    const message = String(error.message || "Invalid email or password.");
+    const status = message.toLowerCase().includes("disabled") ? 403 : 401;
+    return res.status(status).json({ error: message });
   }
-
-  const token = createAuthToken(user);
-  return res.json(userResponse(user, token));
 });
 
-router.post("/auth/demo-login", (req, res) => {
-  const demoUser = db.getUserByEmail(config.DEMO_USER_EMAIL);
-  if (!demoUser) {
-    return res.status(500).json({ error: "Demo user is unavailable." });
+router.post("/auth/demo-login", async (req, res) => {
+  try {
+    const result = await db.loginDemoAccount();
+    return res.json(userResponse(result.user, result.token));
+  } catch (error) {
+    return res.status(500).json({ error: String(error.message || "Demo user is unavailable.") });
   }
-
-  const token = createAuthToken(demoUser);
-  return res.json(userResponse(demoUser, token));
 });
 
 router.get("/auth/me", authMiddleware, (req, res) => {

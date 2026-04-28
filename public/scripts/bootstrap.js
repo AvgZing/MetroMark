@@ -8,6 +8,28 @@
   });
 }
 
+function setAuthFeedback(message = "", kind = "neutral") {
+  if (!els.authFeedback) {
+    return;
+  }
+
+  const text = String(message || "").trim();
+  els.authFeedback.classList.remove("ok", "error");
+
+  if (!text) {
+    els.authFeedback.hidden = true;
+    els.authFeedback.textContent = "";
+    return;
+  }
+
+  els.authFeedback.hidden = false;
+  els.authFeedback.textContent = text;
+
+  if (kind === "ok" || kind === "error") {
+    els.authFeedback.classList.add(kind);
+  }
+}
+
 function bindEvents() {
   els.themeToggleBtn.addEventListener("click", toggleTheme);
 
@@ -20,7 +42,12 @@ function bindEvents() {
   els.streetsModeBtn.addEventListener("click", () => setMapMode("streets"));
   els.satelliteModeBtn.addEventListener("click", () => setMapMode("satellite"));
 
-  els.accountPopupBtn.addEventListener("click", () => setActivePopup("account"));
+  els.accountPopupBtn.addEventListener("click", () => {
+    if (state.activePopup !== "account") {
+      setAuthFeedback();
+    }
+    setActivePopup("account");
+  });
   els.closeAuthPopupBtn.addEventListener("click", closePopups);
 
   document.addEventListener("keydown", (event) => {
@@ -131,16 +158,20 @@ function bindEvents() {
     restoreUserStatusFromFocus();
   });
 
-  els.demoLoginBtn.addEventListener("click", async () => {
-    try {
-      await loginWithPayload(apiRequest("/api/auth/demo-login", { method: "POST" }));
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
+  if (els.demoLoginBtn) {
+    els.demoLoginBtn.addEventListener("click", async () => {
+      try {
+        await loginWithPayload(apiRequest("/api/auth/demo-login", { method: "POST" }));
+      } catch (error) {
+        setAuthFeedback(error.message, "error");
+        setStatus(error.message, "error");
+      }
+    });
+  }
 
   els.loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    setAuthFeedback();
 
     const formData = new FormData(els.loginForm);
     const email = String(formData.get("email") || "").trim();
@@ -155,12 +186,14 @@ function bindEvents() {
       );
       els.loginForm.reset();
     } catch (error) {
+      setAuthFeedback(error.message, "error");
       setStatus(error.message, "error");
     }
   });
 
   els.registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    setAuthFeedback();
 
     const formData = new FormData(els.registerForm);
     const email = String(formData.get("email") || "").trim();
@@ -176,6 +209,7 @@ function bindEvents() {
       );
       els.registerForm.reset();
     } catch (error) {
+      setAuthFeedback(error.message, "error");
       setStatus(error.message, "error");
     }
   });

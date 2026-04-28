@@ -983,6 +983,36 @@ body[data-theme="dark"] .advanced-section + .advanced-section {
   padding-top: 10px;
 }
 
+.auth-separator {
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(24, 57, 76, 0.2);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.auth-feedback {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.auth-feedback.ok {
+  color: #1f6b2f;
+}
+
+.auth-feedback.error {
+  color: #9d2222;
+}
+
+body[data-theme="dark"] .auth-feedback.ok {
+  color: #8be6a6;
+}
+
+body[data-theme="dark"] .auth-feedback.error {
+  color: #ff9fa0;
+}
+
 .microcopy {
   margin: 0;
   font-size: 12px;

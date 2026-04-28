@@ -1,19 +1,6 @@
-const jwt = require("jsonwebtoken");
-const config = require("./config");
 const db = require("./db");
 
-function createAuthToken(user) {
-  return jwt.sign(
-    {
-      sub: user.id,
-      email: user.email
-    },
-    config.JWT_SECRET,
-    { expiresIn: "30d" }
-  );
-}
-
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
@@ -22,10 +9,12 @@ function authMiddleware(req, res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, config.JWT_SECRET);
-    const user = db.getUserById(payload.sub);
+    const user = await db.getUserFromToken(token);
     if (!user) {
       return res.status(401).json({ error: "Invalid auth token." });
+    }
+    if (user.isActive === false) {
+      return res.status(403).json({ error: "Account is disabled." });
     }
     req.user = user;
     return next();
@@ -35,6 +24,5 @@ function authMiddleware(req, res, next) {
 }
 
 module.exports = {
-  createAuthToken,
   authMiddleware
 };

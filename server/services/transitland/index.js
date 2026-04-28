@@ -1,7 +1,9 @@
+const crypto = require("crypto");
 const config = require("../../config");
 const db = require("../../db");
 const { VectorTile } = require("@mapbox/vector-tile");
 const Pbf = require("pbf").default;
+const { getCityBySlug } = require("../../city-presets");
 const {
   normalizeName,
   stableStationKey,
@@ -270,7 +272,48 @@ function wait(milliseconds) {
   });
 }
 
-async function transitlandRequest(path, params) {
+function isBackgroundRequest(options = {}) {
+  const source = String(options.requestSource || "").trim().toLowerCase();
+  return source === "background" || source === "harvest" || source === "scheduler";
+}
+
+async function enforceDailyUsageCapsIfNeeded(kind, options = {}) {
+  const enforce = Boolean(options.enforceDailyCap) || isBackgroundRequest(options);
+  if (!enforce) {
+    return;
+  }
+
+  const usageState = await db.getDailyUsageCapsState({
+    rest: config.HARVEST_DAILY_REST_LIMIT,
+    vector: config.HARVEST_DAILY_VECTOR_LIMIT,
+    routing: config.HARVEST_DAILY_ROUTING_LIMIT
+  });
+
+  const reached =
+    (kind === "rest" && usageState.reached.rest) ||
+    (kind === "vector" && usageState.reached.vector) ||
+    (kind === "routing" && usageState.reached.routing);
+
+  if (!reached) {
+    return;
+  }
+
+  const error = new Error(
+    `Daily ${kind} API cap reached. Background harvesting is paused until the next UTC day.`
+  );
+  error.code = "DAILY_USAGE_LIMIT_REACHED";
+  throw error;
+}
+
+async function recordUsage(kind, amount = 1) {
+  try {
+    await db.incrementUsage(kind, amount);
+  } catch {
+    // Keep request flow resilient if usage logging has a transient DB issue.
+  }
+}
+
+async function transitlandRequest(path, params, options = {}) {
   if (!config.TRANSITLAND_API_KEY) {
     throw new Error("Transitland API key is missing. Set TRANSITLAND_API_KEY in .env.");
   }
@@ -287,8 +330,11 @@ async function transitlandRequest(path, params) {
     const controller = new AbortController();
     const timeoutMs = Math.max(1500, Number(config.TRANSITLAND_REQUEST_TIMEOUT_MS || 15000));
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+    await enforceDailyUsageCapsIfNeeded("rest", options);
     transitlandMetrics.restApiRequestCount += 1;
     transitlandMetrics.lastRestRequestAt = new Date().toISOString();
+    await recordUsage("rest", 1);
 
     try {
       const response = await fetch(url, {
@@ -490,7 +536,7 @@ function routeLookupKeysFromObject(route) {
 async function fetchRoutesVectorTile(z, x, y, options = {}) {
   const cacheKey = `${TRANSIT_CACHE_PREFIX}routes-tile:${z}:${x}:${y}`;
   if (!options.forceRefresh) {
-    const cached = db.getCache(cacheKey);
+    const cached = await db.getCache(cacheKey);
     if (cached?.payload) {
       return cached.payload;
     }
@@ -508,8 +554,11 @@ async function fetchRoutesVectorTile(z, x, y, options = {}) {
   });
 
   const url = `${TRANSITLAND_VECTOR_BASE_URL}/routes/tiles/${z}/${x}/${y}.pbf?${searchParams.toString()}`;
+
+  await enforceDailyUsageCapsIfNeeded("vector", options);
   transitlandMetrics.vectorTileRequestCount += 1;
   transitlandMetrics.lastVectorTileRequestAt = new Date().toISOString();
+  await recordUsage("vector", 1);
 
   try {
     const response = await fetch(url, {
@@ -568,7 +617,9 @@ async function fetchRoutesVectorTile(z, x, y, options = {}) {
     };
 
     const ttlHours = Math.max(1, Number(config.TRANSIT_CACHE_TTL_HOURS || 12));
-    db.setCache(cacheKey, payload, ttlHours * 3600);
+    await db.setCache(cacheKey, payload, ttlHours * 3600, {
+      cacheKind: "vector-tile"
+    });
     return payload;
   } catch (error) {
     if (error?.name === "AbortError") {
@@ -611,7 +662,9 @@ async function fetchVectorRouteHeadwaysForBbox(bboxArray, options = {}) {
     let tilePayload = null;
     try {
       tilePayload = await fetchRoutesVectorTile(tile.z, tile.x, tile.y, {
-        forceRefresh: Boolean(options.forceRefresh)
+        forceRefresh: Boolean(options.forceRefresh),
+        enforceDailyCap: Boolean(options.enforceDailyCap),
+        requestSource: options.requestSource
       });
     } catch {
       continue;
@@ -962,7 +1015,7 @@ async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
 
   const cacheKey = `${TRANSIT_CACHE_PREFIX}headway:${key}`;
   if (!options.forceRefresh) {
-    const cached = db.getCache(cacheKey);
+    const cached = await db.getCache(cacheKey);
     if (cached && cached.payload) {
       return cached.payload;
     }
@@ -973,6 +1026,11 @@ async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    await enforceDailyUsageCapsIfNeeded("routing", options);
+    transitlandMetrics.routingApiRequestCount += 1;
+    transitlandMetrics.lastRoutingRequestAt = new Date().toISOString();
+    await recordUsage("routing", 1);
+
     const response = await fetch(`https://www.transit.land/routes/${encodeURIComponent(key)}`, {
       headers: {
         Accept: "text/html",
@@ -983,6 +1041,7 @@ async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
     });
 
     if (!response.ok) {
+      transitlandMetrics.routingApiRequestFailureCount += 1;
       return null;
     }
 
@@ -993,9 +1052,12 @@ async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
     }
 
     const ttlHours = Math.max(1, Number(config.ROUTE_HEADWAY_CACHE_TTL_HOURS || 72));
-    db.setCache(cacheKey, summary, ttlHours * 3600);
+    await db.setCache(cacheKey, summary, ttlHours * 3600, {
+      cacheKind: "route-headway"
+    });
     return summary;
   } catch {
+    transitlandMetrics.routingApiRequestFailureCount += 1;
     return null;
   } finally {
     clearTimeout(timeoutHandle);
@@ -1099,7 +1161,10 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
     routeParams.route_types = routeTypes.join(",");
   }
 
-  const routesResponse = await transitlandRequest("/routes", routeParams);
+  const routesResponse = await transitlandRequest("/routes", routeParams, {
+    enforceDailyCap: Boolean(options.enforceDailyCap),
+    requestSource: options.requestSource
+  });
   const fetchedRoutes = Array.isArray(routesResponse.routes) ? routesResponse.routes : [];
   const filteredRoutes = routeTypes.length
     ? fetchedRoutes.filter((route) => allowedRouteTypes.has(Number(route?.route_type)))
@@ -1108,7 +1173,9 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
   const vectorHeadways = await fetchVectorRouteHeadwaysForBbox(bboxArray, {
     routeTypes,
     zoom: options.zoom,
-    forceRefresh: options.forceRefresh
+    forceRefresh: options.forceRefresh,
+    enforceDailyCap: Boolean(options.enforceDailyCap),
+    requestSource: options.requestSource
   });
 
   const headwayByRouteKey = vectorHeadways.headwayByRouteKey || {};
@@ -1576,11 +1643,14 @@ function routeFeatureFromLine(line) {
   };
 }
 
-async function fetchRouteByLineKey(lineKey) {
+async function fetchRouteByLineKey(lineKey, options = {}) {
   const response = await transitlandRequest("/routes", {
     onestop_id: lineKey,
     include_geometry: "true",
     limit: "1"
+  }, {
+    enforceDailyCap: Boolean(options.enforceDailyCap),
+    requestSource: options.requestSource
   });
 
   let normalized = normalizeRoutes(Array.isArray(response.routes) ? response.routes : []);
@@ -1591,6 +1661,9 @@ async function fetchRouteByLineKey(lineKey) {
   try {
     const fallbackResponse = await transitlandRequest(`/routes/${encodeURIComponent(lineKey)}`, {
       include_geometry: "true"
+    }, {
+      enforceDailyCap: Boolean(options.enforceDailyCap),
+      requestSource: options.requestSource
     });
 
     if (fallbackResponse?.route) {
@@ -1604,7 +1677,7 @@ async function fetchRouteByLineKey(lineKey) {
   return null;
 }
 
-async function fetchStopsForRoute(lineKey) {
+async function fetchStopsForRoute(lineKey, options = {}) {
   const pageLimit = Math.max(20, Math.min(config.ROUTE_STOP_PAGE_LIMIT, 500));
   const maxResults = Math.max(pageLimit, Math.min(config.ROUTE_STOP_MAX_RESULTS, 5000));
 
@@ -1622,7 +1695,10 @@ async function fetchStopsForRoute(lineKey) {
       params.after = String(afterCursor);
     }
 
-    const response = await transitlandRequest("/stops", params);
+    const response = await transitlandRequest("/stops", params, {
+      enforceDailyCap: Boolean(options.enforceDailyCap),
+      requestSource: options.requestSource
+    });
     const pageStops = Array.isArray(response.stops) ? response.stops : [];
 
     for (const stop of pageStops) {
@@ -1809,7 +1885,7 @@ async function getRouteStopsTransit(lineKey, options = {}) {
   const cacheKey = `${TRANSIT_CACHE_PREFIX}route:${normalizedLineKey}:types:${stopTypeKey}`;
 
   if (!forceRefresh) {
-    const cached = db.getCache(cacheKey);
+    const cached = await db.getCache(cacheKey);
     if (cached) {
       return {
         payload: cached.payload,
@@ -1821,19 +1897,21 @@ async function getRouteStopsTransit(lineKey, options = {}) {
     }
   }
 
-  const line = await fetchRouteByLineKey(normalizedLineKey);
+  const line = await fetchRouteByLineKey(normalizedLineKey, options);
   if (!line) {
     throw new Error(`No route found for ${normalizedLineKey}.`);
   }
 
   const membershipRouteKey = sanitizeText(line.routeOnestopId || normalizedLineKey);
-  const routeStops = await fetchStopsForRoute(membershipRouteKey);
+  const routeStops = await fetchStopsForRoute(membershipRouteKey, options);
   const payload = buildRouteStopsPayload(line, routeStops.stops, {
     stopLocationTypes,
     sourceStopsTruncated: routeStops.truncated
   });
 
-  db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600);
+  await db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600, {
+    cacheKind: "route-stops"
+  });
 
   return {
     payload,
@@ -1849,7 +1927,7 @@ async function getRouteHeadway(lineKey, options = {}) {
     throw new Error("lineKey is required.");
   }
 
-  const line = await fetchRouteByLineKey(normalizedLineKey);
+  const line = await fetchRouteByLineKey(normalizedLineKey, options);
   if (!line) {
     throw new Error(`No route found for ${normalizedLineKey}.`);
   }
@@ -1863,7 +1941,9 @@ async function getRouteHeadway(lineKey, options = {}) {
     const vectorHeadways = await fetchVectorRouteHeadwaysForBbox(bbox, {
       routeTypes: Number.isFinite(line.routeType) ? [line.routeType] : [],
       zoom: options.zoom,
-      forceRefresh: Boolean(options.forceRefresh)
+      forceRefresh: Boolean(options.forceRefresh),
+      enforceDailyCap: Boolean(options.enforceDailyCap),
+      requestSource: options.requestSource
     });
 
     const lookupKeys = routeLookupKeysFromObject({
@@ -1895,7 +1975,9 @@ async function getRouteHeadway(lineKey, options = {}) {
 
   if (!summary) {
     const routePageSummary = await fetchRouteHeadwaySummary(lookupKey, {
-      forceRefresh: Boolean(options.forceRefresh)
+      forceRefresh: Boolean(options.forceRefresh),
+      enforceDailyCap: Boolean(options.enforceDailyCap),
+      requestSource: options.requestSource
     });
 
     if (routePageSummary) {
@@ -1920,6 +2002,82 @@ async function getRouteHeadway(lineKey, options = {}) {
   };
 }
 
+function buildFeedFingerprint(payload) {
+  const lineSummaries = Array.isArray(payload?.lineSummaries) ? payload.lineSummaries : [];
+  if (!lineSummaries.length) {
+    return "";
+  }
+
+  const stableLines = lineSummaries
+    .map((line) => {
+      const lineKey = sanitizeText(line?.lineKey || line?.routeOnestopId);
+      const feedId = sanitizeText(line?.routeFeedId);
+      if (!lineKey) {
+        return "";
+      }
+
+      return `${feedId || "no-feed"}:${lineKey}`;
+    })
+    .filter(Boolean)
+    .sort();
+
+  if (!stableLines.length) {
+    return "";
+  }
+
+  return crypto.createHash("sha1").update(stableLines.join("|"), "utf8").digest("hex");
+}
+
+function buildFeedFingerprintFromRoutes(routes) {
+  const stableRoutes = Array.isArray(routes)
+    ? routes
+      .map((route) => {
+        const routeId = sanitizeText(route?.onestop_id || route?.route_onestop_id);
+        const feedId = sanitizeText(route?.route_feed_onestop_id || route?.feed_onestop_id);
+        if (!routeId) {
+          return "";
+        }
+
+        return `${feedId || "no-feed"}:${routeId}`;
+      })
+      .filter(Boolean)
+      .sort()
+    : [];
+
+  if (!stableRoutes.length) {
+    return "";
+  }
+
+  return crypto.createHash("sha1").update(stableRoutes.join("|"), "utf8").digest("hex");
+}
+
+async function queueCityReverifyIfStale(area, cached) {
+  if (!area || area.kind !== "city" || !area.slug || !cached) {
+    return;
+  }
+
+  const staleDays = Math.max(1, Number(config.TRANSIT_CACHE_STALE_DAYS || 30));
+  const ageSeconds =
+    Math.floor(Date.now() / 1000) - Number(cached.verifiedAt || cached.fetchedAt || 0);
+
+  if (!Number.isFinite(ageSeconds) || ageSeconds < staleDays * 86400) {
+    return;
+  }
+
+  await db.ensureCityHarvestState(
+    {
+      slug: area.slug,
+      name: area.name
+    },
+    {
+      priority: Number(area.harvestPriority || 100),
+      initialStatus: "queued",
+      pendingRefresh: true
+    }
+  );
+  await db.queueCityRefresh(area.slug);
+}
+
 async function getTransitForArea(area, options = {}) {
   const forceRefresh = Boolean(options.forceRefresh);
   const cacheKey = `${TRANSIT_CACHE_PREFIX}${area.key}`;
@@ -1927,13 +2085,17 @@ async function getTransitForArea(area, options = {}) {
   const routeTypes = normalizeRouteTypes(options.routeTypes || area.routeTypes);
 
   if (!forceRefresh) {
-    const cached = db.getCache(cacheKey);
+    const cached = await db.getCache(cacheKey);
     if (cached) {
+      await queueCityReverifyIfStale(area, cached);
+
       return {
         payload: cached.payload,
         cacheStatus: "hit",
         cacheKey: area.key,
         cacheExpiresAt: cached.expiresAt,
+        cacheVerifiedAt: cached.verifiedAt,
+        feedFingerprint: cached.feedFingerprint || "",
         stopLocationTypes
       };
     }
@@ -1942,7 +2104,9 @@ async function getTransitForArea(area, options = {}) {
   const { routes, stops, vectorHeadwayMeta } = await fetchRoutesAndStopsForBbox(area.bbox, {
     routeTypes,
     zoom: options.zoom,
-    forceRefresh
+    forceRefresh,
+    enforceDailyCap: Boolean(options.enforceDailyCap),
+    requestSource: options.requestSource
   });
   const payload = buildTransitPayload(area, routes, stops, {
     stopLocationTypes,
@@ -1950,13 +2114,89 @@ async function getTransitForArea(area, options = {}) {
     vectorHeadwayMeta
   });
 
-  db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600);
+  const feedFingerprint = buildFeedFingerprint(payload);
+  const verifiedAt = Math.floor(Date.now() / 1000);
+
+  await db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600, {
+    cacheKind: area.kind || "bbox",
+    citySlug: String(area.slug || "").trim(),
+    feedFingerprint,
+    verifiedAt
+  });
 
   return {
     payload,
     cacheStatus: "miss",
     cacheKey: area.key,
+    cacheVerifiedAt: verifiedAt,
+    feedFingerprint,
     stopLocationTypes
+  };
+}
+
+async function getCityTransit(slug, options = {}) {
+  const city = getCityBySlug(slug);
+  if (!city) {
+    return null;
+  }
+
+  const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
+  const routeTypes = normalizeRouteTypes(options.routeTypes);
+  const routeTypeKey = routeTypes.length ? routeTypes.join("-") : "all";
+
+  const area = {
+    key: `city:${city.slug}:route-catalog:route-types:${routeTypeKey}`,
+    kind: "city",
+    slug: city.slug,
+    name: city.name,
+    country: city.country,
+    center: city.center,
+    bbox: city.bbox,
+    routeTypes,
+    harvestPriority: Number(options.harvestPriority || 100)
+  };
+
+  const result = await getTransitForArea(area, {
+    ...options,
+    stopLocationTypes,
+    routeTypes
+  });
+
+  return {
+    ...result,
+    stopLocationTypes,
+    routeTypes
+  };
+}
+
+async function getCityFeedFingerprint(slug, options = {}) {
+  const city = getCityBySlug(slug);
+  if (!city) {
+    return null;
+  }
+
+  const routeTypes = normalizeRouteTypes(options.routeTypes);
+  const routeLimit = Math.max(80, Number(config.ROUTE_CATALOG_MAX_RESULTS || 220));
+  const params = {
+    bbox: toBboxString(city.bbox),
+    include_geometry: "false",
+    limit: String(routeLimit)
+  };
+
+  if (routeTypes.length) {
+    params.route_types = routeTypes.join(",");
+  }
+
+  const routesResponse = await transitlandRequest("/routes", params, {
+    enforceDailyCap: Boolean(options.enforceDailyCap),
+    requestSource: options.requestSource
+  });
+
+  const routes = Array.isArray(routesResponse?.routes) ? routesResponse.routes : [];
+  return {
+    citySlug: city.slug,
+    routeCount: routes.length,
+    feedFingerprint: buildFeedFingerprintFromRoutes(routes)
   };
 }
 
@@ -1993,6 +2233,8 @@ async function getBboxTransit(rawBbox, options = {}) {
 }
 
 module.exports = {
+  getCityTransit,
+  getCityFeedFingerprint,
   getBboxTransit,
   getRouteStopsTransit,
   getRouteHeadway,

@@ -14,12 +14,20 @@ MetroMark is a transit exploration tracker for people who like to discover and c
 
 1. Install Node.js 20+.
 2. Copy `.env.example` to `.env`.
-3. Add your Transitland API key to `.env`.
-4. Run:
+3. Add Supabase keys and Transitland API key to `.env`.
+4. Apply `supabase/migrations/20260417_metromark_core.sql` to your Supabase project.
+5. Run:
 
 ```bash
 npm install
 npm start
+```
+
+Optional explicit profiles:
+
+```bash
+npm run start:dev
+npm run start:prod
 ```
 
 Then open:
@@ -40,10 +48,28 @@ Default demo credentials are seeded from `.env.example`:
 MetroMark uses **server-side caching** to control Transitland API usage.
 
 - Transit requests are made by the Node server, not by browser clients directly.
-- Server responses are cached in SQLite.
+- Server responses are cached in Supabase Postgres with PostGIS enabled.
 - The browser keeps only a short session cache for smoother map interactions.
 
 This means repeated users/views should hit server cache instead of repeatedly calling Transitland for the same area.
+
+Defaults now use stronger retention for production hosting:
+
+- `TRANSIT_CACHE_TTL_HOURS=2160` (90 days)
+- `TRANSIT_CACHE_STALE_DAYS=30` (background reverify threshold)
+
+Background scripts:
+
+- `npm run harvest:core` (quota-safe city cache verification/refresh)
+- `npm run backup:nonrecoverable` (users/progress snapshot)
+
+Admin operations page:
+
+- Open `/admin` and provide `x-admin-key` value.
+- Track burn rate, harvest queue, and storage size.
+- Manually trigger harvest, nonrecoverable backup, city queueing, and station overrides.
+
+For full hosting migration steps (Windows scheduler + Cloudflare), see [docs/MIGRATION-WINDOWS.md](docs/MIGRATION-WINDOWS.md).
 
 ## Attribution
 
