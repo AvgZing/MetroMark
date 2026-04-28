@@ -470,7 +470,7 @@ async function clearRouteProgress(lineKey) {
   }
 }
 
-async function loginWithPayload(payloadPromise) {
+async function loginWithPayload(payloadPromise, options = {}) {
   const payload = await payloadPromise;
   if (typeof setAuthFeedback === "function") {
     setAuthFeedback();
@@ -480,6 +480,9 @@ async function loginWithPayload(payloadPromise) {
   updateAuthUi();
   closePopups();
   await loadProgress();
-  setStatus(`Signed in as ${payload.user.displayName}.`, "ok");
+
+  const customMessage = String(options.successMessage || "").trim();
+  const statusMessage = customMessage || `Signed in as ${payload.user.displayName}.`;
+  setStatus(statusMessage, "ok");
 }
 

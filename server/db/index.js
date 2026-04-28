@@ -1,7 +1,6 @@
 const config = require("../config");
 const { hasSupabaseConfig, requireSupabaseClients } = require("../supabase");
 
-const DEMO_DEFAULT_NAME = String(config.DEMO_USER_NAME || "Demo Rider").trim() || "Demo Rider";
 const dbPath = config.SUPABASE_URL || "supabase://not-configured";
 
 const stationOverrideCache = new Map();
@@ -234,59 +233,6 @@ async function loadStationOverridesCache() {
   }
 }
 
-async function ensureDemoUser() {
-  const email = normalizeEmail(config.DEMO_USER_EMAIL);
-  const password = String(config.DEMO_USER_PASSWORD || "").trim();
-  if (!email || !password) {
-    return null;
-  }
-
-  const { anonClient, serviceClient } = requireSupabaseClients();
-  const signInAttempt = await anonClient.auth.signInWithPassword({
-    email,
-    password
-  });
-
-  let authUser = signInAttempt?.data?.user || null;
-
-  if (signInAttempt.error || !authUser) {
-    const createResult = await serviceClient.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        display_name: DEMO_DEFAULT_NAME
-      }
-    });
-
-    if (createResult.error) {
-      const message = String(createResult.error.message || "").toLowerCase();
-      if (!message.includes("already") && !message.includes("exists")) {
-        throw normalizeAuthError(createResult.error, "Unable to create demo account.");
-      }
-    }
-
-    const secondSignIn = await anonClient.auth.signInWithPassword({
-      email,
-      password
-    });
-
-    if (secondSignIn.error || !secondSignIn.data?.user) {
-      return null;
-    }
-
-    authUser = secondSignIn.data.user;
-  }
-
-  await ensureProfile(authUser, {
-    displayName: DEMO_DEFAULT_NAME,
-    role: "user",
-    isActive: true
-  });
-
-  return authUser;
-}
-
 async function initializeStorage() {
   if (initializePromise) {
     return initializePromise;
@@ -295,7 +241,6 @@ async function initializeStorage() {
   initializePromise = (async () => {
     assertConfigured();
     await loadStationOverridesCache();
-    await ensureDemoUser();
     return {
       backend: "supabase-postgis",
       endpoint: dbPath
@@ -406,11 +351,6 @@ async function loginAccount(email, password) {
   };
 }
 
-async function loginDemoAccount() {
-  await ensureDemoUser();
-  return loginAccount(config.DEMO_USER_EMAIL, config.DEMO_USER_PASSWORD);
-}
-
 async function getUserFromToken(accessToken) {
   assertConfigured();
   const token = normalizeText(accessToken);
@@ -474,15 +414,6 @@ async function createUser(email, password, displayName) {
 async function verifyUser(email, password) {
   const result = await loginAccount(email, password);
   return result.user;
-}
-
-async function seedDemoUser() {
-  const demo = await ensureDemoUser();
-  if (!demo) {
-    return null;
-  }
-  const profile = await getProfileById(demo.id);
-  return normalizeProfileRow(profile, demo);
 }
 
 async function getCache(cacheKey) {
@@ -592,6 +523,56 @@ async function getCacheStats() {
     total: Number(totalQuery.count || 0),
     byKind,
     withCitySlug
+  };
+}
+
+async function getAccountStats() {
+  assertConfigured();
+  const { serviceClient } = requireSupabaseClients();
+
+  const profileTotalQuery = await serviceClient
+    .from("profiles")
+    .select("id", { count: "exact", head: true });
+
+  if (profileTotalQuery.error) {
+    throw new Error(`Unable to read profile count: ${profileTotalQuery.error.message}`);
+  }
+
+  const profileActiveQuery = await serviceClient
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("is_active", true);
+
+  if (profileActiveQuery.error) {
+    throw new Error(`Unable to read active profile count: ${profileActiveQuery.error.message}`);
+  }
+
+  const visitsTotalQuery = await serviceClient
+    .from("user_station_visit")
+    .select("station_key", { count: "exact", head: true })
+    .eq("visited", true);
+
+  if (visitsTotalQuery.error) {
+    throw new Error(`Unable to read visit count: ${visitsTotalQuery.error.message}`);
+  }
+
+  const recentProfilesQuery = await serviceClient
+    .from("profiles")
+    .select("last_login_at")
+    .order("last_login_at", { ascending: false, nullsFirst: false })
+    .limit(1);
+
+  if (recentProfilesQuery.error) {
+    throw new Error(`Unable to read latest login timestamp: ${recentProfilesQuery.error.message}`);
+  }
+
+  const latestLoginIso = recentProfilesQuery.data?.[0]?.last_login_at || null;
+
+  return {
+    profilesTotal: Number(profileTotalQuery.count || 0),
+    profilesActive: Number(profileActiveQuery.count || 0),
+    visitedStationRows: Number(visitsTotalQuery.count || 0),
+    latestLoginAtMs: latestLoginIso ? Date.parse(latestLoginIso) : null
   };
 }
 
@@ -1194,18 +1175,17 @@ module.exports = {
   initializeStorage,
   registerAccount,
   loginAccount,
-  loginDemoAccount,
   getUserFromToken,
   createUser,
   verifyUser,
   getUserByEmail,
   getUserById,
-  seedDemoUser,
   getCache,
   getCacheAny,
   setCache,
   clearCacheByPrefix,
   getCacheStats,
+  getAccountStats,
   upsertStopTranslation,
   getStationOverride,
   upsertStationOverride,

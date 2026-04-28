@@ -3,7 +3,7 @@ const express = require("express");
 const config = require("../config");
 const db = require("../db");
 const { getCityBySlug } = require("../city-presets");
-const { TRANSIT_CACHE_PREFIX } = require("../transitland");
+const { TRANSIT_CACHE_PREFIX, getTransitlandMetrics } = require("../transitland");
 const { runHarvestCore } = require("../../scripts/harvest-core");
 const { runNonrecoverableBackup } = require("../../scripts/backup-nonrecoverable");
 
@@ -35,9 +35,13 @@ router.get("/admin/stats", async (req, res) => {
       vector: config.HARVEST_DAILY_VECTOR_LIMIT,
       routing: config.HARVEST_DAILY_ROUTING_LIMIT
     });
+    const accountStats = await db.getAccountStats();
     const harvestSummary = await db.getHarvestSummary();
     const cacheStats = await db.getCacheStats();
     const dbFileStats = await db.getDatabaseFileStats();
+    const transitland = getTransitlandMetrics();
+    const mem = process.memoryUsage();
+    const perf = process.resourceUsage();
 
     return res.json({
       nowIso: new Date().toISOString(),
@@ -77,6 +81,7 @@ router.get("/admin/stats", async (req, res) => {
         ready: harvestSummary.ready,
         totalCities: harvestSummary.totalCities
       },
+      accounts: accountStats,
       cache: cacheStats,
       database: {
         path: dbFileStats.dbPath,
@@ -84,6 +89,31 @@ router.get("/admin/stats", async (req, res) => {
         sizeBytes: dbFileStats.sizeBytes,
         sizeMb: Number((dbFileStats.sizeBytes / (1024 * 1024)).toFixed(2)),
         modifiedAtMs: dbFileStats.modifiedAtMs
+      },
+      transitland: {
+        restApiRequests: Number(transitland.restApiRequestCount || 0),
+        restApiFailures: Number(transitland.restApiRequestFailureCount || 0),
+        vectorTileRequests: Number(transitland.vectorTileRequestCount || 0),
+        vectorTileFailures: Number(transitland.vectorTileRequestFailureCount || 0),
+        routingApiRequests: Number(transitland.routingApiRequestCount || 0),
+        routingApiFailures: Number(transitland.routingApiRequestFailureCount || 0),
+        lastRestRequestAt: transitland.lastRestRequestAt || null,
+        lastVectorTileRequestAt: transitland.lastVectorTileRequestAt || null,
+        lastRoutingRequestAt: transitland.lastRoutingRequestAt || null
+      },
+      performance: {
+        processUptimeSec: Math.floor(process.uptime()),
+        nodeVersion: process.version,
+        memory: {
+          rssBytes: Number(mem.rss || 0),
+          heapTotalBytes: Number(mem.heapTotal || 0),
+          heapUsedBytes: Number(mem.heapUsed || 0),
+          externalBytes: Number(mem.external || 0)
+        },
+        cpu: {
+          userMicros: Number(perf.userCPUTime || 0),
+          systemMicros: Number(perf.systemCPUTime || 0)
+        }
       }
     });
   } catch (error) {

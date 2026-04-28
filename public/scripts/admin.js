@@ -10,6 +10,9 @@ const els = {
   usageStats: document.getElementById("usageStats"),
   harvestStats: document.getElementById("harvestStats"),
   storageStats: document.getElementById("storageStats"),
+  accountStats: document.getElementById("accountStats"),
+  performanceStats: document.getElementById("performanceStats"),
+  transitlandStats: document.getElementById("transitlandStats"),
   runHarvestBtn: document.getElementById("runHarvestBtn"),
   runBackupBtn: document.getElementById("runBackupBtn"),
   queueCitySelect: document.getElementById("queueCitySelect"),
@@ -158,6 +161,68 @@ async function refreshStats() {
     { label: "Database Size", value: `${payload.database.sizeMb} MB` },
     { label: "Database Bytes", value: String(payload.database.sizeBytes) },
     { label: "Storage Path", value: payload.database.path }
+  ]);
+
+  renderKv(els.accountStats, [
+    { label: "Profiles Total", value: String(payload.accounts.profilesTotal) },
+    { label: "Profiles Active", value: String(payload.accounts.profilesActive) },
+    { label: "Visited Rows", value: String(payload.accounts.visitedStationRows) },
+    {
+      label: "Latest Login",
+      value: payload.accounts.latestLoginAtMs
+        ? new Date(payload.accounts.latestLoginAtMs).toLocaleString()
+        : "-"
+    }
+  ]);
+
+  renderKv(els.performanceStats, [
+    { label: "Uptime", value: `${payload.performance.processUptimeSec}s` },
+    { label: "Node", value: String(payload.performance.nodeVersion || "-") },
+    {
+      label: "RSS",
+      value: `${(Number(payload.performance.memory.rssBytes || 0) / (1024 * 1024)).toFixed(2)} MB`
+    },
+    {
+      label: "Heap Used",
+      value: `${(Number(payload.performance.memory.heapUsedBytes || 0) / (1024 * 1024)).toFixed(2)} MB`
+    },
+    {
+      label: "CPU (user/system)",
+      value: `${Number(payload.performance.cpu.userMicros || 0)}/${Number(payload.performance.cpu.systemMicros || 0)} us`
+    }
+  ]);
+
+  renderKv(els.transitlandStats, [
+    {
+      label: "REST (req/fail)",
+      value: `${Number(payload.transitland.restApiRequests || 0)}/${Number(payload.transitland.restApiFailures || 0)}`
+    },
+    {
+      label: "Vector (req/fail)",
+      value: `${Number(payload.transitland.vectorTileRequests || 0)}/${Number(payload.transitland.vectorTileFailures || 0)}`
+    },
+    {
+      label: "Routing (req/fail)",
+      value: `${Number(payload.transitland.routingApiRequests || 0)}/${Number(payload.transitland.routingApiFailures || 0)}`
+    },
+    {
+      label: "Last REST",
+      value: payload.transitland.lastRestRequestAt
+        ? new Date(payload.transitland.lastRestRequestAt).toLocaleString()
+        : "-"
+    },
+    {
+      label: "Last Vector",
+      value: payload.transitland.lastVectorTileRequestAt
+        ? new Date(payload.transitland.lastVectorTileRequestAt).toLocaleString()
+        : "-"
+    },
+    {
+      label: "Last Routing",
+      value: payload.transitland.lastRoutingRequestAt
+        ? new Date(payload.transitland.lastRoutingRequestAt).toLocaleString()
+        : "-"
+    }
   ]);
 
   return payload;

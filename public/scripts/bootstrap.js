@@ -158,17 +158,6 @@ function bindEvents() {
     restoreUserStatusFromFocus();
   });
 
-  if (els.demoLoginBtn) {
-    els.demoLoginBtn.addEventListener("click", async () => {
-      try {
-        await loginWithPayload(apiRequest("/api/auth/demo-login", { method: "POST" }));
-      } catch (error) {
-        setAuthFeedback(error.message, "error");
-        setStatus(error.message, "error");
-      }
-    });
-  }
-
   els.loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     setAuthFeedback();
@@ -182,7 +171,8 @@ function bindEvents() {
         apiRequest("/api/auth/login", {
           method: "POST",
           body: JSON.stringify({ email, password })
-        })
+        }),
+        { successMessage: "Logged in successfully." }
       );
       els.loginForm.reset();
     } catch (error) {
@@ -205,7 +195,8 @@ function bindEvents() {
         apiRequest("/api/auth/register", {
           method: "POST",
           body: JSON.stringify({ email, password, displayName })
-        })
+        }),
+        { successMessage: "Account created successfully. You are now signed in." }
       );
       els.registerForm.reset();
     } catch (error) {

@@ -45,15 +45,6 @@ router.post("/auth/login", async (req, res) => {
   }
 });
 
-router.post("/auth/demo-login", async (req, res) => {
-  try {
-    const result = await db.loginDemoAccount();
-    return res.json(userResponse(result.user, result.token));
-  } catch (error) {
-    return res.status(500).json({ error: String(error.message || "Demo user is unavailable.") });
-  }
-});
-
 router.get("/auth/me", authMiddleware, (req, res) => {
   return res.json({ user: req.user });
 });

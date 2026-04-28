@@ -13,14 +13,14 @@ MetroMark is a transit exploration tracker for people who like to discover and c
 ## Run Locally
 
 1. Install Node.js 20+.
-2. Copy `.env.example` to `.env`.
-3. Add Supabase keys and Transitland API key to `.env`.
+2. Copy `.env.development.example` to `.env.development`.
+3. Add Supabase keys and Transitland API key to `.env.development`.
 4. Apply `supabase/migrations/20260417_metromark_core.sql` to your Supabase project.
 5. Run:
 
 ```bash
 npm install
-npm start
+npm run start:dev
 ```
 
 Optional explicit profiles:
@@ -33,15 +33,6 @@ npm run start:prod
 Then open:
 
 - http://localhost:8080
-
-## Demo Account
-
-Use the demo account from the Profile panel.
-
-Default demo credentials are seeded from `.env.example`:
-
-- Email: `demo@metromark.local`
-- Password: `demo1234`
 
 ## Data and Caching
 
@@ -60,8 +51,10 @@ Defaults now use stronger retention for production hosting:
 
 Background scripts:
 
-- `npm run harvest:core` (quota-safe city cache verification/refresh)
-- `npm run backup:nonrecoverable` (users/progress snapshot)
+- `npm run harvest:core` (development profile)
+- `npm run harvest:core:prod` (production profile)
+- `npm run backup:nonrecoverable` (development profile)
+- `npm run backup:nonrecoverable:prod` (production profile)
 
 Admin operations page:
 

@@ -59,6 +59,35 @@
             </label>
 
             <div class="filter-sections routes-top-controls" aria-label="Route filters">
+              <div class="filter-toolbar">
+                <p class="filter-section-title">Filter Presets</p>
+                <button
+                  id="filterPresetsBtn"
+                  class="btn btn-icon filter-presets-btn"
+                  type="button"
+                  aria-haspopup="true"
+                  aria-expanded="false"
+                  title="Saved filter presets"
+                >
+                  <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 5h14v2H5V5Zm2 6h10v2H7v-2Zm2 6h6v2H9v-2Z" />
+                  </svg>
+                </button>
+              </div>
+
+              <div id="filterPresetsPanel" class="filter-presets-panel" hidden>
+                <label class="mono-label" for="filterPresetList">Saved Presets</label>
+                <select id="filterPresetList"></select>
+                <label class="mono-label" for="filterPresetName">New Preset Name</label>
+                <input id="filterPresetName" type="text" maxlength="48" placeholder="e.g. Seattle RapidRide + 1/2" />
+                <div class="filter-presets-actions">
+                  <button id="saveFilterPresetBtn" class="btn" type="button">Save</button>
+                  <button id="applyFilterPresetBtn" class="btn" type="button">Apply</button>
+                  <button id="deleteFilterPresetBtn" class="btn" type="button">Delete</button>
+                </div>
+                <p id="filterPresetsStatus" class="microcopy"></p>
+              </div>
+
               <div class="filter-section">
                 <p class="filter-section-title">Modes</p>
                 <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
@@ -222,6 +251,7 @@
     <script src="/scripts/core-state-ui.js" defer></script>
     <script src="/scripts/map-viewport-cache.js" defer></script>
     <script src="/scripts/filters-routes.js" defer></script>
+    <script src="/scripts/filter-presets.js" defer></script>
     <script src="/scripts/transit-loading-auth.js" defer></script>
     <script src="/scripts/map-interactions.js" defer></script>
     <script src="/scripts/bootstrap.js" defer></script>

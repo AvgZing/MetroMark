@@ -377,6 +377,54 @@ body[data-theme="dark"] .filter-sections {
   letter-spacing: 0.06em;
 }
 
+.filter-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 2px 0 6px;
+}
+
+.filter-toolbar .filter-section-title {
+  margin: 0;
+}
+
+.filter-presets-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+.filter-presets-panel {
+  margin-bottom: 8px;
+  border: 1px dashed rgba(20, 53, 71, 0.25);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+body[data-theme="dark"] .filter-presets-panel {
+  background: rgba(10, 20, 30, 0.5);
+}
+
+.filter-presets-panel select,
+.filter-presets-panel input {
+  width: 100%;
+  margin-top: 3px;
+}
+
+.filter-presets-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-presets-actions .btn {
+  flex: 1 1 90px;
+}
+
 .filter-section-divider {
   height: 1px;
   margin: 5px 0 6px;
