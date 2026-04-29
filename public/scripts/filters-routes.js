@@ -235,6 +235,7 @@ function renderProgress() {
       const metrics = lineProgressMetrics(line.lineKey, Number(line.stopCount || 0));
 
       return {
+        lineKey: line.lineKey,
         lineName: lineDisplayName(line),
         visited: metrics.visited,
         total: metrics.total,
@@ -264,11 +265,21 @@ function renderProgress() {
     const wrapper = document.createElement("div");
     wrapper.className = "line-progress-row";
 
-    const label = document.createElement("div");
+    const label = document.createElement("button");
+    label.type = "button";
+    label.className = "line-progress-name";
     label.textContent =
       row.total > 0
         ? `${row.lineName} (${row.visited}/${row.total})`
         : `${row.lineName} (${row.visited} visited, total unknown)`;
+
+    label.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof openLineView === "function") {
+        openLineView(row.lineKey);
+      }
+    });
 
     const meter = document.createElement("div");
     meter.className = "progress-track";
@@ -280,7 +291,10 @@ function renderProgress() {
     fill.style.width = `${linePercent}%`;
 
     meter.append(fill);
-    wrapper.append(label, document.createTextNode(`${linePercent}%`));
+    const percentLabel = document.createElement("span");
+    percentLabel.textContent = `${linePercent}%`;
+
+    wrapper.append(label, percentLabel);
     wrapper.append(meter);
 
     els.lineProgressList.append(wrapper);
@@ -727,6 +741,10 @@ function clearFocusedLine(statusMessage = "Route focus cleared.", statusMeta = "
     return;
   }
 
+  if (state.lineViewOpen && typeof closeLineView === "function") {
+    closeLineView({ restore: false });
+  }
+
   closeRouteSelectionPopup();
   clearStatusPin();
   resetClearRouteProgressConfirmation();
@@ -735,6 +753,9 @@ function clearFocusedLine(statusMessage = "Route focus cleared.", statusMeta = "
   renderLineList();
   renderMapData();
   renderProgress();
+  if (typeof renderLineView === "function") {
+    renderLineView();
+  }
   restoreUserStatusFromFocus();
   setStatus(statusMessage, "ok", statusMeta);
 }
@@ -791,6 +812,9 @@ async function setFocusedLine(lineKey, options = {}) {
 
   renderMapData();
   renderProgress();
+  if (typeof renderLineView === "function") {
+    renderLineView();
+  }
 }
 
 function applyLineVisibilityPreference(line, targetVisibility) {
@@ -913,9 +937,17 @@ function renderLineList() {
 
     const labelBlock = document.createElement("div");
 
-    const name = document.createElement("p");
-    name.className = "line-name";
+    const name = document.createElement("span");
+    name.className = "line-name line-name-btn";
     name.textContent = lineDisplayName(line);
+
+    name.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof openLineView === "function") {
+        openLineView(line.lineKey);
+      }
+    });
 
     const meta = document.createElement("p");
     meta.className = "line-meta";
@@ -1053,6 +1085,9 @@ function refreshUiFromState() {
   renderLineList();
   renderMapData();
   renderProgress();
+  if (typeof renderLineView === "function") {
+    renderLineView();
+  }
 }
 
 updateShowAllStopsUi();

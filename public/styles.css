@@ -543,6 +543,25 @@ body[data-theme="dark"] .user-status-card {
   margin: 0;
 }
 
+.status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.line-view-btn {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+}
+
+.line-view-btn.is-active {
+  border-color: var(--accent);
+  background: var(--soft-accent);
+}
+
 .user-status-title {
   margin: 5px 0 2px;
   font-size: 13px;
@@ -863,6 +882,21 @@ body[data-theme="dark"] .line-visibility-btn {
   line-height: 1.24;
 }
 
+.line-name-btn {
+  width: auto;
+  border: none;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.line-name-btn:hover {
+  text-decoration: underline;
+}
+
 .line-meta {
   margin-top: 2px;
   color: var(--muted);
@@ -891,7 +925,8 @@ body[data-theme="dark"] .line-visibility-btn {
 .sidebar,
 .line-list,
 .line-progress-list,
-.dropdown-panel {
+.dropdown-panel,
+.line-view-stop-list {
   scrollbar-width: thin;
   scrollbar-color: rgba(23, 124, 162, 0.55) rgba(20, 53, 71, 0.12);
 }
@@ -899,7 +934,8 @@ body[data-theme="dark"] .line-visibility-btn {
 .sidebar::-webkit-scrollbar,
 .line-list::-webkit-scrollbar,
 .line-progress-list::-webkit-scrollbar,
-.dropdown-panel::-webkit-scrollbar {
+.dropdown-panel::-webkit-scrollbar,
+.line-view-stop-list::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
@@ -907,7 +943,8 @@ body[data-theme="dark"] .line-visibility-btn {
 .sidebar::-webkit-scrollbar-track,
 .line-list::-webkit-scrollbar-track,
 .line-progress-list::-webkit-scrollbar-track,
-.dropdown-panel::-webkit-scrollbar-track {
+.dropdown-panel::-webkit-scrollbar-track,
+.line-view-stop-list::-webkit-scrollbar-track {
   background: rgba(20, 53, 71, 0.12);
   border-radius: 999px;
 }
@@ -915,7 +952,8 @@ body[data-theme="dark"] .line-visibility-btn {
 .sidebar::-webkit-scrollbar-thumb,
 .line-list::-webkit-scrollbar-thumb,
 .line-progress-list::-webkit-scrollbar-thumb,
-.dropdown-panel::-webkit-scrollbar-thumb {
+.dropdown-panel::-webkit-scrollbar-thumb,
+.line-view-stop-list::-webkit-scrollbar-thumb {
   background: rgba(23, 124, 162, 0.55);
   border-radius: 999px;
   border: 2px solid rgba(20, 53, 71, 0.12);
@@ -924,7 +962,8 @@ body[data-theme="dark"] .line-visibility-btn {
 .sidebar::-webkit-scrollbar-thumb:hover,
 .line-list::-webkit-scrollbar-thumb:hover,
 .line-progress-list::-webkit-scrollbar-thumb:hover,
-.dropdown-panel::-webkit-scrollbar-thumb:hover {
+.dropdown-panel::-webkit-scrollbar-thumb:hover,
+.line-view-stop-list::-webkit-scrollbar-thumb:hover {
   background: rgba(23, 124, 162, 0.72);
 }
 
@@ -968,6 +1007,21 @@ body[data-theme="dark"] .line-visibility-btn {
   gap: 6px;
   margin-bottom: 6px;
   font-size: 11px;
+}
+
+.line-progress-name {
+  width: auto;
+  border: none;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.line-progress-name:hover {
+  text-decoration: underline;
 }
 
 .progress-track {
@@ -1229,6 +1283,174 @@ body[data-theme="dark"] .route-select-close {
   max-width: min(360px, 100%);
 }
 
+.line-view-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(420px, 40vw);
+  min-width: 330px;
+  z-index: 7;
+  pointer-events: auto;
+  padding: 12px 12px 12px 6px;
+}
+
+.line-view-panel[hidden] {
+  display: none;
+}
+
+.line-view-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 12px;
+  overflow: hidden;
+}
+
+.line-view-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.line-view-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.line-view-title .line-color-dot {
+  width: 14px;
+  height: 14px;
+}
+
+.line-view-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.line-view-meta {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.line-view-nav {
+  width: auto;
+  min-width: 80px;
+  font-size: 11px;
+  padding: 6px 8px;
+}
+
+.line-view-status {
+  border-top: 1px dashed rgba(20, 53, 71, 0.2);
+  padding-top: 8px;
+}
+
+.line-view-status-text {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.line-view-progress {
+  margin-top: 8px;
+}
+
+.line-view-progress-text {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.line-view-stop-list {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 6px;
+  display: grid;
+  gap: 0;
+  --line-color: var(--accent);
+}
+
+.line-view-stop-row {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 4px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.line-view-stop-row:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.line-view-stop-row:hover:not(:disabled) {
+  background: rgba(23, 124, 162, 0.08);
+}
+
+.line-view-stop-marker {
+  position: relative;
+  width: 18px;
+  display: flex;
+  justify-content: center;
+}
+
+.line-view-stop-marker::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--line-color);
+  opacity: 0.6;
+}
+
+.line-view-stop-row:last-child .line-view-stop-marker::before {
+  display: none;
+}
+
+.line-view-stop-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 2px solid var(--line-color);
+  background: var(--panel);
+  margin-top: 2px;
+  z-index: 1;
+}
+
+.line-view-stop-row.is-visited .line-view-stop-dot {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.line-view-stop-name {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.line-view-stop-status {
+  margin: 3px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .route-select-panel[hidden] {
   display: none;
 }
@@ -1412,6 +1634,11 @@ body.app-ready .map-overlay-controls {
     width: auto;
     max-height: min(70vh, 640px);
   }
+
+  .line-view-panel {
+    width: min(420px, 46vw);
+    min-width: 300px;
+  }
 }
 
 @media (max-width: 900px) and (orientation: portrait) {
@@ -1553,6 +1780,21 @@ body.app-ready .map-overlay-controls {
     bottom: 70px;
     left: 10px;
     right: 10px;
+  }
+
+  .line-view-panel {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100vh;
+    padding: 10px;
+    z-index: 20;
+    background: rgba(10, 18, 26, 0.22);
+  }
+
+  .line-view-card {
+    border-radius: 18px;
+    height: 100%;
   }
 }
 

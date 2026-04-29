@@ -180,6 +180,9 @@ const state = {
   lastStopClickAt: 0,
   lastRouteClickAt: 0,
   mobilePanelsOpen: false,
+  lineViewOpen: false,
+  lineViewLineKey: "",
+  lineViewReturn: null,
   userStatusPinnedKind: "",
   clearRouteProgressConfirmLineKey: "",
   clearRouteProgressConfirmTimeoutId: null,
@@ -232,6 +235,18 @@ const els = {
   frequencyFilterBar: document.getElementById("frequencyFilterBar"),
   mobileDrawerTab: document.getElementById("mobileDrawerTab"),
   routeSelectPanel: document.getElementById("routeSelectPanel"),
+  lineViewBtn: document.getElementById("lineViewBtn"),
+  lineViewPanel: document.getElementById("lineViewPanel"),
+  lineViewReturnBtn: document.getElementById("lineViewReturnBtn"),
+  lineViewMapBtn: document.getElementById("lineViewMapBtn"),
+  lineViewColor: document.getElementById("lineViewColor"),
+  lineViewName: document.getElementById("lineViewName"),
+  lineViewMeta: document.getElementById("lineViewMeta"),
+  lineViewStatus: document.getElementById("lineViewStatus"),
+  lineViewProgress: document.getElementById("lineViewProgress"),
+  lineViewProgressText: document.getElementById("lineViewProgressText"),
+  lineViewProgressFill: document.getElementById("lineViewProgressFill"),
+  lineViewStops: document.getElementById("lineViewStops"),
   userStatusTitle: document.getElementById("userStatusTitle"),
   userStatusSubtitle: document.getElementById("userStatusSubtitle"),
   userStatusFeedback: document.getElementById("userStatusFeedback"),
@@ -453,11 +468,500 @@ function renderUserStatus() {
       : "";
   }
 
+  if (els.lineViewBtn) {
+    const hasLine = Boolean(state.focusedLineKey);
+    els.lineViewBtn.hidden = !hasLine;
+    els.lineViewBtn.disabled = !hasLine;
+    els.lineViewBtn.classList.toggle("is-active", state.lineViewOpen);
+    els.lineViewBtn.setAttribute("aria-pressed", state.lineViewOpen ? "true" : "false");
+  }
+
   if (els.deselectRouteBtn) {
     els.deselectRouteBtn.hidden = !state.focusedLineKey;
   }
 
   renderUserFeedback();
+}
+
+function captureMapView() {
+  if (!state.map) {
+    return null;
+  }
+
+  const center = state.map.getCenter();
+  return {
+    center: [center.lng, center.lat],
+    zoom: state.map.getZoom(),
+    bearing: state.map.getBearing(),
+    pitch: state.map.getPitch()
+  };
+}
+
+function restoreMapView(view) {
+  if (!state.map || !view) {
+    return;
+  }
+
+  state.map.jumpTo({
+    center: view.center,
+    zoom: view.zoom,
+    bearing: view.bearing,
+    pitch: view.pitch
+  });
+}
+
+function collectCoordsFromGeometry(geometry, bbox) {
+  if (!geometry) {
+    return bbox;
+  }
+
+  const type = geometry.type;
+  const coords = geometry.coordinates;
+  if (!coords) {
+    return bbox;
+  }
+
+  const update = (lng, lat) => {
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+      return;
+    }
+    bbox.minLng = Math.min(bbox.minLng, lng);
+    bbox.minLat = Math.min(bbox.minLat, lat);
+    bbox.maxLng = Math.max(bbox.maxLng, lng);
+    bbox.maxLat = Math.max(bbox.maxLat, lat);
+  };
+
+  if (type === "LineString") {
+    coords.forEach(([lng, lat]) => update(lng, lat));
+    return bbox;
+  }
+
+  if (type === "MultiLineString") {
+    coords.forEach((line) => line.forEach(([lng, lat]) => update(lng, lat)));
+    return bbox;
+  }
+
+  return bbox;
+}
+
+function buildLineBboxFromStops(lineKey) {
+  const cacheEntry = state.lineStopsCache.get(routeStopCacheKey(lineKey));
+  const stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
+    ? cacheEntry.payload.stopsGeoJson.features
+    : [];
+
+  if (!stopFeatures.length) {
+    return null;
+  }
+
+  const bbox = {
+    minLng: Infinity,
+    minLat: Infinity,
+    maxLng: -Infinity,
+    maxLat: -Infinity
+  };
+
+  stopFeatures.forEach((feature) => {
+    const coords = feature?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) {
+      return;
+    }
+    const [lng, lat] = coords;
+    if (Number.isFinite(lng) && Number.isFinite(lat)) {
+      bbox.minLng = Math.min(bbox.minLng, lng);
+      bbox.minLat = Math.min(bbox.minLat, lat);
+      bbox.maxLng = Math.max(bbox.maxLng, lng);
+      bbox.maxLat = Math.max(bbox.maxLat, lat);
+    }
+  });
+
+  if (!Number.isFinite(bbox.minLng)) {
+    return null;
+  }
+
+  return [bbox.minLng, bbox.minLat, bbox.maxLng, bbox.maxLat];
+}
+
+function buildLineBboxFromRoutes(lineKey) {
+  const features = Array.isArray(state.transit?.routesGeoJson?.features)
+    ? state.transit.routesGeoJson.features
+    : [];
+
+  if (!features.length) {
+    return null;
+  }
+
+  const bbox = {
+    minLng: Infinity,
+    minLat: Infinity,
+    maxLng: -Infinity,
+    maxLat: -Infinity
+  };
+
+  for (const feature of features) {
+    const featureLineKey = String(feature?.properties?.line_key || "").trim();
+    if (featureLineKey !== lineKey) {
+      continue;
+    }
+
+    collectCoordsFromGeometry(feature.geometry, bbox);
+  }
+
+  if (!Number.isFinite(bbox.minLng)) {
+    return null;
+  }
+
+  return [bbox.minLng, bbox.minLat, bbox.maxLng, bbox.maxLat];
+}
+
+function fitMapToLine(lineKey) {
+  if (!state.map || !lineKey) {
+    return;
+  }
+
+  const bbox = buildLineBboxFromStops(lineKey) || buildLineBboxFromRoutes(lineKey);
+  if (!bbox) {
+    return;
+  }
+
+  state.map.fitBounds(
+    [
+      [bbox[0], bbox[1]],
+      [bbox[2], bbox[3]]
+    ],
+    {
+      padding: 70,
+      duration: 650,
+      maxZoom: 12.5
+    }
+  );
+}
+
+function stopKeyForFeature(feature) {
+  const props = feature?.properties || {};
+  return String(props.station_key || props.stop_id || "").trim();
+}
+
+function uniqueStopFeaturesForLine(lineKey) {
+  const cacheEntry = state.lineStopsCache.get(routeStopCacheKey(lineKey));
+  const stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
+    ? cacheEntry.payload.stopsGeoJson.features
+    : [];
+
+  const seen = new Set();
+  return stopFeatures.filter((feature) => {
+    const key = stopKeyForFeature(feature);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+async function toggleVisitedForStation(properties, coords) {
+  const lineKey = String(properties?.line_key || "").trim();
+  const stationKey = String(properties?.station_key || properties?.stop_id || "").trim();
+  const stationName = String(properties?.station_name || properties?.stop_name || "Unnamed Station");
+  const [lon, lat] = Array.isArray(coords) ? coords : [];
+
+  if (!lineKey || !stationKey || !Number.isFinite(lon) || !Number.isFinite(lat)) {
+    return;
+  }
+
+  if (!state.user) {
+    setUserStatusFromStation(properties || {}, "Sign in to mark this station as visited.");
+    setStatus("Sign in first to mark stations.", "error");
+    return;
+  }
+
+  const visitedSet = getVisitedSetForLine(lineKey);
+  const nextVisited = !visitedSet.has(stationKey);
+
+  try {
+    await apiRequest("/api/progress/toggle", {
+      method: "POST",
+      body: JSON.stringify({
+        lineKey,
+        stationKey,
+        stationName,
+        lon,
+        lat,
+        visited: nextVisited
+      })
+    });
+
+    if (nextVisited) {
+      visitedSet.add(stationKey);
+    } else {
+      visitedSet.delete(stationKey);
+    }
+
+    renderMapData();
+    renderProgress();
+    renderLineView();
+
+    setUserStatusFromStation(
+      properties || {},
+      nextVisited ? "Marked as visited in your progress." : "Marked as unvisited in your progress."
+    );
+
+    setStatus(`${nextVisited ? "Visited" : "Unvisited"}: ${stationName}`, "ok");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+function renderLineViewStops(lineKey, lineColor) {
+  if (!els.lineViewStops) {
+    return;
+  }
+
+  els.lineViewStops.innerHTML = "";
+  els.lineViewStops.style.setProperty("--line-color", lineColor || "#177ca2");
+
+  const cacheKey = routeStopCacheKey(lineKey);
+  const isLoading = state.inFlightLineStopKeys.has(cacheKey);
+
+  const stopFeatures = uniqueStopFeaturesForLine(lineKey);
+  if (!stopFeatures.length) {
+    const empty = document.createElement("p");
+    empty.className = "microcopy";
+    empty.textContent = isLoading ? "Loading stops..." : "Stops are not loaded yet.";
+    els.lineViewStops.append(empty);
+    return;
+  }
+
+  const visitedSet = getVisitedSetForLine(lineKey);
+
+  stopFeatures.forEach((feature) => {
+    const props = feature?.properties || {};
+    const stationName = String(props.station_name || props.stop_name || "Unnamed Station");
+    const stationKey = stopKeyForFeature(feature);
+    const coords = feature?.geometry?.coordinates;
+    const visited = stationKey && visitedSet.has(stationKey);
+
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "line-view-stop-row";
+    if (visited) {
+      row.classList.add("is-visited");
+    }
+
+    if (!state.user) {
+      row.disabled = true;
+    }
+
+    const marker = document.createElement("div");
+    marker.className = "line-view-stop-marker";
+
+    const dot = document.createElement("span");
+    dot.className = "line-view-stop-dot";
+    marker.append(dot);
+
+    const content = document.createElement("div");
+
+    const name = document.createElement("p");
+    name.className = "line-view-stop-name";
+    name.textContent = stationName;
+
+    const status = document.createElement("p");
+    status.className = "line-view-stop-status";
+    status.textContent = state.user
+      ? visited
+        ? "Visited"
+        : "Not visited"
+      : "Sign in to track";
+
+    content.append(name, status);
+    row.append(marker, content);
+
+    if (state.user) {
+      row.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleVisitedForStation(props, coords);
+      });
+    }
+
+    els.lineViewStops.append(row);
+  });
+}
+
+function renderLineView() {
+  if (!els.lineViewPanel) {
+    return;
+  }
+
+  if (!state.lineViewOpen) {
+    els.lineViewPanel.hidden = true;
+    return;
+  }
+
+  const lineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
+  if (!lineKey) {
+    els.lineViewPanel.hidden = true;
+    return;
+  }
+
+  const line = state.lineSummaries.find((entry) => entry.lineKey === lineKey);
+  const lineColor = line?.color || "#177ca2";
+  const lineLabel = line ? lineDisplayName(line) : "Selected Route";
+
+  if (els.lineViewPanel) {
+    els.lineViewPanel.hidden = false;
+  }
+
+  if (els.lineViewColor) {
+    els.lineViewColor.style.backgroundColor = lineColor;
+  }
+
+  if (els.lineViewName) {
+    els.lineViewName.textContent = lineLabel;
+  }
+
+  if (els.lineViewMeta) {
+    els.lineViewMeta.textContent = line
+      ? `${lineMode(line)} | ${lineOperatorLabel(line)}`
+      : "Route details";
+  }
+
+  const progress = line ? lineProgressMetrics(lineKey, Number(line.stopCount || 0)) : null;
+  const stopsLoaded = state.lineStopsCache.has(routeStopCacheKey(lineKey));
+  const stopsLoading = state.inFlightLineStopKeys.has(routeStopCacheKey(lineKey));
+
+  if (els.lineViewStatus) {
+    if (!stopsLoaded && stopsLoading) {
+      els.lineViewStatus.textContent = "Loading stops...";
+    } else if (!stopsLoaded) {
+      els.lineViewStatus.textContent = "Stops not loaded yet.";
+    } else if (!state.user) {
+      els.lineViewStatus.textContent = "Sign in to track visited stops.";
+    } else if (progress && progress.total > 0) {
+      els.lineViewStatus.textContent = `Visited ${progress.visited} of ${progress.total} stations.`;
+    } else {
+      els.lineViewStatus.textContent = "Stops loaded. Tap to mark visited.";
+    }
+  }
+
+  if (els.lineViewProgress && els.lineViewProgressText && els.lineViewProgressFill) {
+    const hasProgress = Boolean(state.user) && Boolean(progress) && Number(progress?.total || 0) > 0;
+    if (hasProgress) {
+      const visited = Number(progress.visited || 0);
+      const total = Number(progress.total || 0);
+      const percent = total > 0 ? Math.round((visited / total) * 100) : 0;
+      els.lineViewProgress.hidden = false;
+      els.lineViewProgressText.textContent = `${visited}/${total} stations visited (${percent}%)`;
+      els.lineViewProgressFill.style.width = `${percent}%`;
+    } else {
+      els.lineViewProgress.hidden = true;
+      els.lineViewProgressText.textContent = "";
+      els.lineViewProgressFill.style.width = "0%";
+    }
+  }
+
+  renderLineViewStops(lineKey, lineColor);
+}
+
+async function openLineView(lineKey) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return;
+  }
+
+  if (!state.lineViewOpen) {
+    state.lineViewReturn = {
+      focusedLineKey: state.focusedLineKey,
+      mapView: captureMapView(),
+      mobilePanelsOpen: state.mobilePanelsOpen,
+      activePopup: state.activePopup
+    };
+  }
+
+  state.lineViewOpen = true;
+  state.lineViewLineKey = normalizedLineKey;
+  document.body.classList.toggle("line-view-open", true);
+  closeRouteSelectionPopup();
+
+  if (isPortraitMobileLayout()) {
+    setMobilePanelsOpen(false);
+  }
+
+  if (normalizedLineKey !== state.focusedLineKey) {
+    setFocusedLine(normalizedLineKey, { forceRefresh: false }).catch((error) => {
+      setStatus(error.message, "error");
+    });
+  }
+
+  renderLineView();
+  renderUserStatus();
+
+  ensureLineStopsLoaded(normalizedLineKey, { silent: true })
+    .then(() => {
+      renderLineView();
+    })
+    .catch(() => {});
+}
+
+function restoreLineViewReturnState() {
+  const saved = state.lineViewReturn;
+  if (!saved) {
+    return;
+  }
+
+  if (saved.mapView) {
+    restoreMapView(saved.mapView);
+  }
+
+  if (saved.focusedLineKey) {
+    setFocusedLine(saved.focusedLineKey, { forceRefresh: false }).catch((error) => {
+      setStatus(error.message, "error");
+    });
+  } else if (state.focusedLineKey) {
+    clearFocusedLine("Route focus cleared.", "Returning to previous view.");
+  }
+
+  if (saved.activePopup) {
+    setActivePopup(saved.activePopup);
+  } else {
+    closePopups();
+  }
+
+  if (saved.mobilePanelsOpen && isPortraitMobileLayout()) {
+    setMobilePanelsOpen(true);
+  }
+}
+
+function closeLineView(options = {}) {
+  const shouldRestore = options.restore !== false;
+
+  state.lineViewOpen = false;
+  state.lineViewLineKey = "";
+  document.body.classList.toggle("line-view-open", false);
+
+  if (els.lineViewPanel) {
+    els.lineViewPanel.hidden = true;
+  }
+
+  if (shouldRestore) {
+    restoreLineViewReturnState();
+  }
+
+  state.lineViewReturn = null;
+  renderUserStatus();
+}
+
+async function openLineViewMap() {
+  const lineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
+  if (!lineKey) {
+    closeLineView({ restore: true });
+    return;
+  }
+
+  closeLineView({ restore: false });
+  await setFocusedLine(lineKey, { forceRefresh: false });
+  await ensureLineStopsLoaded(lineKey, { silent: true });
+  fitMapToLine(lineKey);
 }
 
 function setUserStatus(title, subtitle, options = {}) {

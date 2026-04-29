@@ -110,7 +110,24 @@
             </div>
 
             <div class="user-status-card" aria-live="polite">
-              <p class="mono-label">Status</p>
+              <div class="status-header">
+                <p class="mono-label">Status</p>
+                <button
+                  id="lineViewBtn"
+                  class="btn btn-icon line-view-btn"
+                  type="button"
+                  aria-label="Open line view"
+                  aria-pressed="false"
+                  hidden
+                >
+                  <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 6h10M5 12h10M5 18h10" />
+                    <circle cx="19" cy="6" r="1.5" />
+                    <circle cx="19" cy="12" r="1.5" />
+                    <circle cx="19" cy="18" r="1.5" />
+                  </svg>
+                </button>
+              </div>
               <p id="userStatusTitle" class="user-status-title">No route selected.</p>
               <p id="userStatusSubtitle" class="user-status-subtitle">Select a route or station.</p>
               <p id="userStatusFeedback" class="user-status-feedback" hidden></p>
@@ -207,6 +224,31 @@
         </div>
         <div id="map"></div>
         <div id="routeSelectPanel" class="route-select-panel" hidden></div>
+        <aside id="lineViewPanel" class="line-view-panel" hidden>
+          <div class="line-view-card">
+            <header class="line-view-header">
+              <button id="lineViewReturnBtn" class="btn line-view-nav" type="button">Return</button>
+              <div class="line-view-title">
+                <span id="lineViewColor" class="line-color-dot" aria-hidden="true"></span>
+                <div>
+                  <p id="lineViewName" class="line-view-name">Line View</p>
+                  <p id="lineViewMeta" class="line-view-meta">Route details</p>
+                </div>
+              </div>
+              <button id="lineViewMapBtn" class="btn line-view-nav" type="button">Map</button>
+            </header>
+            <div class="line-view-status">
+              <p id="lineViewStatus" class="line-view-status-text">Loading stops...</p>
+              <div id="lineViewProgress" class="line-view-progress" hidden>
+                <p id="lineViewProgressText" class="line-view-progress-text">0 / 0 (0%)</p>
+                <div class="progress-track">
+                  <div id="lineViewProgressFill" class="progress-fill"></div>
+                </div>
+              </div>
+            </div>
+            <div id="lineViewStops" class="line-view-stop-list"></div>
+          </div>
+        </aside>
       </main>
 
       <section class="panel dropdown-panel" id="authPopup" hidden>

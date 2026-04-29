@@ -412,6 +412,7 @@ function updateAuthUi() {
     window.refreshFilterPresets({ silent: true }).catch(() => {});
   }
   renderUserStatus();
+  renderLineView();
 }
 
 function rebuildVisitedMap(items) {
@@ -426,6 +427,7 @@ async function loadProgress() {
     state.visitedByLine = new Map();
     renderMapData();
     renderProgress();
+    renderLineView();
     return;
   }
 
@@ -433,6 +435,7 @@ async function loadProgress() {
   rebuildVisitedMap(payload.items || []);
   renderMapData();
   renderProgress();
+  renderLineView();
 }
 
 async function clearRouteProgress(lineKey) {

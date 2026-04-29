@@ -30,6 +30,11 @@ function setAuthFeedback(message = "", kind = "neutral") {
   }
 }
 
+// Ensure Line View functions are accessible (defensive programming)
+if (typeof openLineView === 'undefined') {
+  console.warn('openLineView not found in global scope - check core-state-ui.js loading');
+}
+
 function bindEvents() {
   els.themeToggleBtn.addEventListener("click", toggleTheme);
 
@@ -48,6 +53,51 @@ function bindEvents() {
     });
   }
 
+  if (els.lineViewBtn) {
+    els.lineViewBtn.addEventListener("click", () => {
+      if (!state.focusedLineKey) {
+        return;
+      }
+
+      if (state.lineViewOpen) {
+        if (typeof closeLineView !== 'undefined') {
+          closeLineView({ restore: true });
+        } else {
+          console.error('closeLineView function not found');
+        }
+      } else {
+        if (typeof openLineView !== 'undefined') {
+          openLineView(state.focusedLineKey).catch((error) => {
+            setStatus(error.message, "error");
+          });
+        } else {
+          console.error('openLineView function not found - core-state-ui.js may not have loaded');
+          setStatus('Line View feature is not available', 'error');
+        }
+      }
+    });
+  }
+
+  if (els.lineViewReturnBtn) {
+    els.lineViewReturnBtn.addEventListener("click", () => {
+      if (typeof closeLineView !== 'undefined') {
+        closeLineView({ restore: true });
+      }
+    });
+  }
+
+  if (els.lineViewMapBtn) {
+    els.lineViewMapBtn.addEventListener("click", () => {
+      if (typeof openLineViewMap !== 'undefined') {
+        openLineViewMap().catch((error) => {
+          setStatus(error.message, "error");
+        });
+      } else {
+        console.error('openLineViewMap function not found');
+      }
+    });
+  }
+
   els.accountPopupBtn.addEventListener("click", () => {
     if (state.activePopup !== "account") {
       setAuthFeedback();
@@ -58,6 +108,9 @@ function bindEvents() {
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      if (state.lineViewOpen) {
+        closeLineView({ restore: true });
+      }
       if (state.mobilePanelsOpen) {
         setMobilePanelsOpen(false);
       }

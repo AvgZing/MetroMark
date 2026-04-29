@@ -14,51 +14,7 @@
   state.lastStopClickAt = Date.now();
   resetClearRouteProgressConfirmation();
 
-  if (!state.user) {
-    setUserStatusFromStation(feature.properties || {}, "Sign in to mark this station as visited.");
-    setStatus("Sign in first to mark stations.", "error");
-    return;
-  }
-
-  const lineKey = feature.properties.line_key;
-  const stationKey = feature.properties.station_key;
-  const stationName = feature.properties.station_name;
-  const [lon, lat] = feature.geometry.coordinates;
-
-  const visitedSet = getVisitedSetForLine(lineKey);
-  const nextVisited = !visitedSet.has(stationKey);
-
-  try {
-    await apiRequest("/api/progress/toggle", {
-      method: "POST",
-      body: JSON.stringify({
-        lineKey,
-        stationKey,
-        stationName,
-        lon,
-        lat,
-        visited: nextVisited
-      })
-    });
-
-    if (nextVisited) {
-      visitedSet.add(stationKey);
-    } else {
-      visitedSet.delete(stationKey);
-    }
-
-    renderMapData();
-    renderProgress();
-
-    setUserStatusFromStation(
-      feature.properties || {},
-      nextVisited ? "Marked as visited in your progress." : "Marked as unvisited in your progress."
-    );
-
-    setStatus(`${nextVisited ? "Visited" : "Unvisited"}: ${stationName}`, "ok");
-  } catch (error) {
-    setStatus(error.message, "error");
-  }
+  await toggleVisitedForStation(feature.properties || {}, feature.geometry?.coordinates || []);
 }
 
 function onStopHoverMove(event) {
