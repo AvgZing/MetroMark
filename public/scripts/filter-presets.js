@@ -1,56 +1,9 @@
-const FILTER_PRESETS_STORAGE_KEY = "metromark_filter_presets_v1";
-
 function normalizePresetName(raw) {
   return String(raw || "").trim().slice(0, 48);
 }
 
 function getActiveCitySlug() {
   return String(state.initialCitySlug || "global").trim() || "global";
-}
-
-function readFilterPresetsStore() {
-  try {
-    const raw = localStorage.getItem(FILTER_PRESETS_STORAGE_KEY);
-    if (!raw) {
-      return {};
-    }
-
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-
-    return parsed;
-  } catch {
-    return {};
-  }
-}
-
-function writeFilterPresetsStore(store) {
-  localStorage.setItem(FILTER_PRESETS_STORAGE_KEY, JSON.stringify(store));
-}
-
-function readPresetsForCity(citySlug) {
-  const store = readFilterPresetsStore();
-  const presets = Array.isArray(store[citySlug]) ? store[citySlug] : [];
-
-  return presets.filter((entry) => {
-    if (!entry || typeof entry !== "object") {
-      return false;
-    }
-
-    if (!normalizePresetName(entry.name)) {
-      return false;
-    }
-
-    return entry.snapshot && typeof entry.snapshot === "object";
-  });
-}
-
-function writePresetsForCity(citySlug, presets) {
-  const store = readFilterPresetsStore();
-  store[citySlug] = presets;
-  writeFilterPresetsStore(store);
 }
 
 function setFilterPresetStatus(message) {
@@ -142,15 +95,30 @@ function applyFilterSnapshot(snapshot) {
   }
 }
 
+let cachedPresets = [];
+let cachedCitySlug = "";
+
 function renderFilterPresets() {
   if (!els.filterPresetList) {
     return;
   }
 
   const citySlug = getActiveCitySlug();
-  const presets = readPresetsForCity(citySlug);
+  if (cachedCitySlug !== citySlug) {
+    cachedPresets = [];
+  }
+
+  const presets = cachedPresets;
 
   els.filterPresetList.innerHTML = "";
+
+  if (!state.user) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Sign in to use filter presets";
+    els.filterPresetList.append(option);
+    return;
+  }
 
   if (!presets.length) {
     const option = document.createElement("option");
@@ -168,7 +136,66 @@ function renderFilterPresets() {
   });
 }
 
-function saveCurrentAsPreset() {
+function updateFilterPresetAuthState() {
+  const loggedIn = Boolean(state.user);
+  const controls = [
+    els.filterPresetList,
+    els.filterPresetName,
+    els.saveFilterPresetBtn,
+    els.applyFilterPresetBtn,
+    els.deleteFilterPresetBtn
+  ];
+
+  controls.forEach((control) => {
+    if (control) {
+      control.disabled = !loggedIn;
+    }
+  });
+
+  if (!loggedIn) {
+    cachedPresets = [];
+    cachedCitySlug = "";
+    setFilterPresetStatus("Sign in to save or load presets.");
+  }
+}
+
+async function loadFilterPresets(options = {}) {
+  if (!state.user) {
+    cachedPresets = [];
+    cachedCitySlug = "";
+    renderFilterPresets();
+    return;
+  }
+
+  const citySlug = getActiveCitySlug();
+  cachedCitySlug = citySlug;
+
+  if (!options.silent) {
+    setFilterPresetStatus("Loading presets...");
+  }
+
+  try {
+    const params = new URLSearchParams({ citySlug });
+    const payload = await apiRequest(`/api/presets/filters?${params.toString()}`, {
+      method: "GET"
+    });
+    cachedPresets = Array.isArray(payload.presets) ? payload.presets : [];
+    cachedPresets.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+    renderFilterPresets();
+    if (!options.silent) {
+      setFilterPresetStatus(cachedPresets.length ? "" : "No presets saved yet.");
+    }
+  } catch (error) {
+    setFilterPresetStatus(error.message);
+  }
+}
+
+async function saveCurrentAsPreset() {
+  if (!state.user) {
+    setFilterPresetStatus("Sign in to save presets.");
+    return;
+  }
+
   const citySlug = getActiveCitySlug();
   const name = normalizePresetName(els.filterPresetName?.value);
   if (!name) {
@@ -176,41 +203,48 @@ function saveCurrentAsPreset() {
     return;
   }
 
-  const presets = readPresetsForCity(citySlug);
-  const existingIndex = presets.findIndex(
-    (entry) => normalizePresetName(entry.name).toLowerCase() === name.toLowerCase()
-  );
+  const snapshot = currentFilterSnapshot();
 
-  const preset = {
-    id: existingIndex >= 0 ? presets[existingIndex].id : `${Date.now()}-${Math.floor(Math.random() * 100000)}`,
-    name,
-    snapshot: currentFilterSnapshot()
-  };
+  try {
+    const payload = await apiRequest("/api/presets/filters", {
+      method: "POST",
+      body: JSON.stringify({ name, citySlug, snapshot })
+    });
 
-  if (existingIndex >= 0) {
-    presets.splice(existingIndex, 1, preset);
-  } else {
-    presets.push(preset);
+    const preset = payload.preset;
+    if (!preset) {
+      throw new Error("Preset save failed.");
+    }
+
+    const existingIndex = cachedPresets.findIndex((entry) => String(entry.id) === String(preset.id));
+    if (existingIndex >= 0) {
+      cachedPresets.splice(existingIndex, 1, preset);
+    } else {
+      cachedPresets.push(preset);
+    }
+
+    cachedPresets.sort((a, b) => a.name.localeCompare(b.name));
+    renderFilterPresets();
+    els.filterPresetList.value = preset.id;
+    setFilterPresetStatus(`Saved preset \"${preset.name}\".`);
+  } catch (error) {
+    setFilterPresetStatus(error.message);
   }
-
-  presets.sort((a, b) => a.name.localeCompare(b.name));
-  writePresetsForCity(citySlug, presets);
-  renderFilterPresets();
-
-  els.filterPresetList.value = preset.id;
-  setFilterPresetStatus(`Saved preset \"${name}\".`);
 }
 
 function applySelectedPreset() {
-  const citySlug = getActiveCitySlug();
+  if (!state.user) {
+    setFilterPresetStatus("Sign in to apply presets.");
+    return;
+  }
+
   const presetId = String(els.filterPresetList?.value || "").trim();
   if (!presetId) {
     setFilterPresetStatus("Select a preset to apply.");
     return;
   }
 
-  const presets = readPresetsForCity(citySlug);
-  const preset = presets.find((entry) => String(entry.id || "") === presetId);
+  const preset = cachedPresets.find((entry) => String(entry.id || "") === presetId);
   if (!preset) {
     setFilterPresetStatus("Preset not found.");
     return;
@@ -220,24 +254,29 @@ function applySelectedPreset() {
   setFilterPresetStatus(`Applied preset \"${preset.name}\".`);
 }
 
-function deleteSelectedPreset() {
-  const citySlug = getActiveCitySlug();
+async function deleteSelectedPreset() {
+  if (!state.user) {
+    setFilterPresetStatus("Sign in to delete presets.");
+    return;
+  }
+
   const presetId = String(els.filterPresetList?.value || "").trim();
   if (!presetId) {
     setFilterPresetStatus("Select a preset to delete.");
     return;
   }
 
-  const presets = readPresetsForCity(citySlug);
-  const next = presets.filter((entry) => String(entry.id || "") !== presetId);
-  if (next.length === presets.length) {
-    setFilterPresetStatus("Preset not found.");
-    return;
-  }
+  try {
+    await apiRequest(`/api/presets/filters/${encodeURIComponent(presetId)}`, {
+      method: "DELETE"
+    });
 
-  writePresetsForCity(citySlug, next);
-  renderFilterPresets();
-  setFilterPresetStatus("Preset deleted.");
+    cachedPresets = cachedPresets.filter((entry) => String(entry.id || "") !== presetId);
+    renderFilterPresets();
+    setFilterPresetStatus("Preset deleted.");
+  } catch (error) {
+    setFilterPresetStatus(error.message);
+  }
 }
 
 function bindFilterPresetsEvents() {
@@ -249,7 +288,7 @@ function bindFilterPresetsEvents() {
     const open = els.filterPresetsPanel.hidden;
     openFilterPresetsPanel(open);
     if (open) {
-      renderFilterPresets();
+      loadFilterPresets().catch(() => {});
     }
   });
 
@@ -281,4 +320,8 @@ function bindFilterPresetsEvents() {
 }
 
 bindFilterPresetsEvents();
+updateFilterPresetAuthState();
 renderFilterPresets();
+
+window.updateFilterPresetAuthState = updateFilterPresetAuthState;
+window.refreshFilterPresets = loadFilterPresets;

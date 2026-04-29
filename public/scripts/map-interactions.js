@@ -4,6 +4,10 @@
     return;
   }
 
+  if (Number(feature?.properties?.is_interactive || 0) !== 1) {
+    return;
+  }
+
   closeRouteSelectionPopup();
   onRouteHoverLeave();
 
@@ -65,6 +69,11 @@ function onStopHoverMove(event) {
 
   const feature = event.features && event.features[0];
   if (!feature || !state.hoverPopup) {
+    return;
+  }
+
+  if (Number(feature?.properties?.is_interactive || 0) !== 1) {
+    onStopHoverLeave();
     return;
   }
 
@@ -377,6 +386,30 @@ function initializeMap() {
     });
 
     state.map.addLayer({
+      id: "routes-hit",
+      type: "line",
+      source: "routes",
+      filter: ["==", ["get", "is_visible"], 1],
+      paint: {
+        "line-color": "#000000",
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          1,
+          6,
+          4,
+          10,
+          8,
+          14,
+          13,
+          18
+        ],
+        "line-opacity": 0
+      }
+    });
+
+    state.map.addLayer({
       id: "stops-layer",
       type: "circle",
       source: "stops",
@@ -394,17 +427,49 @@ function initializeMap() {
           14,
           7.1
         ],
-        "circle-color": ["case", ["==", ["get", "visited"], 1], "#1a9b66", "#d9563a"],
-        "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 1.2,
-        "circle-opacity": ["case", ["==", ["get", "is_focused"], 1], 0.94, 0.32],
-        "circle-stroke-opacity": ["case", ["==", ["get", "is_focused"], 1], 1, 0.45]
+        "circle-color": [
+          "case",
+          ["==", ["get", "show_all"], 1],
+          "#ffffff",
+          ["==", ["get", "visited"], 1],
+          "#1a9b66",
+          "#d9563a"
+        ],
+        "circle-stroke-color": [
+          "case",
+          ["==", ["get", "show_all"], 1],
+          "#0f1b22",
+          "#ffffff"
+        ],
+        "circle-stroke-width": [
+          "case",
+          ["==", ["get", "show_all"], 1],
+          0.9,
+          1.2
+        ],
+        "circle-opacity": [
+          "case",
+          ["==", ["get", "show_all"], 1],
+          0.44,
+          ["==", ["get", "is_focused"], 1],
+          0.94,
+          0.32
+        ],
+        "circle-stroke-opacity": [
+          "case",
+          ["==", ["get", "show_all"], 1],
+          0.72,
+          ["==", ["get", "is_focused"], 1],
+          1,
+          0.45
+        ]
       }
     });
 
-    const interactiveRouteLayers = ["routes-main", "routes-background-main"];
+    const routeHoverLayers = ["routes-main", "routes-background-main"];
+    const routeClickLayers = ["routes-hit"];
 
-    for (const layerId of interactiveRouteLayers) {
+    for (const layerId of routeClickLayers) {
       state.map.on("click", layerId, (event) => {
         const now = Date.now();
         if (now - state.lastStopClickAt < 260) {
@@ -414,9 +479,11 @@ function initializeMap() {
           return;
         }
 
-        const stopHits = state.map.queryRenderedFeatures(event.point, {
-          layers: ["stops-layer"]
-        });
+        const stopHits = state.map
+          .queryRenderedFeatures(event.point, {
+            layers: ["stops-layer"]
+          })
+          .filter((feature) => Number(feature?.properties?.is_interactive || 0) === 1);
         if (
           Array.isArray(stopHits) &&
           stopHits.length > 0 &&
@@ -426,7 +493,7 @@ function initializeMap() {
         }
 
         const routeHits = state.map.queryRenderedFeatures(event.point, {
-          layers: interactiveRouteLayers
+          layers: routeClickLayers
         });
 
         const seenLineKeys = new Set();
@@ -465,7 +532,9 @@ function initializeMap() {
           `Pick one from the selector (${overlappedLines.length} routes).`
         );
       });
+    }
 
+    for (const layerId of routeHoverLayers) {
       state.map.on("mouseenter", layerId, () => {
         if (hoverInteractionsEnabled()) {
           state.map.getCanvas().style.cursor = "pointer";
@@ -485,8 +554,9 @@ function initializeMap() {
     }
 
     state.map.on("click", "stops-layer", onStopClicked);
-    state.map.on("mouseenter", "stops-layer", () => {
-      if (hoverInteractionsEnabled()) {
+    state.map.on("mouseenter", "stops-layer", (event) => {
+      const feature = event.features && event.features[0];
+      if (hoverInteractionsEnabled() && Number(feature?.properties?.is_interactive || 0) === 1) {
         state.map.getCanvas().style.cursor = "pointer";
       }
     });
@@ -516,7 +586,7 @@ function initializeMap() {
             [point.x + closePadding, point.y + closePadding]
           ],
           {
-            layers: interactiveRouteLayers
+            layers: routeClickLayers
           }
         );
 
@@ -535,14 +605,14 @@ function initializeMap() {
           [point.x + closePadding, point.y + closePadding]
         ],
         {
-          layers: ["stops-layer", "routes-main", "routes-background-main"]
+          layers: ["stops-layer", "routes-hit", "routes-main", "routes-background-main"]
         }
       );
 
       const hasVisibleNearbyFeature = Array.isArray(nearby)
         ? nearby.some((feature) => {
             if (feature?.layer?.id === "stops-layer") {
-              return true;
+              return Number(feature?.properties?.is_interactive || 0) === 1;
             }
 
             const line = lineFromRouteFeature(feature);

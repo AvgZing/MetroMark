@@ -377,6 +377,42 @@ body[data-theme="dark"] .filter-sections {
   letter-spacing: 0.06em;
 }
 
+.filter-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.filter-section-header .filter-section-title {
+  margin: 0;
+}
+
+.show-stops-btn {
+  width: auto;
+  min-width: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-color: rgba(20, 53, 71, 0.28);
+  background: rgba(255, 255, 255, 0.52);
+}
+
+body[data-theme="dark"] .show-stops-btn {
+  background: rgba(10, 22, 32, 0.64);
+}
+
+.show-stops-btn.is-active {
+  color: var(--ink);
+  border-color: var(--accent);
+  background: var(--soft-accent);
+}
+
 .filter-toolbar {
   display: flex;
   align-items: center;
@@ -1148,6 +1184,55 @@ body[data-theme="dark"] .maplibregl-popup-content {
   color: var(--muted);
 }
 
+.route-select-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.route-select-close {
+  width: auto;
+  min-width: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-color: rgba(20, 53, 71, 0.3);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--muted);
+}
+
+body[data-theme="dark"] .route-select-close {
+  background: rgba(10, 20, 30, 0.62);
+}
+
+.route-select-panel {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 8;
+  pointer-events: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.route-select-panel .route-select-popup {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 10px;
+  max-width: min(360px, 100%);
+}
+
+.route-select-panel[hidden] {
+  display: none;
+}
+
 .route-select-list {
   display: grid;
   gap: 6px;
@@ -1462,6 +1547,12 @@ body.app-ready .map-overlay-controls {
 
   .dropdown-panel {
     z-index: 24;
+  }
+
+  .route-select-panel {
+    bottom: 70px;
+    left: 10px;
+    right: 10px;
   }
 }
 

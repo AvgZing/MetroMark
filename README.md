@@ -15,7 +15,9 @@ MetroMark is a transit exploration tracker for people who like to discover and c
 1. Install Node.js 20+.
 2. Copy `.env.development.example` to `.env.development`.
 3. Add Supabase keys and Transitland API key to `.env.development`.
-4. Apply `supabase/migrations/20260417_metromark_core.sql` to your Supabase project.
+4. Apply Supabase migrations:
+	- `supabase/migrations/20260417_metromark_core.sql`
+	- `supabase/migrations/20260418_user_filter_presets.sql`
 5. Run:
 
 ```bash
@@ -63,6 +65,8 @@ Admin operations page:
 - Manually trigger harvest, nonrecoverable backup, city queueing, and station overrides.
 
 For full hosting migration steps (Windows scheduler + Cloudflare), see [docs/MIGRATION-WINDOWS.md](docs/MIGRATION-WINDOWS.md).
+
+Workspace layout cheat sheet: [docs/WORKSPACE-LAYOUT.md](docs/WORKSPACE-LAYOUT.md).
 
 ## Attribution
 

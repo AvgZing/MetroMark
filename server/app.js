@@ -7,6 +7,7 @@ const transitRoutes = require("./routes/transit");
 const authRoutes = require("./routes/auth");
 const progressRoutes = require("./routes/progress");
 const adminRoutes = require("./routes/admin");
+const presetsRoutes = require("./routes/presets");
 
 function createApp() {
   const app = express();
@@ -19,6 +20,7 @@ function createApp() {
   app.use("/api", authRoutes);
   app.use("/api", progressRoutes);
   app.use("/api", adminRoutes);
+  app.use("/api", presetsRoutes);
 
   app.use(express.static(path.join(__dirname, "..", "public")));
 

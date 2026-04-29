@@ -19,6 +19,11 @@ body {
   font-family: "Space Grotesk", sans-serif;
 }
 
+body.admin-locked .admin-shell > header,
+body.admin-locked .admin-shell > section:not(.auth-card) {
+  display: none;
+}
+
 .admin-shell {
   max-width: 1160px;
   margin: 0 auto;

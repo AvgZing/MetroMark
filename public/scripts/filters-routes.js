@@ -90,6 +90,7 @@ function getFilteredData() {
   const visibleLineKeys = getVisibleLineKeys(shownLines);
   const allowedStopTypes = new Set(ROUTE_STOP_TYPES);
   const hasFocus = Boolean(state.focusedLineKey) && visibleLineKeys.has(state.focusedLineKey);
+  const showAllStops = Boolean(state.showAllStops) && !hasFocus;
 
   const routes = state.transit.routesGeoJson.features
     .map((feature) => {
@@ -110,11 +111,16 @@ function getFilteredData() {
       };
     });
 
-  const stopSource = hasFocus
-    ? state.transit.stopsGeoJson.features.filter(
-        (feature) => feature?.properties?.line_key === state.focusedLineKey
-      )
-    : [];
+  let stopSource = [];
+  if (hasFocus) {
+    stopSource = state.transit.stopsGeoJson.features.filter(
+      (feature) => feature?.properties?.line_key === state.focusedLineKey
+    );
+  } else if (showAllStops) {
+    stopSource = state.transit.stopsGeoJson.features.filter((feature) =>
+      visibleLineKeys.has(String(feature?.properties?.line_key || "").trim())
+    );
+  }
 
   const stops = stopSource
     .filter((feature) => {
@@ -132,7 +138,9 @@ function getFilteredData() {
         properties: {
           ...feature.properties,
           visited,
-          is_focused: 1
+          is_focused: hasFocus ? 1 : 0,
+          is_interactive: hasFocus ? 1 : 0,
+          show_all: showAllStops ? 1 : 0
         }
       };
     });
@@ -171,11 +179,44 @@ function renderMapData() {
   }
 }
 
+function updateShowAllStopsUi() {
+  if (!els.showAllStopsBtn) {
+    return;
+  }
+
+  const active = Boolean(state.showAllStops);
+  els.showAllStopsBtn.classList.toggle("is-active", active);
+  els.showAllStopsBtn.setAttribute("aria-pressed", active ? "true" : "false");
+  els.showAllStopsBtn.textContent = active ? "All Stops On" : "Show All Stops";
+}
+
+function setShowAllStops(enabled, options = {}) {
+  state.showAllStops = Boolean(enabled);
+  persistBooleanToStorage(SHOW_ALL_STOPS_STORAGE_KEY, state.showAllStops);
+  updateShowAllStopsUi();
+  renderMapData();
+
+  if (options.silent) {
+    return;
+  }
+
+  setStatus(
+    state.showAllStops ? "Showing all stops." : "Showing route-linked stops only.",
+    "ok"
+  );
+}
+
 function lineSummaryByKey() {
   return new Map(state.lineSummaries.map((line) => [line.lineKey, line]));
 }
 
 function renderProgress() {
+  if (!state.user) {
+    els.progressSummary.textContent = "Sign in to track progress.";
+    els.lineProgressList.innerHTML = "";
+    return;
+  }
+
   if (!state.transit) {
     els.progressSummary.textContent = "Pan or zoom the map and routes will load automatically.";
     els.lineProgressList.innerHTML = "";
@@ -1013,4 +1054,6 @@ function refreshUiFromState() {
   renderMapData();
   renderProgress();
 }
+
+updateShowAllStopsUi();
 

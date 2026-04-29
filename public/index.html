@@ -89,7 +89,17 @@
               </div>
 
               <div class="filter-section">
-                <p class="filter-section-title">Modes</p>
+                <div class="filter-section-header">
+                  <p class="filter-section-title">Modes</p>
+                  <button
+                    id="showAllStopsBtn"
+                    class="btn show-stops-btn"
+                    type="button"
+                    aria-pressed="false"
+                  >
+                    Show All Stops
+                  </button>
+                </div>
                 <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
               </div>
               <div class="filter-section-divider" aria-hidden="true"></div>
@@ -135,7 +145,7 @@
           </div>
         </details>
 
-        <details class="panel panel-dropdown status-panel" id="advancedInfoPanel" open>
+        <details class="panel panel-dropdown status-panel" id="advancedInfoPanel">
           <summary class="panel-summary"><span class="panel-summary-label">Advanced Information</span></summary>
           <div class="panel-dropdown-body">
             <div class="advanced-section">
@@ -196,6 +206,7 @@
           </button>
         </div>
         <div id="map"></div>
+        <div id="routeSelectPanel" class="route-select-panel" hidden></div>
       </main>
 
       <section class="panel dropdown-panel" id="authPopup" hidden>

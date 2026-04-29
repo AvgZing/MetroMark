@@ -24,18 +24,24 @@ const els = {
   overrideNote: document.getElementById("overrideNote"),
   applyOverrideBtn: document.getElementById("applyOverrideBtn"),
   queueBody: document.getElementById("queueBody"),
-  actionLog: document.getElementById("actionLog")
+  actionLog: document.getElementById("actionLog"),
 };
 
 const state = {
   adminKey: localStorage.getItem(STORAGE_KEY) || "",
   overrideKey: localStorage.getItem(OVERRIDE_STORAGE_KEY) || "",
-  refreshTimer: null
+  refreshTimer: null,
 };
+
+function setAdminLocked(locked) {
+  document.body.classList.toggle("admin-locked", Boolean(locked));
+}
 
 function appendLog(message, payload = null) {
   const prefix = `[${new Date().toISOString()}] ${message}`;
-  const next = payload ? `${prefix}\n${JSON.stringify(payload, null, 2)}` : prefix;
+  const next = payload
+    ? `${prefix}\n${JSON.stringify(payload, null, 2)}`
+    : prefix;
   const current = String(els.actionLog.textContent || "").trim();
   const output = current ? `${next}\n\n${current}` : next;
   els.actionLog.textContent = output.slice(0, 40000);
@@ -53,14 +59,15 @@ async function apiRequest(path, options = {}) {
     headers: {
       "Content-Type": "application/json",
       "x-admin-key": requestKey,
-      ...(options.headers || {})
+      ...(options.headers || {}),
     },
-    body: options.body ? JSON.stringify(options.body) : undefined
+    body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = payload?.error || `Request failed with status ${response.status}`;
+    const message =
+      payload?.error || `Request failed with status ${response.status}`;
     throw new Error(message);
   }
 
@@ -102,7 +109,7 @@ function renderQueue(rows) {
       entry.pendingRefresh ? "yes" : "no",
       String(entry.harvestPriority || ""),
       entry.updatedAt ? new Date(entry.updatedAt * 1000).toLocaleString() : "",
-      entry.lastError || ""
+      entry.lastError || "",
     ];
 
     cells.forEach((value) => {
@@ -130,49 +137,74 @@ function renderCityOptions(cities) {
 async function refreshStats() {
   const payload = await apiRequest("/api/admin/stats", { method: "GET" });
 
+  const cacheKinds = payload.cache?.byKind
+    ? Object.entries(payload.cache.byKind)
+        .map(([kind, count]) => `${kind}:${count}`)
+        .join(", ")
+    : "";
+
   renderKv(els.usageStats, [
     { label: "UTC Day", value: payload.usage.dayKey },
-    { label: "REST", value: `${payload.usage.rest.calls}/${payload.usage.rest.limit} (${payload.usage.rest.burnRatePct}%)` },
+    {
+      label: "REST",
+      value: `${payload.usage.rest.calls}/${payload.usage.rest.limit} (${payload.usage.rest.burnRatePct}%)`,
+    },
     {
       label: "Vector",
-      value: `${payload.usage.vector.calls}/${payload.usage.vector.limit} (${payload.usage.vector.burnRatePct}%)`
+      value: `${payload.usage.vector.calls}/${payload.usage.vector.limit} (${payload.usage.vector.burnRatePct}%)`,
     },
     {
       label: "Routing",
-      value: `${payload.usage.routing.calls}/${payload.usage.routing.limit} (${payload.usage.routing.burnRatePct}%)`
+      value: `${payload.usage.routing.calls}/${payload.usage.routing.limit} (${payload.usage.routing.burnRatePct}%)`,
     },
     {
       label: "Background Allowed",
-      value: payload.usage.backgroundHarvestAllowed ? "yes" : "no"
-    }
+      value: payload.usage.backgroundHarvestAllowed ? "yes" : "no",
+    },
   ]);
 
   renderKv(els.harvestStats, [
-    { label: "Active Cached Cities", value: String(payload.harvest.activeCachedCities) },
-    { label: "Pending Harvests", value: String(payload.harvest.pendingHarvests) },
+    {
+      label: "Active Cached Cities",
+      value: String(payload.harvest.activeCachedCities),
+    },
+    {
+      label: "Pending Harvests",
+      value: String(payload.harvest.pendingHarvests),
+    },
     { label: "In Progress", value: String(payload.harvest.inProgress) },
     { label: "Ready", value: String(payload.harvest.ready) },
-    { label: "Total", value: String(payload.harvest.totalCities) }
+    { label: "Total", value: String(payload.harvest.totalCities) },
   ]);
 
   renderKv(els.storageStats, [
     { label: "Cache Rows", value: String(payload.cache.total) },
-    { label: "City-Tagged Cache Rows", value: String(payload.cache.withCitySlug) },
+    {
+      label: "City-Tagged Cache Rows",
+      value: String(payload.cache.withCitySlug),
+    },
+    { label: "Cache Kinds", value: cacheKinds || "-" },
     { label: "Database Size", value: `${payload.database.sizeMb} MB` },
     { label: "Database Bytes", value: String(payload.database.sizeBytes) },
-    { label: "Storage Path", value: payload.database.path }
+    { label: "Storage Path", value: payload.database.path },
   ]);
 
   renderKv(els.accountStats, [
     { label: "Profiles Total", value: String(payload.accounts.profilesTotal) },
-    { label: "Profiles Active", value: String(payload.accounts.profilesActive) },
-    { label: "Visited Rows", value: String(payload.accounts.visitedStationRows) },
+    {
+      label: "Profiles Active",
+      value: String(payload.accounts.profilesActive),
+    },
+    {
+      label: "Visited Rows",
+      value: String(payload.accounts.visitedStationRows),
+    },
     {
       label: "Latest Login",
       value: payload.accounts.latestLoginAtMs
         ? new Date(payload.accounts.latestLoginAtMs).toLocaleString()
-        : "-"
-    }
+        : "-",
+    },
   ]);
 
   renderKv(els.performanceStats, [
@@ -180,56 +212,58 @@ async function refreshStats() {
     { label: "Node", value: String(payload.performance.nodeVersion || "-") },
     {
       label: "RSS",
-      value: `${(Number(payload.performance.memory.rssBytes || 0) / (1024 * 1024)).toFixed(2)} MB`
+      value: `${(Number(payload.performance.memory.rssBytes || 0) / (1024 * 1024)).toFixed(2)} MB`,
     },
     {
       label: "Heap Used",
-      value: `${(Number(payload.performance.memory.heapUsedBytes || 0) / (1024 * 1024)).toFixed(2)} MB`
+      value: `${(Number(payload.performance.memory.heapUsedBytes || 0) / (1024 * 1024)).toFixed(2)} MB`,
     },
     {
       label: "CPU (user/system)",
-      value: `${Number(payload.performance.cpu.userMicros || 0)}/${Number(payload.performance.cpu.systemMicros || 0)} us`
-    }
+      value: `${Number(payload.performance.cpu.userMicros || 0)}/${Number(payload.performance.cpu.systemMicros || 0)} us`,
+    },
   ]);
 
   renderKv(els.transitlandStats, [
     {
       label: "REST (req/fail)",
-      value: `${Number(payload.transitland.restApiRequests || 0)}/${Number(payload.transitland.restApiFailures || 0)}`
+      value: `${Number(payload.transitland.restApiRequests || 0)}/${Number(payload.transitland.restApiFailures || 0)}`,
     },
     {
       label: "Vector (req/fail)",
-      value: `${Number(payload.transitland.vectorTileRequests || 0)}/${Number(payload.transitland.vectorTileFailures || 0)}`
+      value: `${Number(payload.transitland.vectorTileRequests || 0)}/${Number(payload.transitland.vectorTileFailures || 0)}`,
     },
     {
       label: "Routing (req/fail)",
-      value: `${Number(payload.transitland.routingApiRequests || 0)}/${Number(payload.transitland.routingApiFailures || 0)}`
+      value: `${Number(payload.transitland.routingApiRequests || 0)}/${Number(payload.transitland.routingApiFailures || 0)}`,
     },
     {
       label: "Last REST",
       value: payload.transitland.lastRestRequestAt
         ? new Date(payload.transitland.lastRestRequestAt).toLocaleString()
-        : "-"
+        : "-",
     },
     {
       label: "Last Vector",
       value: payload.transitland.lastVectorTileRequestAt
         ? new Date(payload.transitland.lastVectorTileRequestAt).toLocaleString()
-        : "-"
+        : "-",
     },
     {
       label: "Last Routing",
       value: payload.transitland.lastRoutingRequestAt
         ? new Date(payload.transitland.lastRoutingRequestAt).toLocaleString()
-        : "-"
-    }
+        : "-",
+    },
   ]);
 
   return payload;
 }
 
 async function refreshQueue() {
-  const payload = await apiRequest("/api/admin/harvest/queue?limit=50", { method: "GET" });
+  const payload = await apiRequest("/api/admin/harvest/queue?limit=50", {
+    method: "GET",
+  });
   renderQueue(Array.isArray(payload.pending) ? payload.pending : []);
   return payload;
 }
@@ -242,14 +276,20 @@ async function refreshCities() {
 
 async function refreshAll() {
   if (!state.adminKey) {
+    setAdminLocked(true);
     setStatus("Set admin key first.", true);
     return;
   }
 
   try {
     await Promise.all([refreshStats(), refreshQueue()]);
+    setAdminLocked(false);
     setStatus("Admin data refreshed.");
+    if (!state.refreshTimer) {
+      startPolling();
+    }
   } catch (error) {
+    setAdminLocked(true);
     setStatus(error.message, true);
     appendLog("Refresh failed", { error: error.message });
   }
@@ -293,6 +333,7 @@ function bindEvents() {
     } else {
       localStorage.removeItem(OVERRIDE_STORAGE_KEY);
     }
+    setAdminLocked(true);
     setStatus(state.adminKey ? "Admin key(s) saved." : "Admin key cleared.");
     refreshAll().catch(() => {});
   });
@@ -302,12 +343,16 @@ function bindEvents() {
   });
 
   els.runHarvestBtn.addEventListener("click", () => {
-    runAction("harvest", () => apiRequest("/api/admin/actions/harvest-core", { method: "POST" }));
+    runAction("harvest", () =>
+      apiRequest("/api/admin/actions/harvest-core", { method: "POST" }),
+    );
   });
 
   els.runBackupBtn.addEventListener("click", () => {
     runAction("backup", () =>
-      apiRequest("/api/admin/actions/backup-nonrecoverable", { method: "POST" })
+      apiRequest("/api/admin/actions/backup-nonrecoverable", {
+        method: "POST",
+      }),
     );
   });
 
@@ -319,8 +364,8 @@ function bindEvents() {
 
     runAction(`queue-city:${slug}`, () =>
       apiRequest(`/api/admin/actions/queue-city/${encodeURIComponent(slug)}`, {
-        method: "POST"
-      })
+        method: "POST",
+      }),
     );
   });
 
@@ -331,7 +376,9 @@ function bindEvents() {
       return;
     }
 
-    const overrideAdminKey = String(state.overrideKey || state.adminKey || "").trim();
+    const overrideAdminKey = String(
+      state.overrideKey || state.adminKey || "",
+    ).trim();
     if (!overrideAdminKey) {
       setStatus("Set an admin key before applying overrides.", true);
       return;
@@ -343,7 +390,7 @@ function bindEvents() {
     const body = {
       stationKey,
       manualName: String(els.overrideManualName.value || "").trim(),
-      note: String(els.overrideNote.value || "").trim()
+      note: String(els.overrideNote.value || "").trim(),
     };
 
     if (manualLatRaw) {
@@ -358,8 +405,8 @@ function bindEvents() {
       apiRequest("/api/admin/overrides/station", {
         method: "POST",
         adminKey: overrideAdminKey,
-        body
-      })
+        body,
+      }),
     );
   });
 }
@@ -369,6 +416,8 @@ async function init() {
   els.overrideKeyInput.value = state.overrideKey;
   bindEvents();
   await refreshCities();
+
+  setAdminLocked(true);
 
   if (!state.adminKey) {
     setStatus("Set admin key first.", true);

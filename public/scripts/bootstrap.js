@@ -42,6 +42,12 @@ function bindEvents() {
   els.streetsModeBtn.addEventListener("click", () => setMapMode("streets"));
   els.satelliteModeBtn.addEventListener("click", () => setMapMode("satellite"));
 
+  if (els.showAllStopsBtn) {
+    els.showAllStopsBtn.addEventListener("click", () => {
+      setShowAllStops(!state.showAllStops);
+    });
+  }
+
   els.accountPopupBtn.addEventListener("click", () => {
     if (state.activePopup !== "account") {
       setAuthFeedback();

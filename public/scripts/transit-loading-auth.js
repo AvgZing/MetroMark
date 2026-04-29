@@ -405,6 +405,12 @@ function updateAuthUi() {
   els.authLoggedOut.hidden = loggedIn;
   els.authLoggedIn.hidden = !loggedIn;
   els.currentUserLabel.textContent = loggedIn ? `${state.user.displayName} (${state.user.email})` : "-";
+  if (typeof window.updateFilterPresetAuthState === "function") {
+    window.updateFilterPresetAuthState();
+  }
+  if (typeof window.refreshFilterPresets === "function") {
+    window.refreshFilterPresets({ silent: true }).catch(() => {});
+  }
   renderUserStatus();
 }
 

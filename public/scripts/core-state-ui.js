@@ -10,6 +10,8 @@ const ROUTE_STOP_TYPES = [0, 1];
 const ROUTE_STOP_TYPES_KEY = ROUTE_STOP_TYPES.join("-");
 const ROUTE_STOP_TYPES_QUERY = ROUTE_STOP_TYPES.join(",");
 
+const SHOW_ALL_STOPS_STORAGE_KEY = "metromark_show_all_stops";
+
 const MODE_FILTER_ALL = "all";
 const MODE_FILTER_BUS = "bus";
 const MODE_FILTER_FERRY = "ferry";
@@ -68,6 +70,23 @@ function parseSetFromStorage(storageKey, defaults) {
   } catch {
     return new Set(defaults);
   }
+}
+
+function parseBooleanFromStorage(storageKey, defaultValue = false) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (raw === null) {
+      return defaultValue;
+    }
+
+    return raw === "true";
+  } catch {
+    return defaultValue;
+  }
+}
+
+function persistBooleanToStorage(storageKey, value) {
+  localStorage.setItem(storageKey, value ? "true" : "false");
 }
 
 function persistSetToStorage(storageKey, values) {
@@ -149,6 +168,7 @@ const state = {
     DEFAULT_ACTIVE_FREQUENCY_KEYS
   ),
   manualLineVisibility: parseVisibilityOverridesFromStorage("metromark_route_visibility_overrides"),
+  showAllStops: parseBooleanFromStorage(SHOW_ALL_STOPS_STORAGE_KEY, false),
   lineSearchQuery: "",
   initialCitySlug: localStorage.getItem("metromark_initial_city_slug") || "seattle",
   theme: localStorage.getItem("metromark_theme") || "light",
@@ -207,9 +227,11 @@ const els = {
   applyFilterPresetBtn: document.getElementById("applyFilterPresetBtn"),
   deleteFilterPresetBtn: document.getElementById("deleteFilterPresetBtn"),
   filterPresetsStatus: document.getElementById("filterPresetsStatus"),
+  showAllStopsBtn: document.getElementById("showAllStopsBtn"),
   modeFilterBar: document.getElementById("modeFilterBar"),
   frequencyFilterBar: document.getElementById("frequencyFilterBar"),
   mobileDrawerTab: document.getElementById("mobileDrawerTab"),
+  routeSelectPanel: document.getElementById("routeSelectPanel"),
   userStatusTitle: document.getElementById("userStatusTitle"),
   userStatusSubtitle: document.getElementById("userStatusSubtitle"),
   userStatusFeedback: document.getElementById("userStatusFeedback"),
@@ -397,7 +419,7 @@ function renderUserStatus() {
 
   if (els.userStatusRouteProgress && els.userStatusRouteProgressText && els.userStatusRouteProgressFill) {
     const progress = state.userStatus.progress;
-    const hasProgress = Boolean(progress) && Number(progress.total || 0) > 0;
+    const hasProgress = Boolean(state.user) && Boolean(progress) && Number(progress.total || 0) > 0;
 
     if (hasProgress) {
       const visited = Number(progress.visited || 0);
@@ -929,7 +951,8 @@ function lineHoverHtml(lines, totalLineCount = lines.length) {
   `;
 }
 
-function routeSelectionPopupHtml(lines) {
+function routeSelectionPopupHtml(lines, options = {}) {
+  const includeClose = Boolean(options.includeClose);
   const rows = lines
     .map(
       (line) =>
@@ -946,7 +969,14 @@ function routeSelectionPopupHtml(lines) {
 
   return `
     <div class="station-hover route-select-popup">
-      <h4>Select Route</h4>
+      <div class="route-select-header">
+        <h4>Select Route</h4>
+        ${
+          includeClose
+            ? "<button class=\"route-select-close\" type=\"button\" data-route-select-close>Close</button>"
+            : ""
+        }
+      </div>
       <p class="hover-subtitle">${lines.length} routes overlap here.</p>
       <div class="route-select-list">${rows}</div>
     </div>
@@ -957,22 +987,19 @@ function closeRouteSelectionPopup() {
   if (state.routeSelectPopup) {
     state.routeSelectPopup.remove();
   }
+
+  if (els.routeSelectPanel) {
+    els.routeSelectPanel.hidden = true;
+    els.routeSelectPanel.innerHTML = "";
+  }
 }
 
-function openRouteSelectionPopup(lines, lngLat) {
-  if (!state.routeSelectPopup || !state.map) {
+function bindRouteSelectionButtons(container) {
+  if (!container) {
     return;
   }
 
-  closeRouteSelectionPopup();
-  state.routeSelectPopup.setLngLat(lngLat).setHTML(routeSelectionPopupHtml(lines)).addTo(state.map);
-
-  const popupElement = state.routeSelectPopup.getElement();
-  if (!popupElement) {
-    return;
-  }
-
-  const buttons = popupElement.querySelectorAll("[data-route-select]");
+  const buttons = container.querySelectorAll("[data-route-select]");
   buttons.forEach((button) => {
     button.addEventListener("click", (event) => {
       event.preventDefault();
@@ -989,6 +1016,38 @@ function openRouteSelectionPopup(lines, lngLat) {
       });
     });
   });
+
+  const closeButton = container.querySelector("[data-route-select-close]");
+  if (closeButton) {
+    closeButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      closeRouteSelectionPopup();
+    });
+  }
+}
+
+function openRouteSelectionPopup(lines, lngLat) {
+  if (isPortraitMobileLayout() && els.routeSelectPanel) {
+    closeRouteSelectionPopup();
+    els.routeSelectPanel.hidden = false;
+    els.routeSelectPanel.innerHTML = routeSelectionPopupHtml(lines, { includeClose: true });
+    bindRouteSelectionButtons(els.routeSelectPanel);
+    return;
+  }
+
+  if (!state.routeSelectPopup || !state.map) {
+    return;
+  }
+
+  closeRouteSelectionPopup();
+  state.routeSelectPopup.setLngLat(lngLat).setHTML(routeSelectionPopupHtml(lines)).addTo(state.map);
+
+  const popupElement = state.routeSelectPopup.getElement();
+  if (!popupElement) {
+    return;
+  }
+
+  bindRouteSelectionButtons(popupElement);
 }
 
 function lineProgressMetrics(lineKey, fallbackTotal = 0) {
@@ -1047,21 +1106,26 @@ function setUserStatusFromLine(line) {
   const progress = lineProgressMetrics(line.lineKey, Number(line.stopCount || 0));
   const focusedLineActions = state.focusedLineKey === line.lineKey ? line.lineKey : "";
 
+  const details = [
+    {
+      label: "Operator",
+      value: lineOperatorLabel(line)
+    },
+    {
+      label: "Frequency",
+      value: lineHeadwayLabel(line)
+    }
+  ];
+
+  if (!isPortraitMobileLayout()) {
+    details.push({
+      label: "Stops",
+      value: progress.total > 0 ? `${progress.total} route stations loaded` : "Stops not loaded yet"
+    });
+  }
+
   setUserStatus(lineDisplayName(line), `${lineMode(line)} Line`, {
-    details: [
-      {
-        label: "Operator",
-        value: lineOperatorLabel(line)
-      },
-      {
-        label: "Frequency",
-        value: lineHeadwayLabel(line)
-      },
-      {
-        label: "Stops",
-        value: progress.total > 0 ? `${progress.total} route stations loaded` : "Stops not loaded yet"
-      }
-    ],
+    details,
     routeLineKey: focusedLineActions,
     progress,
     feedback: ""
