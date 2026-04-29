@@ -1293,6 +1293,9 @@ body[data-theme="dark"] .route-select-close {
   z-index: 7;
   pointer-events: auto;
   padding: 12px 12px 12px 6px;
+  background: var(--shell);
+  backdrop-filter: blur(4px);
+  border-left: 1px solid var(--panel-border);
 }
 
 .line-view-panel[hidden] {
@@ -1376,7 +1379,8 @@ body[data-theme="dark"] .route-select-close {
   flex: 1;
   overflow-y: auto;
   padding-right: 6px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0;
   --line-color: var(--accent);
 }
@@ -1789,12 +1793,17 @@ body.app-ready .map-overlay-controls {
     height: 100vh;
     padding: 10px;
     z-index: 20;
-    background: rgba(10, 18, 26, 0.22);
+    background: var(--shell);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .line-view-card {
     border-radius: 18px;
     height: 100%;
+    width: 100%;
   }
 }
 

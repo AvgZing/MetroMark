@@ -642,6 +642,63 @@ function stopKeyForFeature(feature) {
   return String(props.station_key || props.stop_id || "").trim();
 }
 
+function sortStopsSequentially(features) {
+  if (!Array.isArray(features) || features.length <= 1) {
+    return features;
+  }
+
+  const coords = features.map((f) => f?.geometry?.coordinates).filter((c) => Array.isArray(c));
+  if (coords.length <= 1) {
+    return features;
+  }
+
+  // Find the two most distant points to establish the line direction
+  let maxDist = 0;
+  let startIdx = 0;
+  let endIdx = 1;
+
+  for (let i = 0; i < coords.length; i++) {
+    for (let j = i + 1; j < coords.length; j++) {
+      const dx = coords[i][0] - coords[j][0];
+      const dy = coords[i][1] - coords[j][1];
+      const dist = dx * dx + dy * dy;
+      if (dist > maxDist) {
+        maxDist = dist;
+        startIdx = i;
+        endIdx = j;
+      }
+    }
+  }
+
+  const start = coords[startIdx];
+  const end = coords[endIdx];
+
+  // Project each stop onto the line from start to end
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+  const lineLenSq = dx * dx + dy * dy;
+
+  if (lineLenSq < 0.0001) {
+    return features; // Points are too close, can't determine direction
+  }
+
+  const projections = features.map((feature, idx) => {
+    const coord = feature?.geometry?.coordinates;
+    if (!Array.isArray(coord)) {
+      return { feature, projection: -1, index: idx };
+    }
+
+    const px = coord[0] - start[0];
+    const py = coord[1] - start[1];
+    const projection = (px * dx + py * dy) / lineLenSq;
+    return { feature, projection, index: idx };
+  });
+
+  // Sort by projection along the line
+  projections.sort((a, b) => a.projection - b.projection);
+  return projections.map((p) => p.feature);
+}
+
 function uniqueStopFeaturesForLine(lineKey) {
   const cacheEntry = state.lineStopsCache.get(routeStopCacheKey(lineKey));
   const stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
@@ -649,7 +706,7 @@ function uniqueStopFeaturesForLine(lineKey) {
     : [];
 
   const seen = new Set();
-  return stopFeatures.filter((feature) => {
+  const unique = stopFeatures.filter((feature) => {
     const key = stopKeyForFeature(feature);
     if (!key || seen.has(key)) {
       return false;
@@ -657,6 +714,9 @@ function uniqueStopFeaturesForLine(lineKey) {
     seen.add(key);
     return true;
   });
+
+  // Sort stops sequentially along the line
+  return sortStopsSequentially(unique);
 }
 
 async function toggleVisitedForStation(properties, coords) {
