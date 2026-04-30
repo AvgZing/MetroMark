@@ -776,6 +776,76 @@ async function toggleVisitedForStation(properties, coords) {
   }
 }
 
+function createLineConnector(lineColor) {
+  if (!els.lineViewStops) {
+    return;
+  }
+
+  // Remove any existing SVG
+  const existingSvg = els.lineViewStops.querySelector("svg");
+  if (existingSvg) {
+    existingSvg.remove();
+  }
+
+  // Get all stop rows
+  const stopRows = Array.from(els.lineViewStops.querySelectorAll(".line-view-stop-row"));
+  if (stopRows.length < 2) {
+    return;
+  }
+
+  // Calculate positions of each stop dot (center of marker element)
+  const dotPositions = stopRows.map((row) => {
+    const marker = row.querySelector(".line-view-stop-marker");
+    const dot = row.querySelector(".line-view-stop-dot");
+    if (!marker || !dot) {
+      return null;
+    }
+
+    const markerRect = marker.getBoundingClientRect();
+    const containerRect = els.lineViewStops.getBoundingClientRect();
+    const relativeY = markerRect.top - containerRect.top + markerRect.height / 2;
+    return {
+      y: relativeY,
+      x: 9 // Center of 18px marker width
+    };
+  });
+
+  // Filter out null positions
+  const validPositions = dotPositions.filter((p) => p !== null);
+  if (validPositions.length < 2) {
+    return;
+  }
+
+  // Create SVG element
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.id = "lineViewConnectorSvg";
+  svg.setAttribute("viewBox", `0 0 18 ${validPositions[validPositions.length - 1].y + 20}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.style.height = `${validPositions[validPositions.length - 1].y + 20}px`;
+
+  // Create path connecting all dots
+  const pathData = validPositions
+    .map((pos, idx) => {
+      if (idx === 0) {
+        return `M ${pos.x} ${pos.y}`;
+      }
+      return `L ${pos.x} ${pos.y}`;
+    })
+    .join(" ");
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", pathData);
+  path.setAttribute("stroke", lineColor);
+  path.setAttribute("stroke-width", "4");
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  path.setAttribute("opacity", "0.85");
+
+  svg.append(path);
+  els.lineViewStops.insertBefore(svg, els.lineViewStops.firstChild);
+}
+
 function renderLineViewStops(lineKey, lineColor) {
   if (!els.lineViewStops) {
     return;
@@ -850,6 +920,11 @@ function renderLineViewStops(lineKey, lineColor) {
 
     els.lineViewStops.append(row);
   });
+
+  // Create SVG connector line after a brief delay to ensure DOM is laid out
+  setTimeout(() => {
+    createLineConnector(lineColor || "#177ca2");
+  }, 10);
 }
 
 function renderLineView() {
@@ -872,8 +947,10 @@ function renderLineView() {
   const lineColor = line?.color || "#177ca2";
   const lineLabel = line ? lineDisplayName(line) : "Selected Route";
 
+  // Ensure panel is visible and not hidden
   if (els.lineViewPanel) {
     els.lineViewPanel.hidden = false;
+    els.lineViewPanel.removeAttribute("hidden");
   }
 
   if (els.lineViewColor) {

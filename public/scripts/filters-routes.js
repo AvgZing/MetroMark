@@ -787,6 +787,12 @@ async function setFocusedLine(lineKey, options = {}) {
   }
 
   state.focusedLineKey = normalizedLineKey;
+  
+  // If line view is open, update the line shown in line view to match focused line
+  if (state.lineViewOpen) {
+    state.lineViewLineKey = normalizedLineKey;
+  }
+  
   setUserStatusFromLine(line);
   renderLineList();
   renderMapData();
@@ -965,10 +971,16 @@ function renderLineList() {
 
     focusButton.append(dot, labelBlock);
 
-    focusButton.addEventListener("click", () => {
-      setFocusedLine(line.lineKey).catch((error) => {
+    focusButton.addEventListener("click", async () => {
+      try {
+        await setFocusedLine(line.lineKey);
+        // On desktop, open Line View by default when selecting a route
+        if (!isPortraitMobileLayout() && typeof openLineView === "function") {
+          openLineView(line.lineKey);
+        }
+      } catch (error) {
         setStatus(error.message, "error");
-      });
+      }
     });
 
     const sideStack = document.createElement("div");

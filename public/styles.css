@@ -1390,6 +1390,7 @@ body[data-theme="dark"] .route-select-close {
   flex-direction: column;
   gap: 0;
   --line-color: var(--accent);
+  position: relative;
 }
 
 .line-view-stop-row {
@@ -1403,6 +1404,8 @@ body[data-theme="dark"] .route-select-close {
   text-align: left;
   color: var(--ink);
   cursor: pointer;
+  position: relative;
+  z-index: 1;
 }
 
 .line-view-stop-row:disabled {
@@ -1419,25 +1422,16 @@ body[data-theme="dark"] .route-select-close {
   width: 18px;
   display: flex;
   justify-content: center;
-  /* Extend the line vertically through padding */
-  margin: -8px 0;
-  padding: 8px 0;
 }
 
-.line-view-stop-marker::before {
-  content: "";
+/* SVG connector line replaces ::before pseudo-element */
+#lineViewConnectorSvg {
   position: absolute;
-  top: -8px;
-  bottom: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  background: var(--line-color);
-  opacity: 0.85;
-}
-
-.line-view-stop-row:last-child .line-view-stop-marker::before {
-  display: none;
+  top: 0;
+  left: 12px;
+  width: 18px;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .line-view-stop-dot {
