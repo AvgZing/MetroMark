@@ -9,7 +9,7 @@ async function startServer() {
 
   app.listen(config.PORT, () => {
     console.log(`MetroMark server running on http://localhost:${config.PORT}`);
-    console.log(`Storage backend: Supabase/Postgres (${db.dbPath})`);
+    console.log(`Storage backend: local Postgres cache (${db.dbPath}) + Supabase auth`);
   });
 }
 

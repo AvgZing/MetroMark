@@ -1,6 +1,7 @@
 const express = require("express");
 
 const config = require("../config");
+const { hasLocalPostgresConfig } = require("../postgres");
 const { withTransitlandMetrics } = require("./helpers");
 
 const router = express.Router();
@@ -10,6 +11,7 @@ router.get("/health", (req, res) => {
     status: "ok",
     app: "MetroMark",
     hasTransitlandKey: Boolean(config.TRANSITLAND_API_KEY),
+    hasLocalPostgres: hasLocalPostgresConfig(),
     transitlandRequestTimeoutMs: config.TRANSITLAND_REQUEST_TIMEOUT_MS,
     transitlandRequestRetries: config.TRANSITLAND_REQUEST_RETRIES,
     cacheTtlHours: config.TRANSIT_CACHE_TTL_HOURS,

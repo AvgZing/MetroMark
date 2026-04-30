@@ -19,10 +19,11 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.8",
     "@mapbox/vector-tile": "^2.0.4",
+    "@supabase/supabase-js": "^2.49.8",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
-    "pbf": "^4.0.1"
+    "pbf": "^4.0.1",
+    "pg": "^8.20.0"
   }
 }

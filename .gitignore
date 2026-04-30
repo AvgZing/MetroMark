@@ -26,6 +26,9 @@ data/*.db-shm
 data/*.db-wal
 data/cache/
 data/backups/
+data/local-postgres/
+data/private/
+data/postgres/
 
 # OS/editor noise
 .DS_Store

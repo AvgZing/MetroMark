@@ -1,7 +1,13 @@
 const config = require("../config");
 const { hasSupabaseConfig, requireSupabaseClients } = require("../supabase");
+const {
+  hasLocalPostgresConfig,
+  initializeLocalPostgres,
+  query: localQuery,
+  localDbLabel
+} = require("../postgres");
 
-const dbPath = config.SUPABASE_URL || "supabase://not-configured";
+const dbPath = localDbLabel();
 
 const stationOverrideCache = new Map();
 let initializePromise = null;
@@ -10,6 +16,14 @@ function assertConfigured() {
   if (!hasSupabaseConfig) {
     throw new Error(
       "Supabase is not configured. Set SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY."
+    );
+  }
+}
+
+function assertLocalConfigured() {
+  if (!hasLocalPostgresConfig()) {
+    throw new Error(
+      "Local PostgreSQL is not configured. Set METROMARK_LOCAL_PG_URL or METROMARK_LOCAL_PGHOST/METROMARK_LOCAL_PGDATABASE."
     );
   }
 }
@@ -209,19 +223,14 @@ async function markProfileLogin(userId) {
 }
 
 async function loadStationOverridesCache() {
-  const { serviceClient } = requireSupabaseClients();
-  const { data, error } = await serviceClient
-    .from("station_override")
-    .select("stable_key,manual_name,manual_lat,manual_lon,note,updated_at")
-    .limit(20000);
-
-  if (error) {
-    throw new Error(`Unable to load station overrides: ${error.message}`);
-  }
+  assertLocalConfigured();
+  const result = await localQuery(
+    "select stable_key,manual_name,manual_lat,manual_lon,note,updated_at from public.station_override limit 20000"
+  );
 
   stationOverrideCache.clear();
 
-  for (const row of data || []) {
+  for (const row of result.rows || []) {
     stationOverrideCache.set(row.stable_key, {
       stableKey: row.stable_key,
       manualName: row.manual_name,
@@ -239,11 +248,13 @@ async function initializeStorage() {
   }
 
   initializePromise = (async () => {
-    assertConfigured();
+    assertLocalConfigured();
+    await initializeLocalPostgres();
     await loadStationOverridesCache();
     return {
-      backend: "supabase-postgis",
-      endpoint: dbPath
+      backend: "local-postgres-postgis",
+      endpoint: dbPath,
+      authBackend: hasSupabaseConfig ? "supabase" : "unconfigured"
     };
   })();
 
@@ -417,101 +428,76 @@ async function verifyUser(email, password) {
 }
 
 async function getCache(cacheKey) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
-  const { data, error } = await serviceClient
-    .from("transit_cache")
-    .select("cache_key,payload,fetched_at,expires_at,cache_kind,city_slug,feed_fingerprint,verified_at")
-    .eq("cache_key", cacheKey)
-    .gt("expires_at", nowIso())
-    .maybeSingle();
+  assertLocalConfigured();
+  const { rows } = await localQuery(
+    "select cache_key,payload,fetched_at,expires_at,cache_kind,city_slug,feed_fingerprint,verified_at from public.transit_cache where cache_key = $1 and expires_at > now() limit 1",
+    [cacheKey]
+  );
 
-  if (error) {
-    throw new Error(`Unable to read cache: ${error.message}`);
-  }
-
-  return normalizeCacheRow(data);
+  return normalizeCacheRow(rows?.[0] || null);
 }
 
 async function getCacheAny(cacheKey) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
-  const { data, error } = await serviceClient
-    .from("transit_cache")
-    .select("cache_key,payload,fetched_at,expires_at,cache_kind,city_slug,feed_fingerprint,verified_at")
-    .eq("cache_key", cacheKey)
-    .maybeSingle();
+  assertLocalConfigured();
+  const { rows } = await localQuery(
+    "select cache_key,payload,fetched_at,expires_at,cache_kind,city_slug,feed_fingerprint,verified_at from public.transit_cache where cache_key = $1 limit 1",
+    [cacheKey]
+  );
 
-  if (error) {
-    throw new Error(`Unable to read cache: ${error.message}`);
-  }
-
-  return normalizeCacheRow(data);
+  return normalizeCacheRow(rows?.[0] || null);
 }
 
 async function setCache(cacheKey, payload, ttlSeconds, options = {}) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
   const fetchedAt = nowSeconds();
   const expiresAt = fetchedAt + Math.max(60, Number(ttlSeconds || 0));
 
-  const row = {
-    cache_key: cacheKey,
-    payload,
-    fetched_at: toIsoFromEpoch(fetchedAt),
-    expires_at: toIsoFromEpoch(expiresAt),
-    cache_kind: normalizeText(options.cacheKind, "bbox"),
-    city_slug: normalizeText(options.citySlug) || null,
-    feed_fingerprint: normalizeText(options.feedFingerprint) || null,
-    verified_at: toIsoFromEpoch(
+  await localQuery(
+    `insert into public.transit_cache (
+      cache_key,
+      payload,
+      fetched_at,
+      expires_at,
+      cache_kind,
+      city_slug,
+      feed_fingerprint,
+      verified_at
+    ) values ($1, $2::jsonb, to_timestamp($3), to_timestamp($4), $5, $6, $7, to_timestamp($8))
+    on conflict (cache_key) do update set
+      payload = excluded.payload,
+      fetched_at = excluded.fetched_at,
+      expires_at = excluded.expires_at,
+      cache_kind = excluded.cache_kind,
+      city_slug = excluded.city_slug,
+      feed_fingerprint = excluded.feed_fingerprint,
+      verified_at = excluded.verified_at`,
+    [
+      cacheKey,
+      JSON.stringify(payload),
+      fetchedAt,
+      expiresAt,
+      normalizeText(options.cacheKind, "bbox"),
+      normalizeText(options.citySlug) || null,
+      normalizeText(options.feedFingerprint) || null,
       Number.isFinite(Number(options.verifiedAt)) ? Number(options.verifiedAt) : fetchedAt
-    )
-  };
-
-  const { error } = await serviceClient.from("transit_cache").upsert(row, {
-    onConflict: "cache_key"
-  });
-
-  if (error) {
-    throw new Error(`Unable to write cache: ${error.message}`);
-  }
+    ]
+  );
 }
 
 async function clearCacheByPrefix(prefix) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
-  const { error } = await serviceClient.from("transit_cache").delete().like("cache_key", `${prefix}%`);
-
-  if (error) {
-    throw new Error(`Unable to clear cache: ${error.message}`);
-  }
+  assertLocalConfigured();
+  await localQuery("delete from public.transit_cache where cache_key like $1", [`${prefix}%`]);
 }
 
 async function getCacheStats() {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
-
-  const totalQuery = await serviceClient
-    .from("transit_cache")
-    .select("cache_key", { count: "exact", head: true });
-
-  if (totalQuery.error) {
-    throw new Error(`Unable to read cache stats: ${totalQuery.error.message}`);
-  }
-
-  const rowsQuery = await serviceClient
-    .from("transit_cache")
-    .select("cache_kind,city_slug")
-    .limit(50000);
-
-  if (rowsQuery.error) {
-    throw new Error(`Unable to read cache kind stats: ${rowsQuery.error.message}`);
-  }
+  assertLocalConfigured();
+  const totalQuery = await localQuery("select count(*)::bigint as count from public.transit_cache");
+  const rowsQuery = await localQuery("select cache_kind, city_slug from public.transit_cache limit 50000");
 
   const byKind = {};
   let withCitySlug = 0;
 
-  for (const row of rowsQuery.data || []) {
+  for (const row of rowsQuery.rows || []) {
     const kind = normalizeText(row.cache_kind, "bbox");
     byKind[kind] = Number(byKind[kind] || 0) + 1;
     if (normalizeText(row.city_slug)) {
@@ -520,7 +506,7 @@ async function getCacheStats() {
   }
 
   return {
-    total: Number(totalQuery.count || 0),
+    total: Number(totalQuery.rows?.[0]?.count || 0),
     byKind,
     withCitySlug
   };
@@ -581,23 +567,23 @@ function upsertStopTranslation(inputStopId, stableKey, source = "transitland") {
   const safeStable = normalizeText(stableKey);
   const safeSource = normalizeText(source, "transitland");
 
-  if (!safeInput || !safeStable || !hasSupabaseConfig) {
+  if (!safeInput || !safeStable) {
     return;
   }
 
-  const { serviceClient } = requireSupabaseClients();
-  const payload = {
-    input_stop_id: safeInput,
-    stable_key: safeStable,
-    source: safeSource,
-    updated_at: nowIso()
-  };
+  if (!hasLocalPostgresConfig()) {
+    return;
+  }
 
-  serviceClient
-    .from("stop_translation")
-    .upsert(payload, { onConflict: "input_stop_id" })
-    .then(() => {})
-    .catch(() => {});
+  localQuery(
+    `insert into public.stop_translation (input_stop_id, stable_key, source, updated_at)
+     values ($1, $2, $3, now())
+     on conflict (input_stop_id) do update set
+       stable_key = excluded.stable_key,
+       source = excluded.source,
+       updated_at = excluded.updated_at`,
+    [safeInput, safeStable, safeSource]
+  ).catch(() => {});
 }
 
 function getStationOverride(stableKey) {
@@ -605,8 +591,7 @@ function getStationOverride(stableKey) {
 }
 
 async function upsertStationOverride(stableKey, manualName, manualLat, manualLon, note) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
 
   const safeKey = normalizeText(stableKey);
   if (!safeKey) {
@@ -618,17 +603,20 @@ async function upsertStationOverride(stableKey, manualName, manualLat, manualLon
     manual_name: normalizeText(manualName) || null,
     manual_lat: Number.isFinite(Number(manualLat)) ? Number(manualLat) : null,
     manual_lon: Number.isFinite(Number(manualLon)) ? Number(manualLon) : null,
-    note: normalizeText(note) || null,
-    updated_at: nowIso()
+    note: normalizeText(note) || null
   };
 
-  const { error } = await serviceClient
-    .from("station_override")
-    .upsert(payload, { onConflict: "stable_key" });
-
-  if (error) {
-    throw new Error(`Unable to store station override: ${error.message}`);
-  }
+  await localQuery(
+    `insert into public.station_override (stable_key, manual_name, manual_lat, manual_lon, note, updated_at)
+     values ($1, $2, $3, $4, $5, now())
+     on conflict (stable_key) do update set
+       manual_name = excluded.manual_name,
+       manual_lat = excluded.manual_lat,
+       manual_lon = excluded.manual_lon,
+       note = excluded.note,
+       updated_at = excluded.updated_at`,
+    [payload.stable_key, payload.manual_name, payload.manual_lat, payload.manual_lon, payload.note]
+  );
 
   stationOverrideCache.set(safeKey, {
     stableKey: safeKey,
@@ -866,33 +854,26 @@ function dayKeyFromTimestamp(epochSeconds) {
 }
 
 async function ensureUsageDay(dayKey) {
-  const { serviceClient } = requireSupabaseClients();
-  const { error } = await serviceClient
-    .from("usage_log")
-    .upsert({ day_key: dayKey, updated_at: nowIso() }, { onConflict: "day_key" });
-
-  if (error) {
-    throw new Error(`Unable to ensure usage day: ${error.message}`);
-  }
+  assertLocalConfigured();
+  await localQuery(
+    `insert into public.usage_log (day_key, updated_at)
+     values ($1, now())
+     on conflict (day_key) do update set updated_at = excluded.updated_at`,
+    [dayKey]
+  );
 }
 
 async function getUsageForDay(dayKey) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
   const normalized = normalizeText(dayKey) || utcDateKey();
   await ensureUsageDay(normalized);
 
-  const { data, error } = await serviceClient
-    .from("usage_log")
-    .select("day_key,rest_api_calls,vector_tile_calls,routing_api_calls,updated_at")
-    .eq("day_key", normalized)
-    .maybeSingle();
+  const result = await localQuery(
+    "select day_key,rest_api_calls,vector_tile_calls,routing_api_calls,updated_at from public.usage_log where day_key = $1 limit 1",
+    [normalized]
+  );
 
-  if (error) {
-    throw new Error(`Unable to read usage state: ${error.message}`);
-  }
-
-  return normalizeUsageRow(data, normalized);
+  return normalizeUsageRow(result.rows?.[0] || null, normalized);
 }
 
 async function getTodayUsage() {
@@ -900,50 +881,43 @@ async function getTodayUsage() {
 }
 
 async function incrementUsage(kind, amount = 1) {
-  assertConfigured();
+  assertLocalConfigured();
   const safeKind = normalizeText(kind).toLowerCase();
   const safeAmount = Math.max(0, Number(amount || 0));
   if (!safeAmount) {
     return getTodayUsage();
   }
 
-  const { serviceClient } = requireSupabaseClients();
-
-  const rpcResult = await serviceClient.rpc("metromark_increment_usage", {
-    p_kind: safeKind,
-    p_amount: safeAmount
-  });
-
-  if (!rpcResult.error) {
-    return getTodayUsage();
-  }
-
   const dayKey = utcDateKey();
-  const current = await getUsageForDay(dayKey);
-  const next = {
-    day_key: dayKey,
-    rest_api_calls: current.restApiCalls,
-    vector_tile_calls: current.vectorTileCalls,
-    routing_api_calls: current.routingApiCalls,
-    updated_at: nowIso()
-  };
-
   if (safeKind === "rest") {
-    next.rest_api_calls += safeAmount;
+    await localQuery(
+      `insert into public.usage_log (day_key, rest_api_calls, updated_at)
+       values ($1, $2, now())
+       on conflict (day_key) do update set
+         rest_api_calls = public.usage_log.rest_api_calls + excluded.rest_api_calls,
+         updated_at = excluded.updated_at`,
+      [dayKey, safeAmount]
+    );
   } else if (safeKind === "vector") {
-    next.vector_tile_calls += safeAmount;
+    await localQuery(
+      `insert into public.usage_log (day_key, vector_tile_calls, updated_at)
+       values ($1, $2, now())
+       on conflict (day_key) do update set
+         vector_tile_calls = public.usage_log.vector_tile_calls + excluded.vector_tile_calls,
+         updated_at = excluded.updated_at`,
+      [dayKey, safeAmount]
+    );
   } else if (safeKind === "routing") {
-    next.routing_api_calls += safeAmount;
+    await localQuery(
+      `insert into public.usage_log (day_key, routing_api_calls, updated_at)
+       values ($1, $2, now())
+       on conflict (day_key) do update set
+         routing_api_calls = public.usage_log.routing_api_calls + excluded.routing_api_calls,
+         updated_at = excluded.updated_at`,
+      [dayKey, safeAmount]
+    );
   } else {
     throw new Error(`Unknown usage kind: ${safeKind}`);
-  }
-
-  const upsert = await serviceClient.from("usage_log").upsert(next, {
-    onConflict: "day_key"
-  });
-
-  if (upsert.error) {
-    throw new Error(`Unable to increment usage: ${upsert.error.message}`);
   }
 
   return getUsageForDay(dayKey);
@@ -985,8 +959,7 @@ async function getDailyUsageCapsState(limits) {
 }
 
 async function ensureCityHarvestState(city, options = {}) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
 
   const slug = normalizeText(city?.slug);
   const cityName = normalizeText(city?.name, slug);
@@ -1005,212 +978,182 @@ async function ensureCityHarvestState(city, options = {}) {
     harvest_priority: priority,
     harvest_status:
       existing?.harvestStatus === "in-progress" ? "in-progress" : initialStatus,
-    pending_refresh: existing ? existing.pendingRefresh || pendingRefresh : pendingRefresh,
-    updated_at: nowIso()
+    pending_refresh: existing ? existing.pendingRefresh || pendingRefresh : pendingRefresh
   };
 
-  const { error } = await serviceClient
-    .from("harvest_city_state")
-    .upsert(payload, { onConflict: "city_slug" });
-
-  if (error) {
-    throw new Error(`Unable to ensure harvest state: ${error.message}`);
-  }
+  await localQuery(
+    `insert into public.harvest_city_state (
+      city_slug,
+      city_name,
+      harvest_priority,
+      harvest_status,
+      pending_refresh,
+      updated_at
+    ) values ($1, $2, $3, $4, $5, now())
+    on conflict (city_slug) do update set
+      city_name = excluded.city_name,
+      harvest_priority = excluded.harvest_priority,
+      harvest_status = case
+        when public.harvest_city_state.harvest_status = 'in-progress' then public.harvest_city_state.harvest_status
+        else excluded.harvest_status
+      end,
+      pending_refresh = public.harvest_city_state.pending_refresh or excluded.pending_refresh,
+      updated_at = excluded.updated_at`,
+    [payload.city_slug, payload.city_name, payload.harvest_priority, payload.harvest_status, payload.pending_refresh]
+  );
 
   return getCityHarvestState(slug);
 }
 
 async function getCityHarvestState(citySlug) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
 
   const slug = normalizeText(citySlug);
   if (!slug) {
     return null;
   }
 
-  const { data, error } = await serviceClient
-    .from("harvest_city_state")
-    .select(
-      "city_slug,city_name,harvest_priority,harvest_status,last_geometry_harvest_at,last_stops_harvest_at,last_verified_at,last_feed_fingerprint,last_cache_key,pending_refresh,last_error,updated_at"
-    )
-    .eq("city_slug", slug)
-    .maybeSingle();
+  const result = await localQuery(
+    "select city_slug,city_name,harvest_priority,harvest_status,last_geometry_harvest_at,last_stops_harvest_at,last_verified_at,last_feed_fingerprint,last_cache_key,pending_refresh,last_error,updated_at from public.harvest_city_state where city_slug = $1 limit 1",
+    [slug]
+  );
 
-  if (error) {
-    throw new Error(`Unable to read city harvest state: ${error.message}`);
-  }
-
-  return normalizeHarvestState(data);
+  return normalizeHarvestState(result.rows?.[0] || null);
 }
 
 async function listPendingHarvestCities(limit = 5) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
 
   const safeLimit = Math.max(1, Number(limit || 5));
-  const { data, error } = await serviceClient
-    .from("harvest_city_state")
-    .select(
-      "city_slug,city_name,harvest_priority,harvest_status,last_geometry_harvest_at,last_stops_harvest_at,last_verified_at,last_feed_fingerprint,last_cache_key,pending_refresh,last_error,updated_at"
-    )
-    .or("harvest_status.in.(pending,queued,retry),pending_refresh.eq.true")
-    .order("harvest_priority", { ascending: true })
-    .order("updated_at", { ascending: true })
-    .limit(safeLimit);
+  const result = await localQuery(
+    `select city_slug,city_name,harvest_priority,harvest_status,last_geometry_harvest_at,last_stops_harvest_at,last_verified_at,last_feed_fingerprint,last_cache_key,pending_refresh,last_error,updated_at
+     from public.harvest_city_state
+     where harvest_status in ('pending','queued','retry') or pending_refresh = true
+     order by harvest_priority asc, updated_at asc
+     limit $1`,
+    [safeLimit]
+  );
 
-  if (error) {
-    throw new Error(`Unable to list pending harvest cities: ${error.message}`);
-  }
-
-  return (data || []).map(normalizeHarvestState).filter(Boolean);
+  return (result.rows || []).map(normalizeHarvestState).filter(Boolean);
 }
 
 async function markHarvestInProgress(citySlug) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
   const slug = normalizeText(citySlug);
   if (!slug) {
     return;
   }
 
-  await serviceClient
-    .from("harvest_city_state")
-    .update({ harvest_status: "in-progress", last_error: null, updated_at: nowIso() })
-    .eq("city_slug", slug);
+  await localQuery(
+    "update public.harvest_city_state set harvest_status = 'in-progress', last_error = null, updated_at = now() where city_slug = $1",
+    [slug]
+  );
 }
 
 async function markGeometryHarvested(citySlug, options = {}) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
   const slug = normalizeText(citySlug);
   if (!slug) {
     return;
   }
 
-  const now = nowIso();
-  await serviceClient
-    .from("harvest_city_state")
-    .update({
-      harvest_status: "geometry-ready",
-      last_geometry_harvest_at: now,
-      last_cache_key: normalizeText(options.cacheKey) || null,
-      last_feed_fingerprint: normalizeText(options.feedFingerprint) || null,
-      last_error: null,
-      updated_at: now
-    })
-    .eq("city_slug", slug);
+  await localQuery(
+    `update public.harvest_city_state
+     set harvest_status = 'geometry-ready',
+         last_geometry_harvest_at = now(),
+         last_cache_key = $2,
+         last_feed_fingerprint = $3,
+         last_error = null,
+         updated_at = now()
+     where city_slug = $1`,
+    [slug, normalizeText(options.cacheKey) || null, normalizeText(options.feedFingerprint) || null]
+  );
 }
 
 async function markStopsHarvested(citySlug) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
   const slug = normalizeText(citySlug);
   if (!slug) {
     return;
   }
 
-  const now = nowIso();
-  await serviceClient
-    .from("harvest_city_state")
-    .update({
-      harvest_status: "ready",
-      last_stops_harvest_at: now,
-      pending_refresh: false,
-      last_error: null,
-      updated_at: now
-    })
-    .eq("city_slug", slug);
+  await localQuery(
+    `update public.harvest_city_state
+     set harvest_status = 'ready',
+         last_stops_harvest_at = now(),
+         pending_refresh = false,
+         last_error = null,
+         updated_at = now()
+     where city_slug = $1`,
+    [slug]
+  );
 }
 
 async function queueCityRefresh(citySlug) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
   const slug = normalizeText(citySlug);
   if (!slug) {
     return;
   }
 
-  await serviceClient
-    .from("harvest_city_state")
-    .update({
-      harvest_status: "queued",
-      pending_refresh: true,
-      updated_at: nowIso()
-    })
-    .eq("city_slug", slug);
+  await localQuery(
+    "update public.harvest_city_state set harvest_status = 'queued', pending_refresh = true, updated_at = now() where city_slug = $1",
+    [slug]
+  );
 }
 
 async function markCityVerified(citySlug, changed) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
   const slug = normalizeText(citySlug);
   if (!slug) {
     return;
   }
 
   const hasChanged = Boolean(changed);
-  const now = nowIso();
-
-  await serviceClient
-    .from("harvest_city_state")
-    .update({
-      last_verified_at: now,
-      pending_refresh: hasChanged,
-      harvest_status: hasChanged ? "queued" : "ready",
-      updated_at: now
-    })
-    .eq("city_slug", slug);
+  await localQuery(
+    `update public.harvest_city_state
+     set last_verified_at = now(),
+         pending_refresh = $2,
+         harvest_status = case when $2 then 'queued' else 'ready' end,
+         updated_at = now()
+     where city_slug = $1`,
+    [slug, hasChanged]
+  );
 }
 
 async function markCityHarvestError(citySlug, errorDetail) {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
   const slug = normalizeText(citySlug);
   if (!slug) {
     return;
   }
 
   const detail = normalizeText(errorDetail, "Harvest failed").slice(0, 420);
-  await serviceClient
-    .from("harvest_city_state")
-    .update({
-      harvest_status: "retry",
-      last_error: detail,
-      updated_at: nowIso()
-    })
-    .eq("city_slug", slug);
+  await localQuery(
+    "update public.harvest_city_state set harvest_status = 'retry', last_error = $2, updated_at = now() where city_slug = $1",
+    [slug, detail]
+  );
 }
 
 async function logHarvestJob(citySlug, phase, status, detail = "") {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
+  assertLocalConfigured();
 
-  const payload = {
-    city_slug: normalizeText(citySlug, "unknown"),
-    phase: normalizeText(phase, "phase"),
-    status: normalizeText(status, "info"),
-    detail: normalizeText(detail).slice(0, 1200) || null,
-    created_at: nowIso()
-  };
-
-  await serviceClient.from("harvest_job_log").insert(payload);
+  await localQuery(
+    `insert into public.harvest_job_log (city_slug, phase, status, detail, created_at)
+     values ($1, $2, $3, $4, now())`,
+    [
+      normalizeText(citySlug, "unknown"),
+      normalizeText(phase, "phase"),
+      normalizeText(status, "info"),
+      normalizeText(detail).slice(0, 1200) || null
+    ]
+  );
 }
 
 async function getHarvestSummary() {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
-
-  const { data, error } = await serviceClient
-    .from("harvest_city_state")
-    .select("harvest_status,pending_refresh,last_cache_key")
-    .limit(20000);
-
-  if (error) {
-    throw new Error(`Unable to read harvest summary: ${error.message}`);
-  }
-
-  const rows = data || [];
+  assertLocalConfigured();
+  const result = await localQuery("select harvest_status,pending_refresh,last_cache_key from public.harvest_city_state limit 20000");
+  const rows = result.rows || [];
 
   let activeCachedCities = 0;
   let pendingHarvests = 0;
@@ -1243,22 +1186,9 @@ async function getHarvestSummary() {
 }
 
 async function getDatabaseFileStats() {
-  assertConfigured();
-  const { serviceClient } = requireSupabaseClients();
-
-  const rpcName = normalizeText(config.SUPABASE_DB_SIZE_RPC, "metromark_database_size_bytes");
-  const result = await serviceClient.rpc(rpcName);
-
-  const rawValue = Array.isArray(result.data)
-    ? result.data[0]
-    : result.data;
-
-  const bytesValue =
-    typeof rawValue === "number"
-      ? rawValue
-      : rawValue && typeof rawValue === "object"
-        ? Number(rawValue.size_bytes || rawValue.db_size || 0)
-        : Number(rawValue || 0);
+  assertLocalConfigured();
+  const result = await localQuery("select pg_database_size(current_database())::bigint as size_bytes");
+  const bytesValue = Number(result.rows?.[0]?.size_bytes || 0);
 
   return {
     dbPath,
