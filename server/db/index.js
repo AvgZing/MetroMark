@@ -1021,6 +1021,58 @@ async function getCityHarvestState(citySlug) {
   return normalizeHarvestState(result.rows?.[0] || null);
 }
 
+async function getRouteOverride(lineKey) {
+  assertLocalConfigured();
+  const key = normalizeText(lineKey);
+  if (!key) return null;
+  const result = await localQuery(
+    "select line_key, city_slug, payload, updated_at from public.route_override where line_key = $1 limit 1",
+    [key]
+  );
+  return result.rows?.[0] || null;
+}
+
+async function listRouteOverrides(citySlug = "") {
+  assertLocalConfigured();
+  if (normalizeText(citySlug)) {
+    const result = await localQuery(
+      "select line_key, city_slug, payload, updated_at from public.route_override where city_slug = $1 limit 5000",
+      [normalizeText(citySlug)]
+    );
+    return result.rows || [];
+  }
+
+  const result = await localQuery("select line_key, city_slug, payload, updated_at from public.route_override limit 5000");
+  return result.rows || [];
+}
+
+async function upsertRouteOverride(lineKey, citySlug, payload) {
+  assertLocalConfigured();
+  const key = normalizeText(lineKey);
+  if (!key) throw new Error("lineKey is required");
+  const city = normalizeText(citySlug) || null;
+  const jsonPayload = payload && typeof payload === "object" ? payload : JSON.parse(JSON.stringify(payload || {}));
+
+  await localQuery(
+    `insert into public.route_override (line_key, city_slug, payload, updated_at)
+     values ($1, $2, $3::jsonb, now())
+     on conflict (line_key) do update set
+       city_slug = excluded.city_slug,
+       payload = excluded.payload,
+       updated_at = excluded.updated_at`,
+    [key, city, JSON.stringify(jsonPayload)]
+  );
+
+  return getRouteOverride(key);
+}
+
+async function deleteRouteOverride(lineKey) {
+  assertLocalConfigured();
+  const key = normalizeText(lineKey);
+  if (!key) return;
+  await localQuery("delete from public.route_override where line_key = $1", [key]);
+}
+
 async function listPendingHarvestCities(limit = 5) {
   assertLocalConfigured();
 

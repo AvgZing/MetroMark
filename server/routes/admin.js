@@ -9,6 +9,28 @@ const { runNonrecoverableBackup } = require("../../scripts/backup-nonrecoverable
 
 const router = express.Router();
 
+async function isAdminAuthorized(req) {
+  // Allow either a configured admin override key via header or a signed-in Supabase user with admin role.
+  const overrideKey = String(req.headers["x-admin-key"] || "").trim();
+  if (overrideKey && overrideKey === config.ADMIN_OVERRIDE_KEY) {
+    return true;
+  }
+
+  const tokenHeader = String(req.headers.authorization || "").trim();
+  const token = tokenHeader.startsWith("Bearer ") ? tokenHeader.slice(7) : tokenHeader || null;
+  if (token) {
+    try {
+      const user = await db.getUserFromToken(token);
+      if (user && String(user.role || "").trim() === "admin") {
+        return true;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  return false;
+}
+
 function validateAdminKey(req, res, key) {
   if (!key) {
     res.status(404).json({ error: "Endpoint is disabled." });
@@ -230,6 +252,63 @@ router.post("/admin/overrides/station", async (req, res) => {
       error: "Unable to apply station override.",
       detail: error.message
     });
+  }
+});
+
+// Admin routes using authenticated admin users (preferred over static admin keys)
+router.get("/admin/overrides/route", async (req, res) => {
+  try {
+    const ok = await isAdminAuthorized(req);
+    if (!ok) return res.status(403).json({ error: "Admin authorization required." });
+    const city = String(req.query.citySlug || "").trim();
+    const overrides = await db.listRouteOverrides(city);
+    return res.json({ overrides });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to list route overrides.", detail: error.message });
+  }
+});
+
+router.get("/admin/overrides/route/:lineKey", async (req, res) => {
+  try {
+    const ok = await isAdminAuthorized(req);
+    if (!ok) return res.status(403).json({ error: "Admin authorization required." });
+    const lineKey = String(req.params.lineKey || "").trim();
+    if (!lineKey) return res.status(400).json({ error: "lineKey required." });
+    const row = await db.getRouteOverride(lineKey);
+    return res.json({ override: row });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to load override.", detail: error.message });
+  }
+});
+
+router.post("/admin/overrides/route", async (req, res) => {
+  try {
+    const ok = await isAdminAuthorized(req);
+    if (!ok) return res.status(403).json({ error: "Admin authorization required." });
+    const lineKey = String(req.body.lineKey || "").trim();
+    const citySlug = String(req.body.citySlug || "").trim();
+    const payload = req.body.payload || null;
+    if (!lineKey || !payload) return res.status(400).json({ error: "lineKey and payload are required." });
+
+    const row = await db.upsertRouteOverride(lineKey, citySlug, payload);
+    await db.clearCacheByPrefix(TRANSIT_CACHE_PREFIX);
+    return res.status(201).json({ override: row });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to save route override.", detail: error.message });
+  }
+});
+
+router.delete("/admin/overrides/route/:lineKey", async (req, res) => {
+  try {
+    const ok = await isAdminAuthorized(req);
+    if (!ok) return res.status(403).json({ error: "Admin authorization required." });
+    const lineKey = String(req.params.lineKey || "").trim();
+    if (!lineKey) return res.status(400).json({ error: "lineKey required." });
+    await db.deleteRouteOverride(lineKey);
+    await db.clearCacheByPrefix(TRANSIT_CACHE_PREFIX);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to delete override.", detail: error.message });
   }
 });
 

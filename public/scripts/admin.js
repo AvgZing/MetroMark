@@ -23,6 +23,12 @@ const els = {
   overrideManualLon: document.getElementById("overrideManualLon"),
   overrideNote: document.getElementById("overrideNote"),
   applyOverrideBtn: document.getElementById("applyOverrideBtn"),
+  routeLineKey: document.getElementById("routeLineKey"),
+  routeCitySlug: document.getElementById("routeCitySlug"),
+  loadRouteBtn: document.getElementById("loadRouteBtn"),
+  saveRouteBtn: document.getElementById("saveRouteBtn"),
+  deleteRouteBtn: document.getElementById("deleteRouteBtn"),
+  routePayload: document.getElementById("routePayload"),
   queueBody: document.getElementById("queueBody"),
   actionLog: document.getElementById("actionLog"),
 };
@@ -408,6 +414,68 @@ function bindEvents() {
         body,
       }),
     );
+  });
+
+  // Route overrides
+  els.loadRouteBtn.addEventListener("click", async () => {
+    const lineKey = String(els.routeLineKey.value || "").trim();
+    if (!lineKey) return setStatus("lineKey is required to load.", true);
+    const adminKey = String(state.overrideKey || state.adminKey || "").trim();
+    try {
+      setStatus("Loading route override...");
+      const payload = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "GET", adminKey });
+      if (payload && payload.override) {
+        els.routeCitySlug.value = payload.override.city_slug || "";
+        els.routePayload.value = JSON.stringify(payload.override.payload || {}, null, 2);
+        setStatus("Loaded route override.");
+      } else {
+        els.routePayload.value = "";
+        setStatus("No override found.");
+      }
+    } catch (err) {
+      setStatus(err.message, true);
+      appendLog("Load route override failed", { error: err.message });
+    }
+  });
+
+  els.saveRouteBtn.addEventListener("click", async () => {
+    const lineKey = String(els.routeLineKey.value || "").trim();
+    if (!lineKey) return setStatus("lineKey is required to save.", true);
+    const adminKey = String(state.overrideKey || state.adminKey || "").trim();
+    let parsed = null;
+    try {
+      parsed = JSON.parse(String(els.routePayload.value || "{}"));
+    } catch (e) {
+      return setStatus("Payload must be valid JSON.", true);
+    }
+
+    try {
+      setStatus("Saving route override...");
+      const body = { lineKey, citySlug: String(els.routeCitySlug.value || "").trim(), payload: parsed };
+      const result = await apiRequest("/api/admin/overrides/route", { method: "POST", adminKey, body });
+      setStatus("Route override saved.");
+      appendLog("Saved route override", result);
+      await refreshAll();
+    } catch (err) {
+      setStatus(err.message, true);
+      appendLog("Save route override failed", { error: err.message });
+    }
+  });
+
+  els.deleteRouteBtn.addEventListener("click", async () => {
+    const lineKey = String(els.routeLineKey.value || "").trim();
+    if (!lineKey) return setStatus("lineKey is required to delete.", true);
+    const adminKey = String(state.overrideKey || state.adminKey || "").trim();
+    try {
+      setStatus("Deleting route override...");
+      const result = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "DELETE", adminKey });
+      setStatus("Route override deleted.");
+      appendLog("Deleted route override", result);
+      await refreshAll();
+    } catch (err) {
+      setStatus(err.message, true);
+      appendLog("Delete route override failed", { error: err.message });
+    }
   });
 }
 

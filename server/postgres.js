@@ -187,6 +187,13 @@ async function initializeLocalPostgres() {
            else ST_NPoints(public.metromark_geometry_lod(input_geom, target_zoom)) >= 2
          end
        $$`
+      , `create table if not exists public.route_override (
+          line_key text primary key,
+          city_slug text,
+          payload jsonb not null,
+          updated_at timestamptz not null default now()
+        )`,
+      "create index if not exists idx_route_override_city on public.route_override (city_slug)"
     ];
 
     for (const statement of statements) {

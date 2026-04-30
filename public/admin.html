@@ -95,6 +95,18 @@
           <input id="overrideNote" type="text" placeholder="note" />
           <button id="applyOverrideBtn" type="button">Apply Override + Clear Cache</button>
         </div>
+
+        <h3>Route Overrides</h3>
+        <div class="override-grid">
+          <input id="routeLineKey" type="text" placeholder="lineKey (required)" />
+          <input id="routeCitySlug" type="text" placeholder="citySlug (optional)" />
+          <div>
+            <button id="loadRouteBtn" type="button">Load</button>
+            <button id="saveRouteBtn" type="button">Save</button>
+            <button id="deleteRouteBtn" type="button">Delete</button>
+          </div>
+          <textarea id="routePayload" rows="12" cols="80" placeholder='{"stops":[], "agency": "", "mode":"", "frequency": null}'></textarea>
+        </div>
       </section>
 
       <section class="card">
