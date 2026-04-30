@@ -624,13 +624,17 @@ function fitMapToLine(lineKey) {
     return;
   }
 
+  // On mobile, account for the line view header and status panel (roughly 160px at top)
+  const isMobileLayout = isPortraitMobileLayout();
+  const padding = isMobileLayout ? { top: 160, right: 50, bottom: 50, left: 50 } : 70;
+
   state.map.fitBounds(
     [
       [bbox[0], bbox[1]],
       [bbox[2], bbox[3]]
     ],
     {
-      padding: 70,
+      padding: padding,
       duration: 650,
       maxZoom: 12.5
     }
@@ -918,6 +922,16 @@ function renderLineView() {
       els.lineViewProgressText.textContent = "";
       els.lineViewProgressFill.style.width = "0%";
     }
+  }
+
+  // Update button labels based on layout
+  const isMobileLayout = isPortraitMobileLayout();
+  if (els.lineViewReturnBtn) {
+    els.lineViewReturnBtn.textContent = isMobileLayout ? "←" : "Close";
+    els.lineViewReturnBtn.classList.toggle("mobile-icon-only", isMobileLayout);
+  }
+  if (els.lineViewMapBtn) {
+    els.lineViewMapBtn.textContent = isMobileLayout ? "Map" : "Zoom";
   }
 
   renderLineViewStops(lineKey, lineColor);

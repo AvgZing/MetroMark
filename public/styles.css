@@ -1354,6 +1354,13 @@ body[data-theme="dark"] .route-select-close {
   padding: 6px 8px;
 }
 
+.line-view-nav.mobile-icon-only {
+  min-width: auto;
+  width: 32px;
+  padding: 6px;
+  font-size: 16px;
+}
+
 .line-view-status {
   border-top: 1px dashed rgba(20, 53, 71, 0.2);
   padding-top: 8px;
@@ -1412,16 +1419,21 @@ body[data-theme="dark"] .route-select-close {
   width: 18px;
   display: flex;
   justify-content: center;
+  /* Extend the line vertically through padding */
+  margin: -8px 0;
+  padding: 8px 0;
 }
 
 .line-view-stop-marker::before {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
+  top: -8px;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
   background: var(--line-color);
-  opacity: 0.6;
+  opacity: 0.85;
 }
 
 .line-view-stop-row:last-child .line-view-stop-marker::before {
