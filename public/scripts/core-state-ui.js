@@ -793,20 +793,23 @@ function createLineConnector(lineColor) {
     return;
   }
 
-  // Calculate positions of each stop dot (center of marker element)
+  // Calculate positions of each stop dot relative to the stop-list container
+  const containerRect = els.lineViewStops.getBoundingClientRect();
   const dotPositions = stopRows.map((row) => {
-    const marker = row.querySelector(".line-view-stop-marker");
     const dot = row.querySelector(".line-view-stop-dot");
-    if (!marker || !dot) {
+    if (!dot) {
       return null;
     }
 
-    const markerRect = marker.getBoundingClientRect();
-    const containerRect = els.lineViewStops.getBoundingClientRect();
-    const relativeY = markerRect.top - containerRect.top + markerRect.height / 2;
+    const dotRect = dot.getBoundingClientRect();
+    
+    // Calculate relative position from container
+    const relativeY = dotRect.top - containerRect.top + dotRect.height / 2;
+    const relativeX = dotRect.left - containerRect.left + dotRect.width / 2;
+    
     return {
       y: relativeY,
-      x: 9 // Center of 18px marker width
+      x: relativeX
     };
   });
 
@@ -816,12 +819,24 @@ function createLineConnector(lineColor) {
     return;
   }
 
+  // Get the full height and width
+  const maxY = Math.max(...validPositions.map(p => p.y));
+  const containerWidth = els.lineViewStops.offsetWidth;
+
   // Create SVG element
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.id = "lineViewConnectorSvg";
-  svg.setAttribute("viewBox", `0 0 18 ${validPositions[validPositions.length - 1].y + 20}`);
+  
+  // Use actual pixel coordinates in viewBox, matching the container dimensions
+  svg.setAttribute("viewBox", `0 0 ${containerWidth} ${maxY + 20}`);
   svg.setAttribute("preserveAspectRatio", "none");
-  svg.style.height = `${validPositions[validPositions.length - 1].y + 20}px`;
+  svg.style.position = "absolute";
+  svg.style.left = "0";
+  svg.style.top = "0";
+  svg.style.width = "100%";
+  svg.style.height = `${maxY + 20}px`;
+  svg.style.pointerEvents = "none";
+  svg.style.zIndex = "0";
 
   // Create path connecting all dots
   const pathData = validPositions
