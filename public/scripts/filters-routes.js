@@ -259,6 +259,22 @@ function renderProgress() {
   const withKnownStops = rows.filter((row) => row.total > 0).length;
   els.progressSummary.textContent = `${visibleLines.length} visible routes. ${withKnownStops} with loaded stop totals.`;
 
+  // Calculate and render overall progress
+  const totalVisited = rows.reduce((sum, row) => sum + row.visited, 0);
+  const totalStops = rows.reduce((sum, row) => sum + row.total, 0);
+  const overallPercent = totalStops > 0 ? Math.round((totalVisited / totalStops) * 100) : 0;
+  
+  const overallProgressText = document.getElementById("overallProgressText");
+  const overallProgressFill = document.getElementById("overallProgressFill");
+  
+  if (overallProgressText) {
+    overallProgressText.textContent = `${totalVisited} / ${totalStops} (${overallPercent}%)`;
+  }
+  
+  if (overallProgressFill) {
+    overallProgressFill.style.width = `${overallPercent}%`;
+  }
+
   els.lineProgressList.innerHTML = "";
 
   for (const row of rows) {

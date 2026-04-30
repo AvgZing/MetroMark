@@ -89,23 +89,29 @@
               </div>
 
               <div class="filter-section">
-                <div class="filter-section-header">
-                  <p class="filter-section-title">Modes</p>
-                  <button
-                    id="showAllStopsBtn"
-                    class="btn show-stops-btn"
-                    type="button"
-                    aria-pressed="false"
-                  >
-                    Show All Stops
-                  </button>
-                </div>
-                <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
+                <details class="filter-section-dropdown" id="modeFilterSection" open>
+                  <summary class="filter-section-summary">
+                    <p class="filter-section-title">Modes</p>
+                    <button
+                      id="showAllStopsBtn"
+                      class="btn show-stops-btn"
+                      type="button"
+                      aria-pressed="false"
+                    >
+                      Show All Stops
+                    </button>
+                  </summary>
+                  <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
+                </details>
               </div>
               <div class="filter-section-divider" aria-hidden="true"></div>
               <div class="filter-section">
-                <p class="filter-section-title">Frequencies</p>
-                <div id="frequencyFilterBar" class="mode-filter-bar" aria-label="Frequency filters"></div>
+                <details class="filter-section-dropdown" id="frequencyFilterSection" open>
+                  <summary class="filter-section-summary">
+                    <p class="filter-section-title">Frequencies</p>
+                  </summary>
+                  <div id="frequencyFilterBar" class="mode-filter-bar" aria-label="Frequency filters"></div>
+                </details>
               </div>
             </div>
 
@@ -157,6 +163,13 @@
         <details class="panel panel-dropdown progress-panel" id="progressPanel" open>
           <summary class="panel-summary"><span class="panel-summary-label">Progress</span></summary>
           <div class="panel-dropdown-body">
+            <div class="overall-progress-card">
+              <p class="overall-progress-label">Overall Progress</p>
+              <p id="overallProgressText" class="overall-progress-text">0 / 0 (0%)</p>
+              <div class="progress-track">
+                <div id="overallProgressFill" class="progress-fill"></div>
+              </div>
+            </div>
             <p id="progressSummary">Sign in to mark visited stations.</p>
             <div id="lineProgressList" class="line-progress-list"></div>
           </div>

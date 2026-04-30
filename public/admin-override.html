@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MetroMark Admin - Route Overrides</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/admin-override.css" />
+  </head>
+  <body>
+    <div class="admin-override-shell">
+      <aside class="override-sidebar">
+        <div class="sidebar-head panel">
+          <div>
+            <p class="brand-kicker">Route Override Editor</p>
+            <h1>MetroMark Admin</h1>
+          </div>
+        </div>
+
+        <div class="panel override-controls-panel">
+          <h2>Edit Mode</h2>
+          <div class="override-mode-selector">
+            <select id="overrideRouteSelect">
+              <option value="">Select a route to edit...</option>
+            </select>
+          </div>
+          <div class="override-status" id="overrideStatus">Ready</div>
+        </div>
+
+        <div class="panel override-edit-panel" id="overrideEditPanel" hidden>
+          <h2>Route Properties</h2>
+          
+          <label>Agency</label>
+          <input id="overrideAgency" type="text" placeholder="Agency name" />
+
+          <label>Mode</label>
+          <select id="overrideMode">
+            <option value="">-- Select mode --</option>
+            <option value="0">Tram</option>
+            <option value="1">Metro</option>
+            <option value="2">Rail</option>
+            <option value="3">Bus</option>
+            <option value="4">Ferry</option>
+            <option value="5">Cable Tram</option>
+            <option value="6">Aerial</option>
+            <option value="7">Funicular</option>
+            <option value="11">Trolleybus</option>
+            <option value="12">Monorail</option>
+          </select>
+
+          <label>Frequency (min)</label>
+          <input id="overrideFrequency" type="number" placeholder="Minutes between departures" />
+
+          <h3>Stops</h3>
+          <div class="override-stops-list" id="overrideStopsList"></div>
+
+          <div class="override-actions">
+            <button id="saveOverrideBtn" class="btn" type="button">Save Changes</button>
+            <button id="discardOverrideBtn" class="btn btn-subtle" type="button">Discard</button>
+          </div>
+        </div>
+      </aside>
+
+      <main class="override-map-stage">
+        <div class="map-overlay-controls" role="group" aria-label="Map style">
+          <button id="overrideStreetsModeBtn" class="btn btn-icon map-mode-btn" type="button" aria-label="Streets map view">
+            <svg class="map-mode-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 6.5 8.5 4l7 2.5L21 4v13.5L15.5 20l-7-2.5L3 20V6.5Zm5.5-1v12M15.5 6v12" />
+            </svg>
+            <span class="mode-label">Streets</span>
+          </button>
+          <button id="overrideSatelliteModeBtn" class="btn btn-icon map-mode-btn" type="button" aria-label="Satellite map view">
+            <svg class="map-mode-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 15 6 4 8-10-6-4-8 10Zm2.6-.5 3.8 2.5m2.2-8.5 3.8 2.5" />
+            </svg>
+            <span class="mode-label">Satellite</span>
+          </button>
+        </div>
+        <div id="overrideMap"></div>
+      </main>
+    </div>
+
+    <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
+    <script src="/scripts/admin-override.js" defer></script>
+  </body>
+</html>
