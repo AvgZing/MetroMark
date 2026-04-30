@@ -31,7 +31,7 @@ const MODE_DEFS = [
 ];
 
 const MODE_DEF_BY_KEY = new Map(MODE_DEFS.map((entry) => [entry.key, entry]));
-const DEFAULT_ACTIVE_MODE_KEYS = [MODE_FILTER_ALL];
+const DEFAULT_ACTIVE_MODE_KEYS = [MODE_FILTER_METRO, MODE_FILTER_TRAM, MODE_FILTER_RAIL, MODE_FILTER_OTHER];
 
 const FREQUENCY_FILTER_ALL = "all";
 const FREQUENCY_FILTER_FREQUENT = "frequent";
@@ -145,7 +145,7 @@ const state = {
   mapReady: false,
   mapReadyResolver: null,
   mapMode: "streets",
-  token: localStorage.getItem("metromark_token") || "",
+  token: localStorage.getItem("metromark_token") || sessionStorage.getItem("metromark_token") || "",
   user: null,
   cities: [],
   transit: null,
@@ -169,6 +169,8 @@ const state = {
   ),
   manualLineVisibility: parseVisibilityOverridesFromStorage("metromark_route_visibility_overrides"),
   showAllStops: parseBooleanFromStorage(SHOW_ALL_STOPS_STORAGE_KEY, false),
+  showPrivateOperators: parseBooleanFromStorage("metromark_show_private_operators", false),
+  showProblematicGeometries: parseBooleanFromStorage("metromark_show_problematic_geometries", false),
   lineSearchQuery: "",
   initialCitySlug: localStorage.getItem("metromark_initial_city_slug") || "seattle",
   theme: localStorage.getItem("metromark_theme") || "light",
@@ -1349,9 +1351,20 @@ function lineIsVisible(line, options = {}) {
 }
 
 function selectedRouteTypesForFetch() {
-  // Always fetch all route types for the loaded viewport tiles.
-  // Mode chips then act as instant client-side visibility filters.
-  return [];
+  // If the user has selected the special "all" mode, fetch everything.
+  if (state.activeModeKeys.has(MODE_FILTER_ALL)) {
+    return [];
+  }
+
+  const types = new Set();
+  for (const key of Array.from(state.activeModeKeys)) {
+    const def = MODE_DEF_BY_KEY.get(key);
+    if (def && Array.isArray(def.routeTypes)) {
+      def.routeTypes.forEach((t) => types.add(t));
+    }
+  }
+
+  return Array.from(types);
 }
 
 function modeCacheKeyFromRouteTypes(routeTypes) {
@@ -1928,11 +1941,19 @@ function closePopups() {
   setActivePopup("");
 }
 
-function setToken(token) {
+function setToken(token, remember = true) {
   state.token = token || "";
-  if (state.token) {
+  if (!state.token) {
+    localStorage.removeItem("metromark_token");
+    sessionStorage.removeItem("metromark_token");
+    return;
+  }
+
+  if (remember) {
     localStorage.setItem("metromark_token", state.token);
+    sessionStorage.removeItem("metromark_token");
   } else {
+    sessionStorage.setItem("metromark_token", state.token);
     localStorage.removeItem("metromark_token");
   }
 }

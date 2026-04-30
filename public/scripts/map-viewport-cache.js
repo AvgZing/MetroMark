@@ -464,6 +464,7 @@ function rebuildCombinedTransit() {
   const routeByLine = new Map();
   const lineByKeyAll = new Map();
   const visibleLineKeys = new Set();
+  const lineCityMap = new Map();
 
   for (const cacheKey of state.activeAreaKeys) {
     const payload = state.areaCache.get(cacheKey)?.payload;
@@ -489,6 +490,13 @@ function rebuildCombinedTransit() {
 
       const merged = mergeLineEntries(lineByKeyAll.get(lineKey), line);
       lineByKeyAll.set(lineKey, merged);
+      // remember which city this line came from so manual visibility respects active city
+      try {
+        const citySlug = payload?.city?.slug || "";
+        if (citySlug) {
+          lineCityMap.set(lineKey, String(citySlug || "").trim());
+        }
+      } catch (e) {}
 
       if (state.visibleAreaKeys.has(cacheKey)) {
         visibleLineKeys.add(lineKey);
@@ -550,7 +558,10 @@ function rebuildCombinedTransit() {
 
   for (const [lineKey, override] of state.manualLineVisibility.entries()) {
     const normalizedOverride = String(override || "").trim().toLowerCase();
-    if ((normalizedOverride === "on" || normalizedOverride === "off") && lineByKeyAll.has(lineKey)) {
+    // Only honor manual overrides for lines that belong to the currently active city
+    const mappedCity = String(lineCityMap.get(lineKey) || "").trim();
+    const activeCity = String(state.initialCitySlug || "").trim();
+    if ((normalizedOverride === "on" || normalizedOverride === "off") && lineByKeyAll.has(lineKey) && mappedCity && mappedCity === activeCity) {
       effectiveVisibleLineKeys.add(lineKey);
     }
   }

@@ -260,14 +260,17 @@
         <div id="authLoggedOut">
           <p id="authFeedback" class="auth-feedback" hidden></p>
 
-          <form id="loginForm" class="stack-form">
+          <form id="loginForm" class="stack-form" autocomplete="on">
             <label>
               Email
-              <input id="loginEmail" name="email" type="email" required />
+              <input id="loginEmail" name="email" type="email" autocomplete="email" required />
             </label>
             <label>
               Password
-              <input id="loginPassword" name="password" type="password" required />
+              <input id="loginPassword" name="password" type="password" autocomplete="current-password" required />
+            </label>
+            <label>
+              <input id="loginRemember" name="remember" type="checkbox" /> Remember Me
             </label>
             <button class="btn" type="submit">Login</button>
           </form>
@@ -295,6 +298,10 @@
           <p>
             Signed in as <strong id="currentUserLabel">-</strong>
           </p>
+          <div class="settings-list">
+            <label><input id="showPrivateOperators" type="checkbox" /> Show Private Operators</label>
+            <label><input id="showProblematicGeometries" type="checkbox" /> Show Problematic Geometries</label>
+          </div>
           <button id="logoutBtn" class="btn" type="button">Log Out</button>
         </div>
       </section>

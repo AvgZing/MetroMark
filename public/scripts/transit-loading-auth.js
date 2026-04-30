@@ -484,11 +484,26 @@ async function loginWithPayload(payloadPromise, options = {}) {
   if (typeof setAuthFeedback === "function") {
     setAuthFeedback();
   }
-  setToken(payload.token);
+  setToken(payload.token, Boolean(options.remember));
   state.user = payload.user;
   updateAuthUi();
   closePopups();
   await loadProgress();
+
+  // Load saved presets (including the default snapshot preset) and apply defaults if present.
+  if (typeof loadFilterPresets === "function") {
+    try {
+      await loadFilterPresets({ silent: true });
+      if (typeof cachedPresets !== "undefined" && Array.isArray(cachedPresets)) {
+        const defaultPreset = cachedPresets.find((p) => String(p.name || "").trim() === "__defaults__");
+        if (defaultPreset && typeof applyFilterSnapshot === "function") {
+          applyFilterSnapshot(defaultPreset.snapshot || {});
+        }
+      }
+    } catch (e) {
+      // non-fatal
+    }
+  }
 
   const customMessage = String(options.successMessage || "").trim();
   const statusMessage = customMessage || `Signed in as ${payload.user.displayName}.`;

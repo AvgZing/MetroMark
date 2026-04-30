@@ -379,6 +379,9 @@ function renderModeFilterBar() {
       loadVisibleTransit({ forceRefresh: false, reason: "mode-filter-change" }).catch((error) => {
         setBackendStatus(`Mode-filter fetch failed: ${error.message}`);
       });
+      if (typeof saveDefaultPresetDebounced === "function") {
+        try { saveDefaultPresetDebounced(); } catch (e) {}
+      }
     });
 
     els.modeFilterBar.append(button);
@@ -476,6 +479,9 @@ function renderFrequencyFilterBar() {
         .join(", ");
 
       setStatus("Frequency filter updated.", "ok", `Active frequencies: ${selected}.`);
+      if (typeof saveDefaultPresetDebounced === "function") {
+        try { saveDefaultPresetDebounced(); } catch (e) {}
+      }
     });
 
     els.frequencyFilterBar.append(button);

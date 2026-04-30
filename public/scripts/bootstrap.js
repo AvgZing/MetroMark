@@ -106,6 +106,35 @@ function bindEvents() {
   });
   els.closeAuthPopupBtn.addEventListener("click", closePopups);
 
+  // Wire simple settings toggles in the account panel
+  try {
+    const showPrivateEl = document.getElementById("showPrivateOperators");
+    if (showPrivateEl) {
+      showPrivateEl.checked = Boolean(state.showPrivateOperators);
+      showPrivateEl.addEventListener("change", () => {
+        state.showPrivateOperators = Boolean(showPrivateEl.checked);
+        persistBooleanToStorage("metromark_show_private_operators", state.showPrivateOperators);
+        if (typeof saveDefaultPresetDebounced === "function") {
+          try { saveDefaultPresetDebounced(); } catch (e) {}
+        }
+      });
+    }
+
+    const showProblemEl = document.getElementById("showProblematicGeometries");
+    if (showProblemEl) {
+      showProblemEl.checked = Boolean(state.showProblematicGeometries);
+      showProblemEl.addEventListener("change", () => {
+        state.showProblematicGeometries = Boolean(showProblemEl.checked);
+        persistBooleanToStorage("metromark_show_problematic_geometries", state.showProblematicGeometries);
+        if (typeof saveDefaultPresetDebounced === "function") {
+          try { saveDefaultPresetDebounced(); } catch (e) {}
+        }
+      });
+    }
+  } catch (e) {
+    // ignore
+  }
+
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       if (state.lineViewOpen) {
@@ -224,6 +253,7 @@ function bindEvents() {
     const formData = new FormData(els.loginForm);
     const email = String(formData.get("email") || "").trim();
     const password = String(formData.get("password") || "");
+    const remember = String(formData.get("remember") || "") === "on" || String(formData.get("remember") || "") === "true";
 
     try {
       await loginWithPayload(
@@ -231,7 +261,7 @@ function bindEvents() {
           method: "POST",
           body: JSON.stringify({ email, password })
         }),
-        { successMessage: "Logged in successfully." }
+        { successMessage: "Logged in successfully.", remember }
       );
       els.loginForm.reset();
     } catch (error) {

@@ -31,6 +31,8 @@ function currentFilterSnapshot() {
     activeModeKeys: Array.from(state.activeModeKeys),
     activeFrequencyKeys: Array.from(state.activeFrequencyKeys),
     manualLineVisibility: Object.fromEntries(state.manualLineVisibility.entries()),
+    showPrivateOperators: Boolean(state.showPrivateOperators),
+    showProblematicGeometries: Boolean(state.showProblematicGeometries),
     savedAtIso: new Date().toISOString()
   };
 }
@@ -94,6 +96,33 @@ function applyFilterSnapshot(snapshot) {
     loadVisibleTransit({ forceRefresh: false, reason: "filter-preset-apply" }).catch(() => {});
   }
 }
+
+// Persist a default snapshot for this user under the reserved name '__defaults__'.
+let __saveDefaultPresetTimeout = null;
+async function saveDefaultPreset() {
+  if (!state.user) return;
+  const citySlug = getActiveCitySlug();
+  const snapshot = currentFilterSnapshot();
+  const name = "__defaults__";
+
+  try {
+    await apiRequest("/api/presets/filters", {
+      method: "POST",
+      body: JSON.stringify({ name, citySlug, snapshot })
+    });
+  } catch (e) {
+    // ignore save errors
+  }
+}
+
+function saveDefaultPresetDebounced() {
+  if (__saveDefaultPresetTimeout) {
+    clearTimeout(__saveDefaultPresetTimeout);
+  }
+  __saveDefaultPresetTimeout = setTimeout(() => saveDefaultPreset(), 900);
+}
+
+window.saveDefaultPresetDebounced = saveDefaultPresetDebounced;
 
 let cachedPresets = [];
 let cachedCitySlug = "";
