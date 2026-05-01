@@ -890,7 +890,7 @@ function stopKeyForFeature(feature) {
   return String(props.station_key || props.stop_id || "").trim();
 }
 
-function sortStopsSequentially(features) {
+function sortStopsSequentially(features, lineKey) {
   if (!Array.isArray(features) || features.length <= 1) {
     return features;
   }
@@ -900,6 +900,86 @@ function sortStopsSequentially(features) {
     return features;
   }
 
+  // If we have the route geometry for this line, project stops onto the route
+  // polyline and compute a distance-along-route to order stops robustly for loops.
+  try {
+    const routeFeatures = Array.isArray(state.transit?.routesGeoJson?.features)
+      ? state.transit.routesGeoJson.features
+      : [];
+
+    const routeFeature = routeFeatures.find((r) => String(r?.properties?.line_key || "") === String(lineKey || ""));
+    const routeCoords = (routeFeature && routeFeature.geometry && Array.isArray(routeFeature.geometry.coordinates))
+      ? (routeFeature.geometry.type === 'MultiLineString'
+          ? routeFeature.geometry.coordinates.flat()
+          : routeFeature.geometry.coordinates)
+      : null;
+
+    if (Array.isArray(routeCoords) && routeCoords.length >= 2) {
+      // Helper: Euclidean distance (approx) in lon/lat degrees scaled by cosine of latitude
+      const haversineDistance = (a, b) => {
+        const toRad = (v) => (v * Math.PI) / 180;
+        const R = 6371000; // meters
+        const dLat = toRad(b[1] - a[1]);
+        const dLon = toRad(b[0] - a[0]);
+        const lat1 = toRad(a[1]);
+        const lat2 = toRad(b[1]);
+        const sinDLat = Math.sin(dLat / 2);
+        const sinDLon = Math.sin(dLon / 2);
+        const aa = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
+        const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+        return R * c;
+      };
+
+      // Precompute segment lengths and cumulative lengths
+      const segLengths = [];
+      const cumLengths = [0];
+      for (let i = 0; i < routeCoords.length - 1; i++) {
+        const l = haversineDistance(routeCoords[i], routeCoords[i + 1]);
+        segLengths.push(l);
+        cumLengths.push(cumLengths[cumLengths.length - 1] + l);
+      }
+
+      const computeAlongDistance = (pt) => {
+        let best = { dist: Infinity, along: 0 };
+        for (let i = 0; i < routeCoords.length - 1; i++) {
+          const a = routeCoords[i];
+          const b = routeCoords[i + 1];
+          const ax = a[0];
+          const ay = a[1];
+          const bx = b[0];
+          const by = b[1];
+          const vx = bx - ax;
+          const vy = by - ay;
+          const wx = pt[0] - ax;
+          const wy = pt[1] - ay;
+          const segLenSq = vx * vx + vy * vy;
+          const t = segLenSq > 0 ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / segLenSq)) : 0;
+          const proj = [ax + t * vx, ay + t * vy];
+          const d = haversineDistance(pt, proj);
+          const along = cumLengths[i] + (t * segLengths[i]);
+          if (d < best.dist) {
+            best = { dist: d, along };
+          }
+        }
+        return best.along;
+      };
+
+      const mapped = features.map((feature) => {
+        const coord = feature?.geometry?.coordinates;
+        if (!Array.isArray(coord)) {
+          return { feature, along: Number.POSITIVE_INFINITY };
+        }
+        return { feature, along: computeAlongDistance(coord) };
+      });
+
+      mapped.sort((a, b) => a.along - b.along);
+      return mapped.map((m) => m.feature);
+    }
+  } catch (e) {
+    // Fall back to the simple projection-based sort on any error
+  }
+
+  // Fallback: previous heuristic - find two most distant points then project
   // Find the two most distant points to establish the line direction
   let maxDist = 0;
   let startIdx = 0;
@@ -963,8 +1043,8 @@ function uniqueStopFeaturesForLine(lineKey) {
     return true;
   });
 
-  // Sort stops sequentially along the line
-  return sortStopsSequentially(unique);
+  // Sort stops sequentially along the line (prefer route geometry when available)
+  return sortStopsSequentially(unique, lineKey);
 }
 
 async function toggleVisitedForStation(properties, coords) {

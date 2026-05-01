@@ -3,7 +3,10 @@ function normalizePresetName(raw) {
 }
 
 function getActiveCitySlug() {
-  return String(state.initialCitySlug || "global").trim() || "global";
+  // Presets are global by default to simplify reuse across cities.
+  // Use 'global' as the presets scope. Individual city-scoped presets
+  // are not used by default to avoid accidental overwrites.
+  return "global";
 }
 
 function setFilterPresetStatus(message) {
@@ -241,6 +244,9 @@ async function saveCurrentAsPreset() {
     return;
   }
 
+  // Save presets in the global scope and merge manual visibility overrides
+  // with any existing preset of the same name so unseen route overrides
+  // are preserved.
   const citySlug = getActiveCitySlug();
   const name = normalizePresetName(els.filterPresetName?.value);
   if (!name) {
@@ -251,9 +257,22 @@ async function saveCurrentAsPreset() {
   const snapshot = currentFilterSnapshot();
 
   try {
+    // Load existing presets in the same scope to merge manual visibility
+    await loadFilterPresets({ silent: true });
+    const existing = cachedPresets.find((p) => String(p.name || "") === name) || null;
+
+    let mergedSnapshot = snapshot;
+    if (existing && existing.snapshot && existing.snapshot.manualLineVisibility) {
+      // Merge manualLineVisibility: preserve keys not present in current snapshot
+      const existingVis = existing.snapshot.manualLineVisibility || {};
+      const currentVis = snapshot.manualLineVisibility || {};
+      const mergedVis = { ...existingVis, ...currentVis };
+      mergedSnapshot = { ...snapshot, manualLineVisibility: mergedVis };
+    }
+
     const payload = await apiRequest("/api/presets/filters", {
       method: "POST",
-      body: JSON.stringify({ name, citySlug, snapshot })
+      body: JSON.stringify({ name, citySlug, snapshot: mergedSnapshot })
     });
 
     const preset = payload.preset;
