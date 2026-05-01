@@ -12,10 +12,12 @@ const dbPath = localDbLabel();
 const stationOverrideCache = new Map();
 let initializePromise = null;
 
-const auth = require("./modules/auth");
-
 function assertConfigured() {
-  return auth.assertConfigured();
+  if (!hasSupabaseConfig) {
+    throw new Error(
+      "Supabase is not configured. Set SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY."
+    );
+  }
 }
 
 function assertLocalConfigured() {
@@ -55,17 +57,6 @@ function toEpochSeconds(isoText) {
   return Math.floor(parsed / 1000);
 }
 
-// Wire in split modules for geometry and presets (safe shims preserve API)
-const geometryModule = require('./modules/geometry');
-const presetsModule = require('./modules/presets');
-
-const getRouteGeometryLod = geometryModule.getRouteGeometryLod;
-const upsertRouteGeometryLod = geometryModule.upsertRouteGeometryLod;
-
-const listFilterPresets = presetsModule.listFilterPresets;
-const upsertFilterPreset = presetsModule.upsertFilterPreset;
-const deleteFilterPreset = presetsModule.deleteFilterPreset;
-
 function utcDateKey(date = new Date()) {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
@@ -75,24 +66,102 @@ function utcDateKey(date = new Date()) {
 
 function normalizeText(value, fallback = "") {
   const normalized = String(value || "").trim();
-  function normalizeAuthError(error, fallbackMessage) {
-    return auth.normalizeAuthError(error, fallbackMessage);
+  return normalized || fallback;
+}
+
+function normalizeEmail(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function normalizeDisplayName(value) {
+  return normalizeText(value, "MetroMark User");
+}
+
+function normalizeAuthError(error, fallbackMessage) {
+  if (!error) {
+    return new Error(fallbackMessage);
   }
 
-  function normalizeProfileRow(row, authUser = null) {
-    return auth.normalizeProfileRow(row, authUser);
+  const message = normalizeText(error.message, fallbackMessage);
+  const wrapped = new Error(message);
+  wrapped.code = error.code;
+  wrapped.status = error.status;
+  return wrapped;
+}
+
+function normalizeProfileRow(row, authUser = null) {
+  if (!row && !authUser) {
+    return null;
   }
 
-  async function ensureProfile(user, options = {}) {
-    return auth.ensureProfile(user, options);
+  const authMetadata = authUser?.user_metadata || {};
+  const displayName = normalizeText(
+    row?.display_name || authMetadata.display_name || authUser?.email?.split("@")[0],
+    "MetroMark User"
+  );
+
+  const createdAtIso = row?.created_at || authUser?.created_at || nowIso();
+  const lastLoginIso = row?.last_login_at || authUser?.last_sign_in_at || null;
+
+  return {
+    id: normalizeText(row?.id || authUser?.id),
+    email: normalizeEmail(row?.email || authUser?.email || ""),
+    displayName,
+    role: normalizeText(row?.role, "user"),
+    isActive: row?.is_active === false ? false : true,
+    lastLoginAt: toEpochSeconds(lastLoginIso),
+    createdAt: toEpochSeconds(createdAtIso) || nowSeconds()
+  };
+}
+
+function normalizeCacheRow(row) {
+  if (!row) {
+    return null;
   }
 
-  async function getProfileById(userId) {
-    return auth.getProfileById(userId);
+  return {
+    payload: row.payload,
+    fetchedAt: toEpochSeconds(row.fetched_at),
+    expiresAt: toEpochSeconds(row.expires_at),
+    cacheKind: normalizeText(row.cache_kind, "bbox"),
+    citySlug: normalizeText(row.city_slug),
+    feedFingerprint: normalizeText(row.feed_fingerprint),
+    verifiedAt: toEpochSeconds(row.verified_at)
+  };
+}
+
+function normalizeGeometryForStorage(geometry) {
+  if (!geometry || !geometry.type || !Array.isArray(geometry.coordinates)) {
+    return null;
   }
 
-  async function markProfileLogin(userId) {
-    return auth.markProfileLogin(userId);
+  if (geometry.type === "MultiLineString") {
+    const lines = geometry.coordinates.filter((line) => Array.isArray(line) && line.length >= 2);
+    if (!lines.length) {
+      return null;
+    }
+    return {
+      type: "MultiLineString",
+      coordinates: lines
+    };
+  }
+
+  if (geometry.type === "LineString") {
+    if (geometry.coordinates.length < 2) {
+      return null;
+    }
+    return {
+      type: "MultiLineString",
+      coordinates: [geometry.coordinates]
+    };
+  }
+
+  return null;
+}
+
+function normalizeGeometryFromStorageRow(row) {
+  if (!row) {
+    return null;
   }
 
   const geometry = row.geometry_geojson || row.geometry || null;
@@ -248,23 +317,154 @@ async function initializeStorage() {
 }
 
 async function registerAccount(email, password, displayName) {
-  return auth.registerAccount(email, password, displayName);
+  assertConfigured();
+  const normalizedEmail = normalizeEmail(email);
+  const safeName = normalizeDisplayName(displayName);
+
+  if (!normalizedEmail || !password) {
+    throw new Error("Email and password are required.");
+  }
+
+  const { anonClient } = requireSupabaseClients();
+  const signUpResult = await anonClient.auth.signUp({
+    email: normalizedEmail,
+    password,
+    options: {
+      data: {
+        display_name: safeName
+      }
+    }
+  });
+
+  if (signUpResult.error) {
+    throw normalizeAuthError(signUpResult.error, "Registration failed.");
+  }
+
+  let authUser = signUpResult.data.user;
+  let session = signUpResult.data.session;
+
+  if (!authUser) {
+    throw new Error("Registration failed: user payload is empty.");
+  }
+
+  await ensureProfile(authUser, {
+    displayName: safeName,
+    role: "user",
+    isActive: true,
+    createdAtIso: authUser.created_at
+  });
+
+  if (!session) {
+    const signInResult = await anonClient.auth.signInWithPassword({
+      email: normalizedEmail,
+      password
+    });
+
+    if (signInResult.error || !signInResult.data?.session || !signInResult.data?.user) {
+      throw new Error(
+        "Account created, but no active session was returned. Check Supabase email confirmation settings."
+      );
+    }
+
+    session = signInResult.data.session;
+    authUser = signInResult.data.user;
+  }
+
+  await markProfileLogin(authUser.id);
+  const profile = await getProfileById(authUser.id);
+
+  return {
+    user: normalizeProfileRow(profile, authUser),
+    token: session.access_token
+  };
 }
 
 async function loginAccount(email, password) {
-  return auth.loginAccount(email, password);
+  assertConfigured();
+  const normalizedEmail = normalizeEmail(email);
+  const { anonClient } = requireSupabaseClients();
+
+  const signInResult = await anonClient.auth.signInWithPassword({
+    email: normalizedEmail,
+    password
+  });
+
+  if (signInResult.error || !signInResult.data?.session || !signInResult.data?.user) {
+    throw new Error("Invalid email or password.");
+  }
+
+  const authUser = signInResult.data.user;
+  await ensureProfile(authUser, {
+    displayName: authUser.user_metadata?.display_name || authUser.email?.split("@")[0] || "MetroMark User",
+    createdAtIso: authUser.created_at
+  });
+
+  const profile = await getProfileById(authUser.id);
+  if (profile?.is_active === false) {
+    throw new Error("Account is disabled.");
+  }
+
+  await markProfileLogin(authUser.id);
+
+  return {
+    user: normalizeProfileRow(profile, authUser),
+    token: signInResult.data.session.access_token
+  };
 }
 
 async function getUserFromToken(accessToken) {
-  return auth.getUserFromToken(accessToken);
+  assertConfigured();
+  const token = normalizeText(accessToken);
+  if (!token) {
+    return null;
+  }
+
+  const { serviceClient } = requireSupabaseClients();
+  const userResult = await serviceClient.auth.getUser(token);
+
+  if (userResult.error || !userResult.data?.user) {
+    return null;
+  }
+
+  const authUser = userResult.data.user;
+  await ensureProfile(authUser, {
+    displayName: authUser.user_metadata?.display_name || authUser.email?.split("@")[0] || "MetroMark User",
+    createdAtIso: authUser.created_at
+  });
+
+  const profile = await getProfileById(authUser.id);
+  return normalizeProfileRow(profile, authUser);
 }
 
 async function getUserById(userId) {
-  return auth.getUserById(userId);
+  const profile = await getProfileById(userId);
+  return normalizeProfileRow(profile, null);
 }
 
 async function getUserByEmail(email) {
-  return auth.getUserByEmail(email);
+  assertConfigured();
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  const { serviceClient } = requireSupabaseClients();
+  const { data, error } = await serviceClient.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000
+  });
+
+  if (error) {
+    throw new Error(`Unable to query users: ${error.message}`);
+  }
+
+  const user = (data?.users || []).find((entry) => normalizeEmail(entry.email) === normalizedEmail);
+  if (!user) {
+    return null;
+  }
+
+  const profile = await getProfileById(user.id);
+  return normalizeProfileRow(profile, user);
 }
 
 async function createUser(email, password, displayName) {
@@ -334,9 +534,114 @@ async function setCache(cacheKey, payload, ttlSeconds, options = {}) {
   );
 }
 
-// `getRouteGeometryLod` is implemented in `server/db/modules/geometry.js`.
+async function getRouteGeometryLod(lineKey, zoomLevel, options = {}) {
+  assertLocalConfigured();
 
-// `upsertRouteGeometryLod` is implemented in `server/db/modules/geometry.js`.
+  const normalizedLineKey = normalizeText(lineKey);
+  const numericZoom = Number(zoomLevel);
+  if (!normalizedLineKey || !Number.isFinite(numericZoom)) {
+    return null;
+  }
+
+  const bbox = Array.isArray(options.bbox) && options.bbox.length === 4
+    ? options.bbox.map((value) => Number(value))
+    : null;
+
+  const selectColumns = bbox
+    ? `case
+        when ST_IsEmpty(
+          ST_CollectionExtract(
+            ST_Intersection(
+              geometry,
+              ST_MakeEnvelope($3, $4, $5, $6, 4326)
+            ),
+            2
+          )
+        ) then null
+        else ST_AsGeoJSON(
+          ST_CollectionExtract(
+            ST_Intersection(
+              geometry,
+              ST_MakeEnvelope($3, $4, $5, $6, 4326)
+            ),
+            2
+          )
+        )::json
+      end as geometry_geojson`
+    : `ST_AsGeoJSON(geometry)::json as geometry_geojson`;
+
+  const params = bbox
+    ? [normalizedLineKey, Math.round(numericZoom), bbox[0], bbox[1], bbox[2], bbox[3]]
+    : [normalizedLineKey, Math.round(numericZoom)];
+
+  const { rows } = await localQuery(
+    `select line_key, zoom_level, source_hash, updated_at, ${selectColumns}
+     from public.route_geometry_lod
+     where line_key = $1 and zoom_level = $2
+     limit 1`,
+    params
+  );
+
+  const row = rows?.[0] || null;
+  const geometry = normalizeGeometryFromStorageRow(row);
+  if (!geometry) {
+    return null;
+  }
+
+  return {
+    lineKey: normalizeText(row.line_key),
+    zoomLevel: Number(row.zoom_level),
+    sourceHash: normalizeText(row.source_hash),
+    updatedAt: toEpochSeconds(row.updated_at),
+    geometry
+  };
+}
+
+async function upsertRouteGeometryLod(lineKey, zoomLevel, geometry, options = {}) {
+  assertLocalConfigured();
+
+  const normalizedLineKey = normalizeText(lineKey);
+  const numericZoom = Number(zoomLevel);
+  const geometryForStorage = normalizeGeometryForStorage(geometry);
+  if (!normalizedLineKey || !Number.isFinite(numericZoom) || !geometryForStorage) {
+    return null;
+  }
+
+  const sourceHash = normalizeText(options.sourceHash) || null;
+
+  await localQuery(
+    `insert into public.route_geometry_lod (
+      line_key,
+      zoom_level,
+      geometry,
+      source_hash,
+      updated_at
+    ) values (
+      $1,
+      $2,
+      ST_SetSRID(ST_GeomFromGeoJSON($3::text), 4326),
+      $4,
+      now()
+    )
+    on conflict (line_key, zoom_level) do update set
+      geometry = excluded.geometry,
+      source_hash = excluded.source_hash,
+      updated_at = excluded.updated_at`,
+    [
+      normalizedLineKey,
+      Math.round(numericZoom),
+      JSON.stringify(geometryForStorage),
+      sourceHash
+    ]
+  );
+
+  return {
+    lineKey: normalizedLineKey,
+    zoomLevel: Math.round(numericZoom),
+    geometry: geometryForStorage,
+    sourceHash
+  };
+}
 
 async function clearCacheByPrefix(prefix) {
   assertLocalConfigured();
@@ -604,7 +909,103 @@ async function clearVisitedStationsForLine(userId, lineKey) {
   return Number(existing.count || 0);
 }
 
-// Filter preset functions moved to `server/db/modules/presets.js`.
+function normalizePresetRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: normalizeText(row.id),
+    name: normalizeText(row.name),
+    citySlug: normalizeText(row.city_slug),
+    snapshot: row.snapshot || {},
+    createdAt: toEpochSeconds(row.created_at) || 0,
+    updatedAt: toEpochSeconds(row.updated_at) || 0
+  };
+}
+
+async function listFilterPresets(userId, citySlug = "") {
+  assertConfigured();
+  const { serviceClient } = requireSupabaseClients();
+
+  const safeUserId = normalizeText(userId);
+  if (!safeUserId) {
+    return [];
+  }
+
+  let query = serviceClient
+    .from("user_filter_presets")
+    .select("id,name,city_slug,snapshot,created_at,updated_at")
+    .eq("user_id", safeUserId)
+    .order("name", { ascending: true });
+
+  const normalizedCitySlug = normalizeText(citySlug);
+  if (normalizedCitySlug) {
+    query = query.eq("city_slug", normalizedCitySlug);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(`Unable to load presets: ${error.message}`);
+  }
+
+  return (data || []).map((row) => normalizePresetRow(row)).filter(Boolean);
+}
+
+async function upsertFilterPreset(userId, payload) {
+  assertConfigured();
+  const { serviceClient } = requireSupabaseClients();
+
+  const safeUserId = normalizeText(userId);
+  const name = normalizeText(payload?.name);
+  const citySlug = normalizeText(payload?.citySlug);
+  const snapshot = payload?.snapshot && typeof payload.snapshot === "object" ? payload.snapshot : null;
+
+  if (!safeUserId || !name || !citySlug || !snapshot) {
+    throw new Error("Invalid preset payload.");
+  }
+
+  const record = {
+    user_id: safeUserId,
+    name,
+    city_slug: citySlug,
+    snapshot,
+    updated_at: nowIso()
+  };
+
+  const { data, error } = await serviceClient
+    .from("user_filter_presets")
+    .upsert(record, { onConflict: "user_id,city_slug,name" })
+    .select("id,name,city_slug,snapshot,created_at,updated_at")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Unable to save preset: ${error.message}`);
+  }
+
+  return normalizePresetRow(data);
+}
+
+async function deleteFilterPreset(userId, presetId) {
+  assertConfigured();
+  const { serviceClient } = requireSupabaseClients();
+
+  const safeUserId = normalizeText(userId);
+  const normalizedPresetId = normalizeText(presetId);
+  if (!safeUserId || !normalizedPresetId) {
+    throw new Error("presetId is required.");
+  }
+
+  const { error } = await serviceClient
+    .from("user_filter_presets")
+    .delete()
+    .eq("id", normalizedPresetId)
+    .eq("user_id", safeUserId);
+
+  if (error) {
+    throw new Error(`Unable to delete preset: ${error.message}`);
+  }
+}
 
 function dayKeyFromTimestamp(epochSeconds) {
   const date = new Date(Number(epochSeconds) * 1000);
