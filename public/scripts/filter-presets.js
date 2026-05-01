@@ -56,7 +56,14 @@ function applyFilterSnapshot(snapshot) {
     .filter(([lineKey, value]) => lineKey && (value === "on" || value === "off"));
 
   state.manualLineVisibility = new Map(visibilityEntries);
-  persistVisibilityOverridesToStorage("metromark_route_visibility_overrides", state.manualLineVisibility);
+  if (typeof saveUserPreferences === "function") {
+    saveUserPreferences({
+      activeModeKeys: modeKeys,
+      activeFrequencyKeys: frequencyKeys,
+      manualLineVisibility: Object.fromEntries(state.manualLineVisibility),
+      initialCitySlug: citySlug
+    }).catch(() => {});
+  }
 
   state.lineSearchQuery = String(snapshot.lineSearchQuery || "").trim().toLowerCase();
   if (els.lineSearch) {
@@ -81,7 +88,9 @@ function applyFilterSnapshot(snapshot) {
   const citySlug = String(snapshot.citySlug || "").trim();
   if (citySlug && citySlug !== state.initialCitySlug) {
     state.initialCitySlug = citySlug;
-    localStorage.setItem("metromark_initial_city_slug", citySlug);
+    if (typeof saveUserPreferences === "function") {
+      saveUserPreferences({ initialCitySlug: citySlug }).catch(() => {});
+    }
 
     // Load reviews for the new city
     if (typeof loadReviewsForCity === "function") {

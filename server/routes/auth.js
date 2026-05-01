@@ -49,4 +49,19 @@ router.get("/auth/me", authMiddleware, (req, res) => {
   return res.json({ user: req.user });
 });
 
+router.patch("/auth/me/preferences", authMiddleware, async (req, res) => {
+  const preferences = req.body && typeof req.body === "object" ? req.body.preferences : null;
+
+  if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) {
+    return res.status(400).json({ error: "preferences payload is required." });
+  }
+
+  try {
+    const user = await db.updateUserPreferences(req.user.id, preferences);
+    return res.json({ user });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
 module.exports = router;

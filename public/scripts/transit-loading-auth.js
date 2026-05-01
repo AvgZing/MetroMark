@@ -379,7 +379,9 @@ async function loadCities() {
   const exists = state.cities.some((city) => city.slug === state.initialCitySlug);
   if (!exists) {
     state.initialCitySlug = state.cities[0].slug;
-    localStorage.setItem("metromark_initial_city_slug", state.initialCitySlug);
+    if (typeof saveUserPreferences === "function") {
+      saveUserPreferences({ initialCitySlug: state.initialCitySlug }).catch(() => {});
+    }
   }
 }
 
@@ -392,6 +394,9 @@ async function hydrateSession() {
   try {
     const me = await apiRequest("/api/auth/me", { method: "GET" });
     state.user = me.user;
+    if (typeof applyUserPreferences === "function") {
+      applyUserPreferences(me.user?.preferences || {});
+    }
     updateAuthUi();
   } catch {
     setToken("");
@@ -486,6 +491,9 @@ async function loginWithPayload(payloadPromise, options = {}) {
   }
   setToken(payload.token, Boolean(options.remember));
   state.user = payload.user;
+  if (typeof applyUserPreferences === "function") {
+    applyUserPreferences(payload.user?.preferences || {});
+  }
   updateAuthUi();
   closePopups();
   await loadProgress();

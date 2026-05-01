@@ -954,6 +954,57 @@ function simplifyGeometryForZoom(geometry, zoom) {
   return geometry;
 }
 
+function geometrySourceHash(geometry) {
+  if (!geometry) {
+    return "";
+  }
+
+  return crypto.createHash("sha1").update(JSON.stringify(geometry)).digest("hex");
+}
+
+async function resolveGeometryForZoom(route, options = {}) {
+  const lineKey = sanitizeText(route?.lineKey);
+  const zoom = Number(options.zoom);
+  const bbox = Array.isArray(options.bbox) && options.bbox.length === 4
+    ? options.bbox.map((value) => Number(value))
+    : null;
+
+  const fallbackGeometry = simplifyGeometryForZoom(route?.geometry || null, zoom);
+  if (!lineKey || !Number.isFinite(zoom) || !fallbackGeometry) {
+    return fallbackGeometry || null;
+  }
+
+  try {
+    const cached = await db.getRouteGeometryLod(lineKey, zoom, { bbox });
+    if (cached?.geometry) {
+      return cached.geometry;
+    }
+  } catch {
+    // Fall through to local simplification and best-effort storage.
+  }
+
+  try {
+    await db.upsertRouteGeometryLod(lineKey, zoom, fallbackGeometry, {
+      sourceHash: geometrySourceHash(route.geometry || fallbackGeometry)
+    });
+  } catch {
+    // Ignore storage failures and keep serving the simplified geometry.
+  }
+
+  if (bbox) {
+    try {
+      const clipped = await db.getRouteGeometryLod(lineKey, zoom, { bbox });
+      if (clipped?.geometry) {
+        return clipped.geometry;
+      }
+    } catch {
+      // Ignore clipping read failures.
+    }
+  }
+
+  return fallbackGeometry;
+}
+
 function frequencyBucketFromHeadwayMinutes(minutes) {
   const numeric = Number(minutes);
   if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -1517,15 +1568,33 @@ function buildStationHubs(stops, routesByLineKey) {
   return hubStops;
 }
 
-function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
+async function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
   const normalizedRoutes = normalizeRoutes(rawRoutes, options);
-  const routesByLineKey = new Map(normalizedRoutes.map((route) => [route.lineKey, route]));
+  const resolvedRoutes = [];
+  for (const route of normalizedRoutes) {
+    const resolvedGeometry = await resolveGeometryForZoom(route, {
+      zoom: options.zoom,
+      bbox: area?.bbox
+    });
+
+    if (!resolvedGeometry) {
+      continue;
+    }
+
+    resolvedRoutes.push({
+      ...route,
+      geometry: resolvedGeometry,
+      bbox: geometryBbox(resolvedGeometry)
+    });
+  }
+
+  const routesByLineKey = new Map(resolvedRoutes.map((route) => [route.lineKey, route]));
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
   const routeTypes = normalizeRouteTypes(options.routeTypes);
   const allowedStopLocationTypes = new Set(stopLocationTypes);
   const vectorHeadwayMeta = options.vectorHeadwayMeta || {};
 
-  const routeFeatures = normalizedRoutes.map((route) => {
+  const routeFeatures = resolvedRoutes.map((route) => {
     const headwayBestMinutes = Number.isFinite(route.headwaySeconds)
       ? Number((route.headwaySeconds / 60).toFixed(1))
       : null;
@@ -1657,7 +1726,7 @@ function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
     stopCountsByLine.set(stop.lineKey, currentCount + 1);
   }
 
-  const lineSummaries = normalizedRoutes
+  const lineSummaries = resolvedRoutes
     .map((route) => {
       const headwayBestMinutes = Number.isFinite(route.headwaySeconds)
         ? Number((route.headwaySeconds / 60).toFixed(1))
@@ -2218,7 +2287,7 @@ async function getTransitForArea(area, options = {}) {
     enforceDailyCap: Boolean(options.enforceDailyCap),
     requestSource: options.requestSource
   });
-  const payload = buildTransitPayload(area, routes, stops, {
+  const payload = await buildTransitPayload(area, routes, stops, {
     stopLocationTypes,
     routeTypes,
     vectorHeadwayMeta

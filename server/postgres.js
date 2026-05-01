@@ -131,14 +131,6 @@ async function initializeLocalPostgres() {
         source text not null,
         updated_at timestamptz not null default now()
       )`,
-      `create table if not exists public.station_override (
-        stable_key text primary key,
-        manual_name text,
-        manual_lat double precision,
-        manual_lon double precision,
-        note text,
-        updated_at timestamptz not null default now()
-      )`,
       `create table if not exists public.route_geometry_lod (
         line_key text not null,
         zoom_level integer not null,
@@ -186,29 +178,7 @@ async function initializeLocalPostgres() {
            when target_zoom >= 15 then true
            else ST_NPoints(public.metromark_geometry_lod(input_geom, target_zoom)) >= 2
          end
-       $$`
-      , `create table if not exists public.route_override (
-          line_key text primary key,
-          city_slug text,
-          payload jsonb not null,
-          updated_at timestamptz not null default now()
-        )`,
-      "create index if not exists idx_route_override_city on public.route_override (city_slug)",
-      `create table if not exists public.route_review (
-          line_key text primary key,
-          city_slug text,
-          problematic_override boolean,
-          updated_at timestamptz not null default now()
-        )`,
-      "create index if not exists idx_route_review_city on public.route_review (city_slug)",
-      `create table if not exists public.agency_review (
-          city_slug text not null,
-          operator_name text not null,
-          allowed_override boolean,
-          updated_at timestamptz not null default now(),
-          primary key (city_slug, operator_name)
-        )`,
-      "create index if not exists idx_agency_review_city on public.agency_review (city_slug)"
+      $$`
     ];
 
     for (const statement of statements) {

@@ -81,10 +81,9 @@ function bindEvents() {
   if (els.toggleLineViewAutoBtn) {
     els.toggleLineViewAutoBtn.addEventListener("click", () => {
       state.lineViewAutoOpenEnabled = !state.lineViewAutoOpenEnabled;
-      localStorage.setItem(
-        "metromark_line_view_auto_open",
-        state.lineViewAutoOpenEnabled ? "true" : "false"
-      );
+      if (typeof saveUserPreferences === "function") {
+        saveUserPreferences({ lineViewAutoOpenEnabled: state.lineViewAutoOpenEnabled }).catch(() => {});
+      }
       renderUserStatus();
       const status = state.lineViewAutoOpenEnabled ? "enabled" : "disabled";
       setStatus(`Line view auto-open ${status} for desktop`, "ok");
@@ -126,7 +125,9 @@ function bindEvents() {
       showPrivateEl.checked = Boolean(state.showPrivateOperators);
       showPrivateEl.addEventListener("change", () => {
         state.showPrivateOperators = Boolean(showPrivateEl.checked);
-        persistBooleanToStorage("metromark_show_private_operators", state.showPrivateOperators);
+        if (typeof saveUserPreferences === "function") {
+          saveUserPreferences({ showPrivateOperators: state.showPrivateOperators }).catch(() => {});
+        }
         if (typeof saveDefaultPresetDebounced === "function") {
           try { saveDefaultPresetDebounced(); } catch (e) {}
         }
@@ -138,7 +139,9 @@ function bindEvents() {
       showProblemEl.checked = Boolean(state.showProblematicGeometries);
       showProblemEl.addEventListener("change", () => {
         state.showProblematicGeometries = Boolean(showProblemEl.checked);
-        persistBooleanToStorage("metromark_show_problematic_geometries", state.showProblematicGeometries);
+        if (typeof saveUserPreferences === "function") {
+          saveUserPreferences({ showProblematicGeometries: state.showProblematicGeometries }).catch(() => {});
+        }
         if (typeof saveDefaultPresetDebounced === "function") {
           try { saveDefaultPresetDebounced(); } catch (e) {}
         }

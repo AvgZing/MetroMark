@@ -28,6 +28,7 @@ router.get("/transit/city/:slug", async (req, res) => {
     const routeTypes = parseRouteTypes(req.query.routeTypes);
     const data = await getCityTransit(city.slug, {
       forceRefresh: asBoolean(req.query.refresh),
+      zoom: Number(req.query.zoom),
       stopLocationTypes: stopTypes,
       routeTypes,
       requestSource: "user"
