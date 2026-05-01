@@ -193,7 +193,22 @@ async function initializeLocalPostgres() {
           payload jsonb not null,
           updated_at timestamptz not null default now()
         )`,
-      "create index if not exists idx_route_override_city on public.route_override (city_slug)"
+      "create index if not exists idx_route_override_city on public.route_override (city_slug)",
+      `create table if not exists public.route_review (
+          line_key text primary key,
+          city_slug text,
+          problematic_override boolean,
+          updated_at timestamptz not null default now()
+        )`,
+      "create index if not exists idx_route_review_city on public.route_review (city_slug)",
+      `create table if not exists public.agency_review (
+          city_slug text not null,
+          operator_name text not null,
+          allowed_override boolean,
+          updated_at timestamptz not null default now(),
+          primary key (city_slug, operator_name)
+        )`,
+      "create index if not exists idx_agency_review_city on public.agency_review (city_slug)"
     ];
 
     for (const statement of statements) {

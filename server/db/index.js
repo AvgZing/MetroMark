@@ -1073,6 +1073,109 @@ async function deleteRouteOverride(lineKey) {
   await localQuery("delete from public.route_override where line_key = $1", [key]);
 }
 
+async function getRouteReview(lineKey) {
+  assertLocalConfigured();
+  const key = normalizeText(lineKey);
+  if (!key) return null;
+  const result = await localQuery(
+    "select line_key, city_slug, problematic_override, updated_at from public.route_review where line_key = $1 limit 1",
+    [key]
+  );
+  return result.rows?.[0] || null;
+}
+
+async function listRouteReviews(citySlug = "") {
+  assertLocalConfigured();
+  const city = normalizeText(citySlug);
+  if (city) {
+    const result = await localQuery(
+      "select line_key, city_slug, problematic_override, updated_at from public.route_review where city_slug = $1 limit 10000",
+      [city]
+    );
+    return result.rows || [];
+  }
+
+  const result = await localQuery(
+    "select line_key, city_slug, problematic_override, updated_at from public.route_review limit 10000"
+  );
+  return result.rows || [];
+}
+
+async function upsertRouteReview(lineKey, citySlug, problematicOverride) {
+  assertLocalConfigured();
+  const key = normalizeText(lineKey);
+  if (!key) throw new Error("lineKey is required");
+  const city = normalizeText(citySlug) || null;
+  const normalizedValue =
+    problematicOverride === null || problematicOverride === undefined
+      ? null
+      : Boolean(problematicOverride);
+
+  await localQuery(
+    `insert into public.route_review (line_key, city_slug, problematic_override, updated_at)
+     values ($1, $2, $3, now())
+     on conflict (line_key) do update set
+       city_slug = excluded.city_slug,
+       problematic_override = excluded.problematic_override,
+       updated_at = excluded.updated_at`,
+    [key, city, normalizedValue]
+  );
+
+  return getRouteReview(key);
+}
+
+async function getAgencyReview(citySlug, operatorName) {
+  assertLocalConfigured();
+  const city = normalizeText(citySlug);
+  const operator = normalizeText(operatorName);
+  if (!city || !operator) return null;
+
+  const result = await localQuery(
+    "select city_slug, operator_name, allowed_override, updated_at from public.agency_review where city_slug = $1 and operator_name = $2 limit 1",
+    [city, operator]
+  );
+  return result.rows?.[0] || null;
+}
+
+async function listAgencyReviews(citySlug = "") {
+  assertLocalConfigured();
+  const city = normalizeText(citySlug);
+  if (city) {
+    const result = await localQuery(
+      "select city_slug, operator_name, allowed_override, updated_at from public.agency_review where city_slug = $1 order by operator_name asc limit 10000",
+      [city]
+    );
+    return result.rows || [];
+  }
+
+  const result = await localQuery(
+    "select city_slug, operator_name, allowed_override, updated_at from public.agency_review order by city_slug asc, operator_name asc limit 20000"
+  );
+  return result.rows || [];
+}
+
+async function upsertAgencyReview(citySlug, operatorName, allowedOverride) {
+  assertLocalConfigured();
+  const city = normalizeText(citySlug);
+  const operator = normalizeText(operatorName);
+  if (!city) throw new Error("citySlug is required");
+  if (!operator) throw new Error("operatorName is required");
+
+  const normalizedValue =
+    allowedOverride === null || allowedOverride === undefined ? null : Boolean(allowedOverride);
+
+  await localQuery(
+    `insert into public.agency_review (city_slug, operator_name, allowed_override, updated_at)
+     values ($1, $2, $3, now())
+     on conflict (city_slug, operator_name) do update set
+       allowed_override = excluded.allowed_override,
+       updated_at = excluded.updated_at`,
+    [city, operator, normalizedValue]
+  );
+
+  return getAgencyReview(city, operator);
+}
+
 async function listPendingHarvestCities(limit = 5) {
   assertLocalConfigured();
 
@@ -1269,6 +1372,16 @@ module.exports = {
   upsertStopTranslation,
   getStationOverride,
   upsertStationOverride,
+  getRouteOverride,
+  listRouteOverrides,
+  upsertRouteOverride,
+  deleteRouteOverride,
+  getRouteReview,
+  listRouteReviews,
+  upsertRouteReview,
+  getAgencyReview,
+  listAgencyReviews,
+  upsertAgencyReview,
   setVisitedState,
   getVisitedStations,
   clearVisitedStationsForLine,

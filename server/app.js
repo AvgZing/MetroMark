@@ -28,6 +28,10 @@ function createApp() {
     return res.sendFile(path.join(__dirname, "..", "public", "admin.html"));
   });
 
+  app.get("/admin/override", (req, res) => {
+    return res.sendFile(path.join(__dirname, "..", "public", "admin-override.html"));
+  });
+
   app.get("*", (req, res) => {
     if (req.path.startsWith("/api/")) {
       return res.status(404).json({ error: "API endpoint not found." });

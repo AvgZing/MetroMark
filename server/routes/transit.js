@@ -1,5 +1,6 @@
 const express = require("express");
 
+const db = require("../db");
 const { getCityBySlug } = require("../city-presets");
 const {
   getCityTransit,
@@ -138,6 +139,28 @@ router.get("/transit/route-headway", async (req, res) => {
   } catch (error) {
     return res.status(400).json({
       error: "Route headway fetch failed.",
+      detail: error.message
+    });
+  }
+});
+
+router.get("/transit/reviews", async (req, res) => {
+  const citySlug = String(req.query.citySlug || "").trim();
+  if (!citySlug) {
+    return res.status(400).json({ error: "citySlug query parameter is required." });
+  }
+
+  try {
+    const routeReviews = await db.listRouteReviews(citySlug);
+    const agencyReviews = await db.listAgencyReviews(citySlug);
+    return res.json({
+      citySlug,
+      routeReviews,
+      agencyReviews
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Unable to load review settings.",
       detail: error.message
     });
   }
