@@ -1,8 +1,5 @@
 # Local prototypes and non-app reference material
-Reference/
-Docs/
-!docs/
-!docs/**
+docs/*
 
 # Environment and secrets
 .env
