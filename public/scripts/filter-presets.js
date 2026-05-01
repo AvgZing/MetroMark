@@ -83,6 +83,13 @@ function applyFilterSnapshot(snapshot) {
     state.initialCitySlug = citySlug;
     localStorage.setItem("metromark_initial_city_slug", citySlug);
 
+    // Load reviews for the new city
+    if (typeof loadReviewsForCity === "function") {
+      loadReviewsForCity(citySlug).catch((err) => {
+        console.warn("Failed to load reviews for city:", err);
+      });
+    }
+
     const city = Array.isArray(state.cities)
       ? state.cities.find((entry) => String(entry.slug || "").trim() === citySlug)
       : null;

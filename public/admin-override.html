@@ -58,6 +58,20 @@
           <label>Frequency (min)</label>
           <input id="overrideFrequency" type="number" placeholder="Minutes between departures" />
 
+          <h3>Review Settings</h3>
+          <div class="review-setting">
+            <label>
+              <input id="problematicGeometryCheckbox" type="checkbox" />
+              Mark as Problematic Geometry
+            </label>
+            <p class="setting-note">Routes marked as problematic will be hidden when this filter is off.</p>
+          </div>
+
+          <h3>Operators for This City</h3>
+          <div class="operator-review-list" id="operatorReviewList">
+            <p class="microcopy">Loading operators...</p>
+          </div>
+
           <h3>Stops</h3>
           <div class="override-stops-list" id="overrideStopsList"></div>
 

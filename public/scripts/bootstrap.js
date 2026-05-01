@@ -78,6 +78,19 @@ function bindEvents() {
     });
   }
 
+  if (els.toggleLineViewAutoBtn) {
+    els.toggleLineViewAutoBtn.addEventListener("click", () => {
+      state.lineViewAutoOpenEnabled = !state.lineViewAutoOpenEnabled;
+      localStorage.setItem(
+        "metromark_line_view_auto_open",
+        state.lineViewAutoOpenEnabled ? "true" : "false"
+      );
+      renderUserStatus();
+      const status = state.lineViewAutoOpenEnabled ? "enabled" : "disabled";
+      setStatus(`Line view auto-open ${status} for desktop`, "ok");
+    });
+  }
+
   if (els.lineViewReturnBtn) {
     els.lineViewReturnBtn.addEventListener("click", () => {
       if (typeof closeLineView !== 'undefined') {
@@ -332,6 +345,13 @@ async function init() {
     await waitForMapReady();
 
     const city = selectedCityPreset();
+
+    // Load reviews for the initial city
+    if (state.initialCitySlug) {
+      loadReviewsForCity(state.initialCitySlug).catch((err) => {
+        console.warn("Failed to load initial reviews:", err);
+      });
+    }
 
     let initialTriggered = false;
     const triggerInitialLoad = () => {

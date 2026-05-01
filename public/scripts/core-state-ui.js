@@ -185,6 +185,7 @@ const state = {
   lineViewOpen: false,
   lineViewLineKey: "",
   lineViewReturn: null,
+  lineViewAutoOpenEnabled: localStorage.getItem("metromark_line_view_auto_open") !== "false", // Default to true
   userStatusPinnedKind: "",
   clearRouteProgressConfirmLineKey: "",
   clearRouteProgressConfirmTimeoutId: null,
@@ -215,7 +216,9 @@ const state = {
     deferred: 0,
     failed: 0,
     successful: 0
-  }
+  },
+  routeReviewsByCity: new Map(),
+  agencyReviewsByCity: new Map()
 };
 
 const els = {
@@ -238,6 +241,7 @@ const els = {
   mobileDrawerTab: document.getElementById("mobileDrawerTab"),
   routeSelectPanel: document.getElementById("routeSelectPanel"),
   lineViewBtn: document.getElementById("lineViewBtn"),
+  toggleLineViewAutoBtn: document.getElementById("toggleLineViewAutoBtn"),
   lineViewPanel: document.getElementById("lineViewPanel"),
   lineViewReturnBtn: document.getElementById("lineViewReturnBtn"),
   lineViewMapBtn: document.getElementById("lineViewMapBtn"),
@@ -476,6 +480,14 @@ function renderUserStatus() {
     els.lineViewBtn.disabled = !hasLine;
     els.lineViewBtn.classList.toggle("is-active", state.lineViewOpen);
     els.lineViewBtn.setAttribute("aria-pressed", state.lineViewOpen ? "true" : "false");
+  }
+
+  if (els.toggleLineViewAutoBtn) {
+    const hasLine = Boolean(state.focusedLineKey);
+    els.toggleLineViewAutoBtn.hidden = !hasLine;
+    els.toggleLineViewAutoBtn.disabled = !hasLine;
+    els.toggleLineViewAutoBtn.classList.toggle("is-active", state.lineViewAutoOpenEnabled);
+    els.toggleLineViewAutoBtn.setAttribute("aria-pressed", state.lineViewAutoOpenEnabled ? "true" : "false");
   }
 
   if (els.deselectRouteBtn) {
@@ -797,6 +809,8 @@ function createLineConnector(lineColor) {
 
   // Calculate positions of each stop dot relative to the stop-list container
   const containerRect = els.lineViewStops.getBoundingClientRect();
+  const scrollTop = els.lineViewStops.scrollTop;
+  const scrollLeft = els.lineViewStops.scrollLeft;
   const dotPositions = stopRows.map((row) => {
     const dot = row.querySelector(".line-view-stop-dot");
     if (!dot) {
@@ -804,10 +818,10 @@ function createLineConnector(lineColor) {
     }
 
     const dotRect = dot.getBoundingClientRect();
-    
-    // Calculate relative position from container
-    const relativeY = dotRect.top - containerRect.top + dotRect.height / 2;
-    const relativeX = dotRect.left - containerRect.left + dotRect.width / 2;
+
+    // Convert viewport coordinates back into the scrollable content space.
+    const relativeY = dotRect.top - containerRect.top + scrollTop + dotRect.height / 2;
+    const relativeX = dotRect.left - containerRect.left + scrollLeft + dotRect.width / 2;
     
     return {
       y: relativeY,
@@ -822,21 +836,22 @@ function createLineConnector(lineColor) {
   }
 
   // Get the full height and width
-  const maxY = Math.max(...validPositions.map(p => p.y));
+  const maxY = Math.max(...validPositions.map((p) => p.y));
   const containerWidth = els.lineViewStops.offsetWidth;
+  const containerHeight = Math.max(els.lineViewStops.scrollHeight, maxY + 20);
 
   // Create SVG element
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.id = "lineViewConnectorSvg";
   
   // Use actual pixel coordinates in viewBox, matching the container dimensions
-  svg.setAttribute("viewBox", `0 0 ${containerWidth} ${maxY + 20}`);
+  svg.setAttribute("viewBox", `0 0 ${containerWidth} ${containerHeight}`);
   svg.setAttribute("preserveAspectRatio", "none");
   svg.style.position = "absolute";
   svg.style.left = "0";
   svg.style.top = "0";
   svg.style.width = "100%";
-  svg.style.height = `${maxY + 20}px`;
+  svg.style.height = `${containerHeight}px`;
   svg.style.pointerEvents = "none";
   svg.style.zIndex = "0";
 
@@ -855,7 +870,7 @@ function createLineConnector(lineColor) {
   path.setAttribute("stroke", lineColor);
   path.setAttribute("stroke-width", "4");
   path.setAttribute("fill", "none");
-  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linecap", "butt");
   path.setAttribute("stroke-linejoin", "round");
   path.setAttribute("opacity", "0.85");
 
@@ -1347,7 +1362,52 @@ function lineIsVisible(line, options = {}) {
     return false;
   }
 
+  // Check problematic geometry review
+  if (!state.showProblematicGeometries && line?.lineKey) {
+    const routeReview = state.routeReviewsByCity.get(line.lineKey);
+    if (routeReview?.problematic_override === true) {
+      return false;
+    }
+  }
+
+  // Check operator allow/deny review
+  if (!state.showPrivateOperators && line?.operatorName) {
+    const agencyReview = state.agencyReviewsByCity.get(line.operatorName);
+    if (agencyReview?.allowed_override === false) {
+      return false;
+    }
+  }
+
   return lineVisibleFromFilters(line, options);
+}
+
+async function loadReviewsForCity(citySlug) {
+  try {
+    const response = await fetch(`/api/transit/reviews?citySlug=${encodeURIComponent(citySlug)}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    const data = await response.json();
+    
+    // Clear existing reviews
+    state.routeReviewsByCity.clear();
+    state.agencyReviewsByCity.clear();
+    
+    // Load route reviews keyed by lineKey
+    if (Array.isArray(data.routeReviews)) {
+      data.routeReviews.forEach((review) => {
+        state.routeReviewsByCity.set(review.line_key, review);
+      });
+    }
+    
+    // Load agency reviews keyed by operatorName
+    if (Array.isArray(data.agencyReviews)) {
+      data.agencyReviews.forEach((review) => {
+        state.agencyReviewsByCity.set(review.operator_name, review);
+      });
+    }
+  } catch (err) {
+    console.warn(`Failed to load reviews for city ${citySlug}:`, err);
+  }
 }
 
 function selectedRouteTypesForFetch() {
@@ -1515,6 +1575,52 @@ function lineSearchText(line) {
   ]
     .map((value) => String(value || "").toLowerCase())
     .join(" ");
+}
+
+function calculateLineSearchScore(line, query) {
+  // query should already be lowercased and trimmed
+  if (!query) return 0;
+  
+  const searchText = lineSearchText(line);
+  if (!searchText.includes(query)) {
+    return -999; // No match
+  }
+  
+  const shortName = String(line.lineShortName || "").toLowerCase();
+  const longName = String(line.lineLongName || "").toLowerCase();
+  const lineName = String(line.lineName || "").toLowerCase();
+  
+  // Exact match on short name (best)
+  if (shortName === query) return 1000;
+  
+  // Exact match on line name
+  if (lineName === query) return 950;
+  
+  // Exact match on long name
+  if (longName === query) return 900;
+  
+  // Prefix match on short name (very good)
+  if (shortName.startsWith(query)) return 800;
+  
+  // Prefix match on line name
+  if (lineName.startsWith(query)) return 750;
+  
+  // Prefix match on long name
+  if (longName.startsWith(query)) return 700;
+  
+  // Substring match (good)
+  const shortNameIndex = shortName.indexOf(query);
+  if (shortNameIndex !== -1) {
+    // Earlier matches in short name score higher
+    return 500 - shortNameIndex;
+  }
+  
+  // Substring match anywhere else
+  if (searchText.includes(query)) {
+    return 100;
+  }
+  
+  return -999; // Should not reach here
 }
 
 function stopLocationTypeLabel(value) {
@@ -1829,29 +1935,10 @@ function setUserStatusFromStation(properties, extraMessage = "") {
     ? lineProgressMetrics(relatedLineKey, Number(relatedLine.stopCount || 0))
     : null;
 
+  // Simplified status for stations - only show essential info
+  // Stop type and hub info can be shown in advanced info later if needed
   setUserStatus(stationName, `Station on ${lineDescriptor}`, {
-    details: [
-      {
-        label: "Line",
-        value: lineDescriptor
-      },
-      {
-        label: "Operator",
-        value: relatedLine ? lineOperatorLabel(relatedLine) : "Operator unavailable"
-      },
-      {
-        label: "Frequency",
-        value: lineHeadwayLabel(stationHeadwayLine)
-      },
-      {
-        label: "Stop type",
-        value: stopLocationTypeLabel(properties?.stop_location_type)
-      },
-      {
-        label: "Hub",
-        value: `${Number(properties?.hub_member_count || 1)} linked stops`
-      }
-    ],
+    details: [],
     routeLineKey: state.focusedLineKey === relatedLineKey ? relatedLineKey : "",
     progress,
     feedback: extraMessage || ""

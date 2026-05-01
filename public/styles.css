@@ -1099,6 +1099,15 @@ body[data-theme="dark"] .overall-progress-card {
   gap: 6px;
   margin-bottom: 6px;
   font-size: 11px;
+  align-items: start;
+}
+
+.line-progress-color-dot {
+  width: 8px;
+  height: 8px;
+  min-width: 8px;
+  border-radius: 999px;
+  margin-top: 3px;
 }
 
 .line-progress-name {
@@ -1110,6 +1119,7 @@ body[data-theme="dark"] .overall-progress-card {
   text-align: left;
   font: inherit;
   cursor: pointer;
+  grid-column: 1;
 }
 
 .line-progress-name:hover {
@@ -1550,8 +1560,8 @@ body[data-theme="dark"] .route-select-close {
   width: 10px;
   height: 10px;
   border-radius: 999px;
-  border: 2px solid var(--line-color);
-  background: var(--panel);
+  border: 2px solid #d9563a;
+  background: #d9563a;
   margin-top: 2px;
   z-index: 1;
 }
@@ -1863,7 +1873,8 @@ body.app-ready .map-overlay-controls {
     background: var(--shell);
     overflow-y: auto;
     z-index: 12;
-    backdrop-filter: blur(4px);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   body.mobile-panels-open .mobile-drawer-tab {
@@ -1895,11 +1906,22 @@ body.app-ready .map-overlay-controls {
   }
 
   .dropdown-panel {
-    z-index: 24;
+    position: fixed;
+    top: calc(124px + env(safe-area-inset-top));
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: calc(100dvh - 146px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    z-index: 30;
+    background: rgba(254, 254, 252, 0.98);
+    border: 1px solid rgba(17, 42, 61, 0.18);
+    box-shadow: 0 18px 36px rgba(8, 22, 32, 0.24);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .route-select-panel {
-    bottom: 70px;
+    bottom: calc(70px + env(safe-area-inset-bottom));
     left: 10px;
     right: 10px;
   }
@@ -1908,11 +1930,12 @@ body.app-ready .map-overlay-controls {
     position: fixed;
     inset: 0;
     width: 100%;
-    height: 100vh;
-    padding: 10px;
+    height: 100dvh;
+    padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
     z-index: 20;
-    background: var(--shell);
-    backdrop-filter: blur(4px);
+    background: rgba(245, 242, 235, 0.98);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1928,6 +1951,11 @@ body.app-ready .map-overlay-controls {
 @media (max-width: 640px) {
   .sidebar {
     padding: 10px;
+  }
+
+  .dropdown-panel {
+    top: calc(116px + env(safe-area-inset-top));
+    max-height: calc(100dvh - 132px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   }
 
   .sidebar-head h1 {

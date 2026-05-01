@@ -261,7 +261,7 @@ function initializeMap() {
       source: "focus-mask",
       paint: {
         "fill-color": "#1f262d",
-        "fill-opacity": ["case", ["==", ["get", "active"], 1], 0.48, 0]
+        "fill-opacity": ["case", ["==", ["get", "active"], 1], 0.65, 0]
       }
     });
 
@@ -406,7 +406,7 @@ function initializeMap() {
         "circle-opacity": [
           "case",
           ["==", ["get", "show_all"], 1],
-          0.44,
+          1,
           ["==", ["get", "is_focused"], 1],
           0.94,
           0.32
@@ -414,7 +414,7 @@ function initializeMap() {
         "circle-stroke-opacity": [
           "case",
           ["==", ["get", "show_all"], 1],
-          0.72,
+          1,
           ["==", ["get", "is_focused"], 1],
           1,
           0.45

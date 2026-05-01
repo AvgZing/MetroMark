@@ -156,6 +156,95 @@
   font-size: 13px;
 }
 
+/* Review Settings */
+.review-setting {
+  margin-bottom: 10px;
+}
+
+.review-setting label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.review-setting input[type="checkbox"] {
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.setting-note {
+  margin: 4px 0 0 26px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Operator Review List */
+.operator-review-list {
+  margin-bottom: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.operator-review-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 12px;
+}
+
+.operator-review-item:not(:last-child) {
+  border-bottom: 1px solid rgba(20, 53, 71, 0.1);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+
+.operator-review-item .operator-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.operator-review-toggles {
+  display: flex;
+  gap: 6px;
+}
+
+.operator-toggle-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.operator-toggle-btn:hover {
+  background: rgba(23, 124, 162, 0.1);
+}
+
+.operator-toggle-btn.allowed {
+  background: rgba(31, 107, 47, 0.2);
+  border-color: #1f6b2f;
+  color: #1f6b2f;
+}
+
+.operator-toggle-btn.blocked {
+  background: rgba(157, 34, 34, 0.2);
+  border-color: #9d2222;
+  color: #9d2222;
+}
+
 /* Mobile responsive */
 @media (max-width: 768px) {
   .admin-override-shell {

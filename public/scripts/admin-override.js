@@ -9,9 +9,13 @@ const state = {
   routes: [],
   currentOverride: null,
   selectedLineKey: "",
+  selectedCitySlug: "",
   editedStops: [],
   mapMode: "streets",
-  draggingStopIndex: null
+  draggingStopIndex: null,
+  currentRouteReview: null,
+  operatorReviews: new Map(),
+  cityOperators: new Set()
 };
 
 const els = {
@@ -26,7 +30,9 @@ const els = {
   overrideFrequency: document.getElementById("overrideFrequency"),
   overrideStopsList: document.getElementById("overrideStopsList"),
   saveOverrideBtn: document.getElementById("saveOverrideBtn"),
-  discardOverrideBtn: document.getElementById("discardOverrideBtn")
+  discardOverrideBtn: document.getElementById("discardOverrideBtn"),
+  problematicGeometryCheckbox: document.getElementById("problematicGeometryCheckbox"),
+  operatorReviewList: document.getElementById("operatorReviewList")
 };
 
 async function getAdminKey() {
@@ -137,6 +143,104 @@ function renderRouteSelect() {
   }
 }
 
+async function loadReviews(citySlug) {
+  try {
+    const data = await apiRequest(`/api/transit/reviews?citySlug=${encodeURIComponent(citySlug)}`);
+    
+    // Load route review
+    const routeReviews = Array.isArray(data.routeReviews) ? data.routeReviews : [];
+    state.currentRouteReview = routeReviews.find((r) => r.line_key === state.selectedLineKey) || null;
+    
+    // Load operator reviews
+    state.operatorReviews.clear();
+    const agencyReviews = Array.isArray(data.agencyReviews) ? data.agencyReviews : [];
+    agencyReviews.forEach((review) => {
+      state.operatorReviews.set(review.operator_name, review);
+    });
+    
+    // Collect all operators from the current override to build operator list
+    state.cityOperators.clear();
+    if (state.currentOverride?.payload?.agency) {
+      state.cityOperators.add(state.currentOverride.payload.agency);
+    }
+    // Also add operators from all reviews for this city
+    agencyReviews.forEach((review) => {
+      state.cityOperators.add(review.operator_name);
+    });
+  } catch (err) {
+    console.warn("Failed to load reviews:", err);
+    state.currentRouteReview = null;
+    state.operatorReviews.clear();
+  }
+}
+
+function renderReviews() {
+  // Render problematic geometry checkbox
+  if (els.problematicGeometryCheckbox) {
+    els.problematicGeometryCheckbox.checked = state.currentRouteReview?.problematic_override === true;
+  }
+
+  // Render operator list
+  if (els.operatorReviewList) {
+    if (state.cityOperators.size === 0) {
+      els.operatorReviewList.innerHTML = '<p class="microcopy">No operators for this city yet.</p>';
+      return;
+    }
+
+    els.operatorReviewList.innerHTML = "";
+    const sortedOperators = Array.from(state.cityOperators).sort();
+    
+    sortedOperators.forEach((operatorName) => {
+      const review = state.operatorReviews.get(operatorName);
+      const allowedOverride = review?.allowed_override;
+      
+      const item = document.createElement("div");
+      item.className = "operator-review-item";
+      
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "operator-name";
+      nameSpan.textContent = operatorName;
+      
+      const togglesDiv = document.createElement("div");
+      togglesDiv.className = "operator-review-toggles";
+      
+      // Allow button
+      const allowBtn = document.createElement("button");
+      allowBtn.type = "button";
+      allowBtn.className = "operator-toggle-btn";
+      if (allowedOverride === true) {
+        allowBtn.classList.add("allowed");
+      }
+      allowBtn.textContent = allowedOverride === true ? "✓" : "•";
+      allowBtn.title = "Allow operator";
+      allowBtn.addEventListener("click", () => {
+        const newState = allowedOverride === true ? null : true;
+        state.operatorReviews.set(operatorName, { operator_name: operatorName, allowed_override: newState });
+        renderReviews();
+      });
+      
+      // Block button
+      const blockBtn = document.createElement("button");
+      blockBtn.type = "button";
+      blockBtn.className = "operator-toggle-btn";
+      if (allowedOverride === false) {
+        blockBtn.classList.add("blocked");
+      }
+      blockBtn.textContent = allowedOverride === false ? "✕" : "•";
+      blockBtn.title = "Block operator";
+      blockBtn.addEventListener("click", () => {
+        const newState = allowedOverride === false ? null : false;
+        state.operatorReviews.set(operatorName, { operator_name: operatorName, allowed_override: newState });
+        renderReviews();
+      });
+      
+      togglesDiv.append(allowBtn, blockBtn);
+      item.append(nameSpan, togglesDiv);
+      els.operatorReviewList.appendChild(item);
+    });
+  }
+}
+
 async function selectRoute(lineKey) {
   if (!lineKey) {
     state.selectedLineKey = "";
@@ -151,6 +255,7 @@ async function selectRoute(lineKey) {
     const data = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`);
     state.selectedLineKey = lineKey;
     state.currentOverride = data.override || null;
+    state.selectedCitySlug = state.currentOverride?.city_slug || "";
     
     if (state.currentOverride && state.currentOverride.payload) {
       const payload = state.currentOverride.payload;
@@ -166,7 +271,13 @@ async function selectRoute(lineKey) {
       state.editedStops = [];
     }
 
+    // Load reviews for this city
+    if (state.selectedCitySlug) {
+      await loadReviews(state.selectedCitySlug);
+    }
+
     renderStopsList();
+    renderReviews();
     els.overrideEditPanel.hidden = false;
     setStatus(`Editing: ${lineKey}`);
   } catch (err) {
@@ -258,7 +369,34 @@ async function saveOverride() {
       }
     });
 
-    setStatus("✓ Override saved successfully");
+    // Save problematic geometry review
+    const problematicOverride = els.problematicGeometryCheckbox?.checked === true ? true : false;
+    await apiRequest("/api/admin/reviews/route", {
+      method: "POST",
+      body: {
+        lineKey: state.selectedLineKey,
+        citySlug: state.selectedCitySlug,
+        problematicOverride
+      }
+    }).catch((err) => console.warn("Failed to save route review:", err));
+
+    // Save operator allow/deny reviews
+    const agencyReviewsToSave = Array.from(state.operatorReviews.values()).filter(
+      (review) => review.allowed_override !== null
+    );
+    
+    for (const agencyReview of agencyReviewsToSave) {
+      await apiRequest("/api/admin/reviews/agencies", {
+        method: "POST",
+        body: {
+          citySlug: state.selectedCitySlug,
+          operatorName: agencyReview.operator_name,
+          allowedOverride: agencyReview.allowed_override
+        }
+      }).catch((err) => console.warn(`Failed to save agency review for ${agencyReview.operator_name}:`, err));
+    }
+
+    setStatus("✓ Override and reviews saved successfully");
     state.currentOverride = result.override;
     await loadRoutes();
   } catch (err) {

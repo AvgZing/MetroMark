@@ -2,19 +2,30 @@
   const query = String(state.lineSearchQuery || "").trim().toLowerCase();
   const ignoreFrequency = Boolean(options.ignoreFrequency);
   const ignoreSearch = options.ignoreSearch === undefined ? true : Boolean(options.ignoreSearch);
+  const hasQuery = Boolean(query) && !ignoreSearch;
 
   const filtered = state.lineSummaries.filter((line) => {
     if (!lineIsVisible(line, { ignoreFrequency })) {
       return false;
     }
 
-    if (!ignoreSearch && query && !lineSearchText(line).includes(query)) {
+    if (hasQuery && !lineSearchText(line).includes(query)) {
       return false;
     }
     return true;
   });
 
   filtered.sort((a, b) => {
+    // If there's a search query, prioritize search score first
+    if (hasQuery) {
+      const scoreA = calculateLineSearchScore(a, query);
+      const scoreB = calculateLineSearchScore(b, query);
+      if (scoreA !== scoreB) {
+        return scoreB - scoreA; // Higher score first
+      }
+    }
+
+    // Fall back to tier sorting
     const tierDiff = lineSortWeight(a) - lineSortWeight(b);
     if (tierDiff !== 0) {
       return tierDiff;
@@ -47,6 +58,16 @@ function getRouteListLines() {
   });
 
   listed.sort((a, b) => {
+    // If there's a search query, prioritize search score first
+    if (hasQuery) {
+      const scoreA = calculateLineSearchScore(a, query);
+      const scoreB = calculateLineSearchScore(b, query);
+      if (scoreA !== scoreB) {
+        return scoreB - scoreA; // Higher score first
+      }
+    }
+
+    // Fall back to tier sorting
     const tierDiff = lineSortWeight(a) - lineSortWeight(b);
     if (tierDiff !== 0) {
       return tierDiff;
@@ -281,6 +302,15 @@ function renderProgress() {
     const wrapper = document.createElement("div");
     wrapper.className = "line-progress-row";
 
+    // Get the line to access its color
+    const line = state.lineSummaries.find((l) => l.lineKey === row.lineKey);
+    const lineColor = line?.color || "#177ca2";
+
+    // Create color dot
+    const colorDot = document.createElement("div");
+    colorDot.className = "line-progress-color-dot";
+    colorDot.style.backgroundColor = lineColor;
+
     const label = document.createElement("button");
     label.type = "button";
     label.className = "line-progress-name";
@@ -302,11 +332,14 @@ function renderProgress() {
 
     const fill = document.createElement("div");
     fill.className = "progress-fill";
+    fill.style.backgroundColor = lineColor; // Also color the progress fill
 
     const linePercent = row.total ? Math.round((row.visited / row.total) * 100) : 0;
     fill.style.width = `${linePercent}%`;
 
     meter.append(fill);
+
+    wrapper.append(colorDot, label);
     const percentLabel = document.createElement("span");
     percentLabel.textContent = `${linePercent}%`;
 
@@ -813,6 +846,9 @@ async function setFocusedLine(lineKey, options = {}) {
   // If line view is open, update the line shown in line view to match focused line
   if (state.lineViewOpen) {
     state.lineViewLineKey = normalizedLineKey;
+  } else if (state.lineViewAutoOpenEnabled && !isPortraitMobileLayout()) {
+    // Auto-open line view on desktop if enabled
+    await openLineView(normalizedLineKey);
   }
   
   setUserStatusFromLine(line);
