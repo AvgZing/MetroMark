@@ -1,12 +1,12 @@
-const ADMIN_STORAGE_KEY = "metromark_admin_key";
-const OVERRIDE_STORAGE_KEY = "metromark_admin_override_key";
+const SESSION_KEY = "metromark_admin_session_token";
 
 const state = {
-  adminKey: localStorage.getItem(ADMIN_STORAGE_KEY) || "",
-  overrideKey: localStorage.getItem(OVERRIDE_STORAGE_KEY) || "",
+  adminKey: sessionStorage.getItem(SESSION_KEY) || "",
+  overrideKey: "",
   map: null,
   mapReady: false,
   routes: [],
+  currentRouteTransit: null,
   currentOverride: null,
   selectedLineKey: "",
   selectedCitySlug: "",
@@ -22,6 +22,8 @@ const els = {
   overrideMap: document.getElementById("overrideMap"),
   overrideStreetsModeBtn: document.getElementById("overrideStreetsModeBtn"),
   overrideSatelliteModeBtn: document.getElementById("overrideSatelliteModeBtn"),
+  overrideLineKey: document.getElementById("overrideLineKey"),
+  loadOverrideRouteBtn: document.getElementById("loadOverrideRouteBtn"),
   overrideRouteSelect: document.getElementById("overrideRouteSelect"),
   overrideStatus: document.getElementById("overrideStatus"),
   overrideEditPanel: document.getElementById("overrideEditPanel"),
@@ -36,15 +38,14 @@ const els = {
 };
 
 async function getAdminKey() {
-  state.adminKey = String(localStorage.getItem(ADMIN_STORAGE_KEY) || "").trim();
-  state.overrideKey = String(localStorage.getItem(OVERRIDE_STORAGE_KEY) || "").trim();
-  
-  if (!state.adminKey && !state.overrideKey) {
-    setStatus("⚠ No admin key stored. Please authenticate via main admin console first.");
+  state.adminKey = String(sessionStorage.getItem(SESSION_KEY) || "").trim();
+
+  if (!state.adminKey) {
+    setStatus("Please log in at /admin first.");
     return null;
   }
-  
-  return state.overrideKey || state.adminKey;
+
+  return state.adminKey;
 }
 
 function setStatus(message, kind = "neutral") {
@@ -63,7 +64,7 @@ async function apiRequest(path, options = {}) {
     method: options.method || "GET",
     headers: {
       "Content-Type": "application/json",
-      "x-admin-key": key,
+      Authorization: `Bearer ${key}`,
       ...(options.headers || {})
     },
     body: options.body ? JSON.stringify(options.body) : undefined
@@ -92,6 +93,11 @@ function initializeMap() {
   state.map.on("load", () => {
     state.mapReady = true;
     setStatus("Map ready");
+    renderRouteMap();
+  });
+
+  state.map.on("style.load", () => {
+    renderRouteMap();
   });
 
   state.map.on("error", (err) => {
@@ -111,6 +117,162 @@ function initializeMap() {
       state.map.setStyle("https://demotiles.maplibre.org/style.json");
     });
   });
+}
+
+function routeStopsFromTransitPayload(payload) {
+  const features = Array.isArray(payload?.stopsGeoJson?.features) ? payload.stopsGeoJson.features : [];
+  return features.map((feature, index) => {
+    const coords = Array.isArray(feature?.geometry?.coordinates) ? feature.geometry.coordinates : [];
+    const props = feature?.properties || {};
+    return {
+      key: String(props.station_key || props.stop_id || props.source_sample_id || index).trim(),
+      name: String(props.station_name || props.stop_name || "Unnamed Stop").trim(),
+      lat: Number(coords[1]),
+      lon: Number(coords[0])
+    };
+  });
+}
+
+function renderRouteMap() {
+  if (!state.map || !state.mapReady || !state.currentRouteTransit) {
+    return;
+  }
+
+  const routesGeoJson = state.currentRouteTransit.routesGeoJson || { type: "FeatureCollection", features: [] };
+  const stopsGeoJson = state.currentRouteTransit.stopsGeoJson || { type: "FeatureCollection", features: [] };
+
+  const updateSource = (sourceId, data) => {
+    const source = state.map.getSource(sourceId);
+    if (source && typeof source.setData === "function") {
+      source.setData(data);
+      return true;
+    }
+    return false;
+  };
+
+  if (!updateSource("override-route-source", routesGeoJson)) {
+    if (!state.map.getSource("override-route-source")) {
+      state.map.addSource("override-route-source", {
+        type: "geojson",
+        data: routesGeoJson
+      });
+      if (!state.map.getLayer("override-route-line")) {
+        state.map.addLayer({
+          id: "override-route-line",
+          type: "line",
+          source: "override-route-source",
+          paint: {
+            "line-color": "#177ca2",
+            "line-width": 4,
+            "line-opacity": 0.9
+          }
+        });
+      }
+    }
+  }
+
+  if (!updateSource("override-stop-source", stopsGeoJson)) {
+    if (!state.map.getSource("override-stop-source")) {
+      state.map.addSource("override-stop-source", {
+        type: "geojson",
+        data: stopsGeoJson
+      });
+      if (!state.map.getLayer("override-stop-circles")) {
+        state.map.addLayer({
+          id: "override-stop-circles",
+          type: "circle",
+          source: "override-stop-source",
+          paint: {
+            "circle-radius": 5,
+            "circle-color": "#ffffff",
+            "circle-stroke-color": "#177ca2",
+            "circle-stroke-width": 2
+          }
+        });
+      }
+    }
+  }
+
+  const routeFeatures = Array.isArray(routesGeoJson.features) ? routesGeoJson.features : [];
+  const bounds = new maplibregl.LngLatBounds();
+  let hasBounds = false;
+
+  for (const feature of routeFeatures) {
+    const geometry = feature?.geometry;
+    if (!geometry || !Array.isArray(geometry.coordinates)) {
+      continue;
+    }
+
+    const walkCoordinates = (coords) => {
+      if (!Array.isArray(coords)) {
+        return;
+      }
+      if (typeof coords[0] === "number" && typeof coords[1] === "number") {
+        bounds.extend(coords);
+        hasBounds = true;
+        return;
+      }
+      coords.forEach(walkCoordinates);
+    };
+
+    walkCoordinates(geometry.coordinates);
+  }
+
+  if (hasBounds) {
+    state.map.fitBounds(bounds, { padding: 70, duration: 250, maxZoom: 14 });
+  }
+}
+
+function syncRouteFieldsFromSelection(lineKey) {
+  if (els.overrideLineKey) {
+    els.overrideLineKey.value = lineKey;
+  }
+  if (els.overrideRouteSelect && els.overrideRouteSelect.value !== lineKey) {
+    els.overrideRouteSelect.value = lineKey;
+  }
+}
+
+async function loadTransitRoute(lineKey) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    throw new Error("lineKey is required.");
+  }
+
+  setStatus("Loading route geometry...");
+  const data = await apiRequest(`/api/transit/route-stops?lineKey=${encodeURIComponent(normalizedLineKey)}`);
+  state.currentRouteTransit = data || null;
+  renderRouteMap();
+  return data;
+}
+
+function replaceEditedStops(nextStops) {
+  state.editedStops = Array.isArray(nextStops) ? nextStops.map((stop, index) => ({
+    key: String(stop?.key || stop?.station_key || stop?.stop_id || `manual-${index}`).trim(),
+    name: String(stop?.name || stop?.station_name || stop?.stop_name || `Stop ${index + 1}`).trim(),
+    lat: Number(stop?.lat),
+    lon: Number(stop?.lon)
+  })) : [];
+}
+
+function addEditedStop() {
+  state.editedStops.push({
+    key: `manual-${Date.now()}-${state.editedStops.length + 1}`,
+    name: `Stop ${state.editedStops.length + 1}`,
+    lat: null,
+    lon: null
+  });
+  renderStopsList();
+}
+
+function moveEditedStop(index, direction) {
+  const targetIndex = index + direction;
+  if (targetIndex < 0 || targetIndex >= state.editedStops.length) {
+    return;
+  }
+
+  const [item] = state.editedStops.splice(index, 1);
+  state.editedStops.splice(targetIndex, 0, item);
+  renderStopsList();
 }
 
 async function loadRoutes() {
@@ -245,7 +407,9 @@ async function selectRoute(lineKey) {
   if (!lineKey) {
     state.selectedLineKey = "";
     state.currentOverride = null;
+    state.currentRouteTransit = null;
     els.overrideEditPanel.hidden = true;
+    renderRouteMap();
     setStatus("Route deselected");
     return;
   }
@@ -256,19 +420,25 @@ async function selectRoute(lineKey) {
     state.selectedLineKey = lineKey;
     state.currentOverride = data.override || null;
     state.selectedCitySlug = state.currentOverride?.city_slug || "";
+
+    const transitData = await loadTransitRoute(lineKey);
     
     if (state.currentOverride && state.currentOverride.payload) {
       const payload = state.currentOverride.payload;
       els.overrideAgency.value = payload.agency || "";
       els.overrideMode.value = String(payload.mode || "");
       els.overrideFrequency.value = payload.frequency || "";
-      state.editedStops = Array.isArray(payload.stops) ? [...payload.stops] : [];
+      replaceEditedStops(payload.stops);
     } else {
       // No override yet - load base route data if available
       els.overrideAgency.value = "";
       els.overrideMode.value = "";
       els.overrideFrequency.value = "";
-      state.editedStops = [];
+      replaceEditedStops(routeStopsFromTransitPayload(transitData));
+    }
+
+    if (!state.editedStops.length) {
+      replaceEditedStops(routeStopsFromTransitPayload(transitData));
     }
 
     // Load reviews for this city
@@ -276,6 +446,7 @@ async function selectRoute(lineKey) {
       await loadReviews(state.selectedCitySlug);
     }
 
+    syncRouteFieldsFromSelection(lineKey);
     renderStopsList();
     renderReviews();
     els.overrideEditPanel.hidden = false;
@@ -289,6 +460,27 @@ function renderStopsList() {
   if (!els.overrideStopsList) return;
 
   els.overrideStopsList.innerHTML = "";
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "override-stops-toolbar";
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "btn btn-subtle";
+  addBtn.textContent = "Add stop";
+  addBtn.addEventListener("click", addEditedStop);
+
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "btn btn-subtle";
+  resetBtn.textContent = "Reset from route";
+  resetBtn.addEventListener("click", () => {
+    replaceEditedStops(routeStopsFromTransitPayload(state.currentRouteTransit));
+    renderStopsList();
+  });
+
+  toolbar.append(addBtn, resetBtn);
+  els.overrideStopsList.appendChild(toolbar);
 
   state.editedStops.forEach((stop, index) => {
     const item = document.createElement("div");
@@ -311,9 +503,57 @@ function renderStopsList() {
       renderStopsList();
     });
 
-    const name = document.createElement("div");
-    name.className = "override-stop-name";
-    name.textContent = stop.name || `Stop ${index + 1}`;
+    const fields = document.createElement("div");
+    fields.className = "override-stop-fields";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "override-stop-name-input";
+    nameInput.value = stop.name || `Stop ${index + 1}`;
+    nameInput.addEventListener("input", () => {
+      state.editedStops[index].name = String(nameInput.value || "").trim();
+    });
+
+    const latInput = document.createElement("input");
+    latInput.type = "number";
+    latInput.step = "any";
+    latInput.className = "override-stop-coordinate-input";
+    latInput.placeholder = "Lat";
+    latInput.value = Number.isFinite(Number(stop.lat)) ? String(stop.lat) : "";
+    latInput.addEventListener("input", () => {
+      const value = latInput.value === "" ? null : Number(latInput.value);
+      state.editedStops[index].lat = Number.isFinite(value) ? value : null;
+    });
+
+    const lonInput = document.createElement("input");
+    lonInput.type = "number";
+    lonInput.step = "any";
+    lonInput.className = "override-stop-coordinate-input";
+    lonInput.placeholder = "Lon";
+    lonInput.value = Number.isFinite(Number(stop.lon)) ? String(stop.lon) : "";
+    lonInput.addEventListener("input", () => {
+      const value = lonInput.value === "" ? null : Number(lonInput.value);
+      state.editedStops[index].lon = Number.isFinite(value) ? value : null;
+    });
+
+    const orderControls = document.createElement("div");
+    orderControls.className = "override-stop-order-controls";
+
+    const upBtn = document.createElement("button");
+    upBtn.type = "button";
+    upBtn.className = "override-stop-order-btn";
+    upBtn.textContent = "Up";
+    upBtn.disabled = index === 0;
+    upBtn.addEventListener("click", () => moveEditedStop(index, -1));
+
+    const downBtn = document.createElement("button");
+    downBtn.type = "button";
+    downBtn.className = "override-stop-order-btn";
+    downBtn.textContent = "Down";
+    downBtn.disabled = index === state.editedStops.length - 1;
+    downBtn.addEventListener("click", () => moveEditedStop(index, 1));
+
+    orderControls.append(upBtn, downBtn);
 
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "override-stop-delete-btn";
@@ -340,7 +580,8 @@ function renderStopsList() {
       }
     });
 
-    item.append(handle, name, deleteBtn);
+    fields.append(nameInput, latInput, lonInput, orderControls);
+    item.append(handle, fields, deleteBtn);
     els.overrideStopsList.appendChild(item);
   });
 }
@@ -411,8 +652,23 @@ function discardChanges() {
 }
 
 function bindEvents() {
+  els.loadOverrideRouteBtn?.addEventListener("click", () => {
+    const lineKey = String(els.overrideLineKey?.value || "").trim();
+    if (!lineKey) {
+      setStatus("Enter a route lineKey first.", "error");
+      return;
+    }
+    selectRoute(lineKey).catch((err) => {
+      setStatus(`⚠ Failed to load route: ${err.message}`, "error");
+    });
+  });
+
   els.overrideRouteSelect?.addEventListener("change", (e) => {
-    selectRoute(String(e.target.value || "").trim());
+    const lineKey = String(e.target.value || "").trim();
+    if (els.overrideLineKey) {
+      els.overrideLineKey.value = lineKey;
+    }
+    selectRoute(lineKey);
   });
 
   els.saveOverrideBtn?.addEventListener("click", saveOverride);
@@ -424,6 +680,15 @@ async function init() {
     const key = await getAdminKey();
     if (!key) {
       setStatus("Please authenticate at /admin first", "error");
+      return;
+    }
+
+    try {
+      await apiRequest("/api/admin/session");
+    } catch {
+      sessionStorage.removeItem(SESSION_KEY);
+      state.adminKey = "";
+      setStatus("Admin session expired. Log in again at /admin.", "error");
       return;
     }
 

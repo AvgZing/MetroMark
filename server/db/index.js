@@ -574,11 +574,18 @@ async function getRouteGeometryLod(lineKey, zoomLevel, options = {}) {
     ? [normalizedLineKey, Math.round(numericZoom), bbox[0], bbox[1], bbox[2], bbox[3]]
     : [normalizedLineKey, Math.round(numericZoom)];
 
+  // Prefer the highest stored zoom_level that is <= requested zoomLevel
+  const whereClause = bbox
+    ? `where line_key = $1 and zoom_level <= $2`
+    : `where line_key = $1 and zoom_level <= $2`;
+
+  const orderClause = `order by zoom_level desc limit 1`;
+
   const { rows } = await localQuery(
     `select line_key, zoom_level, source_hash, updated_at, ${selectColumns}
      from public.route_geometry_lod
-     where line_key = $1 and zoom_level = $2
-     limit 1`,
+     ${whereClause}
+     ${orderClause}`,
     params
   );
 
@@ -594,6 +601,48 @@ async function getRouteGeometryLod(lineKey, zoomLevel, options = {}) {
     sourceHash: normalizeText(row.source_hash),
     updatedAt: toEpochSeconds(row.updated_at),
     geometry
+  };
+}
+
+async function getFractionOnRoute(lineKey, lon, lat, options = {}) {
+  assertLocalConfigured();
+
+  const normalizedLineKey = normalizeText(lineKey);
+  const zg = Number.isFinite(Number(options.zoom)) ? Number(options.zoom) : null;
+  const numericLon = Number(lon);
+  const numericLat = Number(lat);
+
+  if (!normalizedLineKey || !Number.isFinite(numericLon) || !Number.isFinite(numericLat)) {
+    return null;
+  }
+
+  const params = zg !== null ? [normalizedLineKey, Math.round(zg), numericLon, numericLat] : [normalizedLineKey, 1000, numericLon, numericLat];
+
+  // Select the best available geometry (highest zoom_level <= requested zoom)
+  // and compute ST_LineLocatePoint fraction for the provided point.
+  const sql = `select
+      line_key,
+      zoom_level,
+      source_hash,
+      updated_at,
+      ST_LineLocatePoint(ST_LineMerge(geometry), ST_SetSRID(ST_MakePoint($3, $4), 4326)) as fraction
+    from public.route_geometry_lod
+    where line_key = $1 and zoom_level <= $2
+    order by zoom_level desc
+    limit 1`;
+
+  const result = await localQuery(sql, params);
+  const row = result.rows?.[0] || null;
+  if (!row || row.fraction === null || row.fraction === undefined) {
+    return null;
+  }
+
+  return {
+    lineKey: normalizeText(row.line_key),
+    zoomLevel: Number(row.zoom_level),
+    sourceHash: normalizeText(row.source_hash),
+    updatedAt: toEpochSeconds(row.updated_at),
+    fraction: Number(row.fraction)
   };
 }
 
@@ -1527,6 +1576,7 @@ module.exports = {
   setCache,
   getRouteGeometryLod,
   upsertRouteGeometryLod,
+  getFractionOnRoute,
   clearCacheByPrefix,
   getCacheStats,
   getAccountStats,

@@ -145,6 +145,40 @@ router.get("/transit/route-headway", async (req, res) => {
   }
 });
 
+router.post("/transit/stop-fractions", async (req, res) => {
+  const lineKey = String(req.body?.lineKey || "").trim();
+  const stops = Array.isArray(req.body?.stops) ? req.body.stops : [];
+  const zoom = req.body?.zoom !== undefined ? Number(req.body.zoom) : null;
+
+  if (!lineKey) {
+    return res.status(400).json({ error: "lineKey is required in body." });
+  }
+
+  if (!stops.length) {
+    return res.status(400).json({ error: "stops array is required in body." });
+  }
+
+  try {
+    const results = [];
+    for (const stop of stops) {
+      const id = stop?.id || null;
+      const lat = Number(stop?.lat);
+      const lon = Number(stop?.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        results.push({ id, fraction: null });
+        continue;
+      }
+
+      const resRow = await db.getFractionOnRoute(lineKey, lon, lat, { zoom });
+      results.push({ id, fraction: resRow ? resRow.fraction : null });
+    }
+
+    return res.json(withTransitlandMetrics({ lineKey, results }));
+  } catch (err) {
+    return res.status(500).json({ error: "Unable to compute stop fractions.", detail: err.message });
+  }
+});
+
 router.get("/transit/reviews", async (req, res) => {
   const citySlug = String(req.query.citySlug || "").trim();
   if (!citySlug) {

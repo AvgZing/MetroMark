@@ -13,33 +13,45 @@
     <link rel="stylesheet" href="/admin.css" />
   </head>
   <body>
-    <main class="admin-shell">
+    <main class="admin-shell" id="adminLoginShell">
+      <section class="card auth-card">
+        <h2>Admin Login</h2>
+        <p class="subtle">Use the env-backed admin credentials to unlock the console for this session.</p>
+        <label for="adminKeyInput">Username</label>
+        <div class="row">
+          <input id="adminKeyInput" type="text" placeholder="Admin username" autocomplete="username" />
+        </div>
+        <label for="overrideKeyInput">Password</label>
+        <div class="row">
+          <input
+            id="overrideKeyInput"
+            type="password"
+            placeholder="Admin password"
+            autocomplete="current-password"
+          />
+          <button id="saveKeyBtn" type="button">Login</button>
+        </div>
+        <p id="loginStatusMessage" class="status">Waiting for login.</p>
+      </section>
+    </main>
+
+    <main class="admin-shell" id="adminApp" hidden>
       <header class="admin-header card">
         <div>
           <p class="kicker">MetroMark Operations</p>
           <h1>Admin Console</h1>
           <p class="subtle">Supabase/PostGIS runtime tracking and manual operations.</p>
+          <p class="subtle"><a href="/admin/override">Open manual override editor</a></p>
         </div>
       </header>
 
       <section class="card auth-card">
-        <h2>Admin Access</h2>
-        <label for="adminKeyInput">Stats/Actions x-admin-key</label>
+        <h2>Session</h2>
         <div class="row">
-          <input id="adminKeyInput" type="password" placeholder="Paste admin key" autocomplete="off" />
-        </div>
-        <label for="overrideKeyInput">Override x-admin-key (optional)</label>
-        <div class="row">
-          <input
-            id="overrideKeyInput"
-            type="password"
-            placeholder="Leave blank to reuse stats key"
-            autocomplete="off"
-          />
-          <button id="saveKeyBtn" type="button">Save Key</button>
           <button id="refreshAllBtn" type="button">Refresh</button>
+          <button id="logoutBtn" type="button">Logout</button>
         </div>
-        <p id="statusMessage" class="status">Waiting for key.</p>
+        <p id="statusMessage" class="status">Ready.</p>
       </section>
 
       <section class="grid">

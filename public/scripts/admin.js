@@ -1,12 +1,14 @@
-const STORAGE_KEY = "metromark_admin_key";
-const OVERRIDE_STORAGE_KEY = "metromark_admin_override_key";
+const SESSION_KEY = "metromark_admin_session_token";
 
 const els = {
   adminKeyInput: document.getElementById("adminKeyInput"),
   overrideKeyInput: document.getElementById("overrideKeyInput"),
   saveKeyBtn: document.getElementById("saveKeyBtn"),
   refreshAllBtn: document.getElementById("refreshAllBtn"),
+  logoutBtn: document.getElementById("logoutBtn"),
   statusMessage: document.getElementById("statusMessage"),
+  adminLoginShell: document.getElementById("adminLoginShell"),
+  adminApp: document.getElementById("adminApp"),
   usageStats: document.getElementById("usageStats"),
   harvestStats: document.getElementById("harvestStats"),
   storageStats: document.getElementById("storageStats"),
@@ -34,12 +36,31 @@ const els = {
 };
 
 const state = {
-  adminKey: localStorage.getItem(STORAGE_KEY) || "",
-  overrideKey: localStorage.getItem(OVERRIDE_STORAGE_KEY) || "",
+  adminKey: sessionStorage.getItem(SESSION_KEY) || "",
+  overrideKey: "",
   refreshTimer: null,
 };
 
+function setAdminSession(token) {
+  state.adminKey = String(token || "").trim();
+  if (state.adminKey) {
+    sessionStorage.setItem(SESSION_KEY, state.adminKey);
+  } else {
+    sessionStorage.removeItem(SESSION_KEY);
+  }
+}
+
+function clearAdminSession() {
+  setAdminSession("");
+}
+
 function setAdminLocked(locked) {
+  if (els.adminLoginShell) {
+    els.adminLoginShell.hidden = !locked;
+  }
+  if (els.adminApp) {
+    els.adminApp.hidden = locked;
+  }
   document.body.classList.toggle("admin-locked", Boolean(locked));
 }
 
@@ -64,7 +85,7 @@ async function apiRequest(path, options = {}) {
     method: options.method || "GET",
     headers: {
       "Content-Type": "application/json",
-      "x-admin-key": requestKey,
+      ...(requestKey ? { Authorization: `Bearer ${requestKey}` } : {}),
       ...(options.headers || {}),
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
@@ -283,7 +304,7 @@ async function refreshCities() {
 async function refreshAll() {
   if (!state.adminKey) {
     setAdminLocked(true);
-    setStatus("Set admin key first.", true);
+    setStatus("Log in first.", true);
     return;
   }
 
@@ -313,7 +334,7 @@ function startPolling() {
 
 async function runAction(label, requestFactory) {
   if (!state.adminKey) {
-    setStatus("Set admin key first.", true);
+    setStatus("Log in first.", true);
     return;
   }
 
@@ -331,18 +352,36 @@ async function runAction(label, requestFactory) {
 
 function bindEvents() {
   els.saveKeyBtn.addEventListener("click", () => {
-    state.adminKey = String(els.adminKeyInput.value || "").trim();
-    state.overrideKey = String(els.overrideKeyInput.value || "").trim();
-    localStorage.setItem(STORAGE_KEY, state.adminKey);
-    if (state.overrideKey) {
-      localStorage.setItem(OVERRIDE_STORAGE_KEY, state.overrideKey);
-    } else {
-      localStorage.removeItem(OVERRIDE_STORAGE_KEY);
+    const username = String(els.adminKeyInput.value || "").trim();
+    const password = String(els.overrideKeyInput.value || "");
+
+    if (!username || !password) {
+      setStatus("Username and password are required.", true);
+      return;
     }
-    setAdminLocked(true);
-    setStatus(state.adminKey ? "Admin key(s) saved." : "Admin key cleared.");
-    refreshAll().catch(() => {});
+
+    apiRequest("/api/admin/login", {
+      method: "POST",
+      body: { username, password }
+    }).then((result) => {
+      setAdminSession(result.token || "");
+      setAdminLocked(false);
+      setStatus("Logged in.");
+      refreshAll().catch(() => {});
+    }).catch((error) => {
+      clearAdminSession();
+      setStatus(error.message, true);
+    });
   });
+
+  if (els.logoutBtn) {
+    els.logoutBtn.addEventListener("click", () => {
+      apiRequest("/api/admin/logout", { method: "POST" }).catch(() => {});
+      clearAdminSession();
+      setAdminLocked(true);
+      setStatus("Logged out.");
+    });
+  }
 
   els.refreshAllBtn.addEventListener("click", () => {
     refreshAll().catch(() => {});
@@ -382,11 +421,9 @@ function bindEvents() {
       return;
     }
 
-    const overrideAdminKey = String(
-      state.overrideKey || state.adminKey || "",
-    ).trim();
+    const overrideAdminKey = String(state.adminKey || "").trim();
     if (!overrideAdminKey) {
-      setStatus("Set an admin key before applying overrides.", true);
+      setStatus("Login before applying overrides.", true);
       return;
     }
 
@@ -420,7 +457,7 @@ function bindEvents() {
   els.loadRouteBtn.addEventListener("click", async () => {
     const lineKey = String(els.routeLineKey.value || "").trim();
     if (!lineKey) return setStatus("lineKey is required to load.", true);
-    const adminKey = String(state.overrideKey || state.adminKey || "").trim();
+    const adminKey = String(state.adminKey || "").trim();
     try {
       setStatus("Loading route override...");
       const payload = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "GET", adminKey });
@@ -441,7 +478,7 @@ function bindEvents() {
   els.saveRouteBtn.addEventListener("click", async () => {
     const lineKey = String(els.routeLineKey.value || "").trim();
     if (!lineKey) return setStatus("lineKey is required to save.", true);
-    const adminKey = String(state.overrideKey || state.adminKey || "").trim();
+    const adminKey = String(state.adminKey || "").trim();
     let parsed = null;
     try {
       parsed = JSON.parse(String(els.routePayload.value || "{}"));
@@ -465,7 +502,7 @@ function bindEvents() {
   els.deleteRouteBtn.addEventListener("click", async () => {
     const lineKey = String(els.routeLineKey.value || "").trim();
     if (!lineKey) return setStatus("lineKey is required to delete.", true);
-    const adminKey = String(state.overrideKey || state.adminKey || "").trim();
+    const adminKey = String(state.adminKey || "").trim();
     try {
       setStatus("Deleting route override...");
       const result = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "DELETE", adminKey });
@@ -480,20 +517,26 @@ function bindEvents() {
 }
 
 async function init() {
-  els.adminKeyInput.value = state.adminKey;
-  els.overrideKeyInput.value = state.overrideKey;
+  els.adminKeyInput.value = "";
+  els.overrideKeyInput.value = "";
   bindEvents();
   await refreshCities();
 
-  setAdminLocked(true);
-
-  if (!state.adminKey) {
-    setStatus("Set admin key first.", true);
-    return;
+  if (state.adminKey) {
+    try {
+      await apiRequest("/api/admin/session");
+      setAdminLocked(false);
+      setStatus("Logged in.");
+      await refreshAll();
+      startPolling();
+      return;
+    } catch {
+      clearAdminSession();
+    }
   }
 
-  await refreshAll();
-  startPolling();
+  setAdminLocked(true);
+  setStatus("Log in to access the admin console.");
 }
 
 init().catch((error) => {

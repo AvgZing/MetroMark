@@ -1188,7 +1188,7 @@ function createLineConnector(lineColor) {
   els.lineViewStops.insertBefore(svg, els.lineViewStops.firstChild);
 }
 
-function renderLineViewStops(lineKey, lineColor) {
+async function renderLineViewStops(lineKey, lineColor) {
   if (!els.lineViewStops) {
     return;
   }
@@ -1208,9 +1208,69 @@ function renderLineViewStops(lineKey, lineColor) {
     return;
   }
 
+  // Add simple reverse toggle control
+  let controlBar = els.lineViewStops.querySelector('.line-view-controls');
+  if (!controlBar) {
+    controlBar = document.createElement('div');
+    controlBar.className = 'line-view-controls';
+    controlBar.style.display = 'flex';
+    controlBar.style.justifyContent = 'flex-end';
+    controlBar.style.marginBottom = '6px';
+    els.lineViewStops.append(controlBar);
+  }
+
+  let reverseBtn = controlBar.querySelector('.line-view-reverse-btn');
+  if (!reverseBtn) {
+    reverseBtn = document.createElement('button');
+    reverseBtn.type = 'button';
+    reverseBtn.className = 'line-view-reverse-btn';
+    reverseBtn.textContent = state.lineViewReverse ? 'Reverse ▲' : 'Reverse ▼';
+    reverseBtn.addEventListener('click', () => {
+      state.lineViewReverse = !state.lineViewReverse;
+      reverseBtn.textContent = state.lineViewReverse ? 'Reverse ▲' : 'Reverse ▼';
+      // Re-render stops with new order
+      renderLineViewStops(lineKey, lineColor).catch(() => {});
+    });
+    controlBar.append(reverseBtn);
+  } else {
+    reverseBtn.textContent = state.lineViewReverse ? 'Reverse ▲' : 'Reverse ▼';
+  }
+
   const visitedSet = getVisitedSetForLine(lineKey);
 
-  stopFeatures.forEach((feature) => {
+  // Attempt to request server-side linear referencing fractions
+  let orderedFeatures = null;
+  try {
+    const stopsPayload = stopFeatures.map((f) => ({ id: stopKeyForFeature(f), lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] }));
+    const payload = await apiRequest('/api/transit/stop-fractions', {
+      method: 'POST',
+      body: JSON.stringify({ lineKey, stops: stopsPayload, zoom: state.mapZoom || null })
+    }).catch(() => null);
+
+    if (payload && Array.isArray(payload.results)) {
+      const fracById = new Map(payload.results.map((r) => [String(r.id || ''), r.fraction]));
+      const withFrac = stopFeatures.map((f) => ({ feature: f, frac: fracById.get(stopKeyForFeature(f)) }));
+      const hasAny = withFrac.some((w) => Number.isFinite(Number(w.frac)));
+      if (hasAny) {
+        withFrac.sort((a, b) => {
+          const va = Number.isFinite(Number(a.frac)) ? Number(a.frac) : Number.POSITIVE_INFINITY;
+          const vb = Number.isFinite(Number(b.frac)) ? Number(b.frac) : Number.POSITIVE_INFINITY;
+          return va - vb;
+        });
+        orderedFeatures = withFrac.map((w) => w.feature);
+      }
+    }
+  } catch (e) {
+    // ignore server ordering errors and fall back
+    orderedFeatures = null;
+  }
+
+  const featuresToRender = Array.isArray(orderedFeatures) && orderedFeatures.length ? orderedFeatures : stopFeatures;
+  if (state.lineViewReverse) {
+    featuresToRender.reverse();
+  }
+
+  featuresToRender.forEach((feature) => {
     const props = feature?.properties || {};
     const stationName = String(props.station_name || props.stop_name || "Unnamed Station");
     const stationKey = stopKeyForFeature(feature);
@@ -1353,7 +1413,7 @@ function renderLineView() {
     els.lineViewMapBtn.textContent = isMobileLayout ? "Map" : "Zoom";
   }
 
-  renderLineViewStops(lineKey, lineColor);
+  renderLineViewStops(lineKey, lineColor).catch(() => {});
 }
 
 async function openLineView(lineKey) {

@@ -21,11 +21,19 @@
           <div>
             <p class="brand-kicker">Route Override Editor</p>
             <h1>MetroMark Admin</h1>
+            <p class="subtle"><a href="/admin">Back to admin console</a></p>
           </div>
         </div>
 
         <div class="panel override-controls-panel">
           <h2>Edit Mode</h2>
+          <div class="override-mode-selector">
+            <label for="overrideLineKey">Load Route By lineKey</label>
+            <div class="inline-route-loader">
+              <input id="overrideLineKey" type="text" placeholder="route onestop_id / lineKey" />
+              <button id="loadOverrideRouteBtn" type="button">Load</button>
+            </div>
+          </div>
           <div class="override-mode-selector">
             <select id="overrideRouteSelect">
               <option value="">Select a route to edit...</option>
