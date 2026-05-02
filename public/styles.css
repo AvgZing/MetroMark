@@ -132,6 +132,64 @@ body.line-view-open .map-overlay-controls {
   height: 100%;
 }
 
+.map-notice {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.map-loading-badge {
+  position: absolute;
+  z-index: 7;
+  left: 14px;
+  bottom: 14px;
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 20, 30, 0.9);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(5, 15, 22, 0.24);
+  pointer-events: none;
+  font-size: 12px;
+}
+
+.map-loading-badge.hidden {
+  display: none;
+}
+
+.map-notice-card {
+  max-width: min(420px, calc(100vw - 40px));
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(23, 124, 162, 0.22);
+  background: rgba(8, 20, 30, 0.82);
+  color: #f4fbff;
+  box-shadow: 0 20px 48px rgba(5, 15, 22, 0.28);
+  text-align: center;
+  backdrop-filter: blur(10px);
+}
+
+.map-notice-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.map-notice-meta {
+  margin: 6px 0 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(234, 245, 250, 0.86);
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--panel-border);

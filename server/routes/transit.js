@@ -70,6 +70,7 @@ router.get("/transit/bbox", async (req, res) => {
   try {
     const data = await getBboxTransit(bbox, {
       forceRefresh: asBoolean(req.query.refresh),
+      cacheOnly: asBoolean(req.query.cacheOnly),
       zoom: Number.isFinite(zoom) ? zoom : null,
       stopLocationTypes: stopTypes,
       routeTypes,

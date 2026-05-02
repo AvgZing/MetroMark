@@ -2,45 +2,70 @@
   const areaLoadingCount = state.inFlightAreaKeys.size;
   const queuedCount = state.fetchQueue.length;
   const routeStopLoadingCount = state.inFlightLineStopKeys.size;
+  const hasRoutes = state.lineSummaries.length > 0;
+  const visibleAreaCount = state.visibleAreaKeys.size;
+  const hasLoading = areaLoadingCount > 0 || queuedCount > 0 || routeStopLoadingCount > 0;
 
-  if (areaLoadingCount > 0 || queuedCount > 0 || routeStopLoadingCount > 0) {
-    setStatus(
-      "Loading routes for the current map view...",
-      "ok",
-      `${state.lastLoadStats.cached} route tiles cached - ${areaLoadingCount} tiles loading - ${routeStopLoadingCount} routes loading stops - ${Math.max(
-        queuedCount,
-        state.lastLoadStats.deferred
-      )} pending`
-    );
+  if (hasLoading) {
+    if (hasRoutes) {
+      // Routes are visible; show a compact corner badge while loading additional data.
+      showMapLoadingBadge();
+    } else {
+      // No routes visible yet — center placeholder should show Loading...
+      setMapNotice("Loading...", "", "neutral", "center");
+    }
     return;
   }
 
-  if (state.lineSummaries.length > 0) {
+  if (hasRoutes) {
     const focusLabel = state.focusedLineKey ? "Focused route stop view." : "Select a route to load stops.";
-    setStatus(
-      "Routes are ready for this view.",
-      "ok",
-      `${state.activeAreaKeys.size} nearby areas in session cache. ${focusLabel}`
-    );
+    hideMapLoadingBadge();
+    clearMapNotice();
+    setBackendStatus(`${visibleAreaCount} on-screen cached areas visible. ${focusLabel}`);
     return;
   }
 
   if (state.lastLoadStats.failed > 0) {
-    setStatus(
-      "Routes could not be loaded for this area.",
-      "error",
-      `${state.lastLoadStats.failed} area requests failed. Check the backend note below.`
+    setMapNotice(
+      "No stops found",
+      "Reload or check the advanced information panel. Check this map for supported routes: https://www.transit.land/",
+      "error"
+    );
+    setBackendStatus(
+      `Failed to fetch transit for this map area. Reload or check the advanced information panel. ${state.lastLoadStats.failed} area request${state.lastLoadStats.failed === 1 ? "" : "s"} failed.`
     );
     return;
   }
 
-  if (state.lastLoadStats.requested > 0) {
-    setStatus(
-      "No route data was returned for this map area.",
+  if (state.lastLoadStats.requested > 0 && state.lastLoadStats.successful === 0) {
+    if (state.lastLoadStats.failed > 0) {
+      setMapNotice(
+        "Failed to fetch",
+        "Reload or check the advanced information panel.",
+        "error",
+        "center"
+      );
+      setBackendStatus(`Failed to fetch transit for this map area. ${state.lastLoadStats.failed} area request${state.lastLoadStats.failed === 1 ? "" : "s"} failed.`);
+      return;
+    }
+
+    // No routes returned for this area.
+    setMapNotice(
+      "No stops found",
+      "Check this map for supported routes: https://www.transit.land/",
       "error",
-      "Try panning a little or changing zoom level."
+      "center"
     );
+    setBackendStatus(
+      "No routes were returned for this area. Check Transitland for supported routes: https://www.transit.land/"
+    );
+    return;
   }
+
+  // Default guidance when nothing is loading or visible.
+  hideMapLoadingBadge();
+  setMapNotice("Zoom in to see stops", "Pan or zoom the map to load transit.", "neutral", "center");
+  setBackendStatus("Zoomed out. Cached routes will appear once their areas are on screen.");
 }
 
 function queueTileFetches(tileRequests, options = {}) {
@@ -60,6 +85,7 @@ function queueTileFetches(tileRequests, options = {}) {
       cacheKey,
       bbox: request.bbox,
       zoom: request.zoom,
+      cacheOnly: Boolean(options.cacheOnly),
       routeTypes: Array.isArray(request.routeTypes) ? request.routeTypes : [],
       epoch: state.loadEpoch,
       forceRefresh: Boolean(options.forceRefresh)
@@ -110,6 +136,10 @@ async function fetchTile(job) {
       params.set("refresh", "1");
     }
 
+    if (job.cacheOnly) {
+      params.set("cacheOnly", "1");
+    }
+
     if (Array.isArray(job.routeTypes) && job.routeTypes.length) {
       params.set("routeTypes", job.routeTypes.join(","));
     }
@@ -122,15 +152,17 @@ async function fetchTile(job) {
       return;
     }
 
-    cacheAreaPayload(job.cacheKey, payload, payload.cacheStatus || "miss");
+    // Only persist server payloads that include actual transit content or
+    // are cache hits. Avoid overwriting an existing good session cache with
+    // an empty miss (which can happen when requesting cache-only).
+    const hasRoutes = Array.isArray(payload?.lineSummaries) && payload.lineSummaries.length > 0;
+    const isHit = String(payload?.cacheStatus || "").toLowerCase() === "hit";
+    if (hasRoutes || isHit) {
+      cacheAreaPayload(job.cacheKey, payload, payload.cacheStatus || "miss");
+    }
     state.lastLoadStats.successful += 1;
 
-    const previousVisibleKeys = new Set(state.visibleAreaKeys);
-    const hasPendingTiles = state.fetchQueue.length > 0 || state.inFlightAreaKeys.size > 1;
-
     syncActiveAreaKeys({
-      retainVisibleKeys: previousVisibleKeys,
-      mergeRetainedVisibleKeys: hasPendingTiles,
       fallbackToAllCached: false
     });
     rebuildCombinedTransit();
@@ -198,44 +230,26 @@ async function loadVisibleTransit(options = {}) {
   const zoom = state.map.getZoom();
   const rawBbox = mapBoundsToBbox();
   if (!rawBbox) {
-    setStatus(
-      "This view crosses the 180-degree line and cannot be loaded yet.",
-      "error",
-      "Pan away from the dateline and transit will resume loading."
-    );
-    return;
-  }
+    const allCachedKeys = new Set(state.areaCache.keys());
+    if (allCachedKeys.size === 0) {
+      setStatus(
+        "This view crosses the 180-degree line and cannot be loaded yet.",
+        "error",
+        "Pan away from the dateline and transit will resume loading."
+      );
+      return;
+    }
 
-  const modeRouteTypes = selectedRouteTypesForFetch();
-  const requests = viewportRequestsForMode(rawBbox, zoom, modeRouteTypes);
-
-  if (zoom < MIN_VIEWPORT_FETCH_ZOOM) {
-    const cachedInView = visibleCachedAreaKeysForViewport(rawBbox, modeRouteTypes);
-    const cachedNearView = visibleCachedAreaKeysForViewport(expandBbox(rawBbox, 0.05), modeRouteTypes);
-    const fallbackVisible = new Set(
-      Array.from(state.visibleAreaKeys).filter((cacheKey) => state.areaCache.has(cacheKey))
-    );
-
-    state.requestedAreaKeys =
-      cachedInView.size > 0
-        ? cachedInView
-        : cachedNearView.size > 0
-          ? cachedNearView
-          : fallbackVisible;
-
-    trimQueuedFetchesToCurrentView();
-
+    state.requestedAreaKeys = allCachedKeys;
     syncActiveAreaKeys({
-      fallbackToAllCached: false
+      fallbackToAllCached: true
     });
     rebuildCombinedTransit();
     refreshUiFromState();
 
-    const cachedVisible = state.requestedAreaKeys.size;
-
     state.lastLoadStats = {
-      requested: requests.length,
-      cached: cachedVisible,
+      requested: 0,
+      cached: allCachedKeys.size,
       queued: 0,
       deferred: 0,
       failed: 0,
@@ -243,37 +257,37 @@ async function loadVisibleTransit(options = {}) {
     };
 
     setStatus(
-      "Zoomed out. Showing previously loaded nearby routes.",
+      "Zoomed out. Showing all cached routes.",
       "ok",
-      `${cachedVisible} nearby cached areas visible. Zoom in slightly to load additional routes.`
+      `${allCachedKeys.size} cached areas are visible at this zoom.`
     );
 
     setBackendStatus(
-      "Viewport fetch paused at low zoom. Server/client caches are still used for already-loaded in-view tiles."
+      "World/dateline view detected. Using all cached transit data without requesting new tiles."
     );
     return;
   }
+
+  const modeRouteTypes = selectedRouteTypesForFetch();
+  const requests = viewportRequestsForMode(rawBbox, zoom, modeRouteTypes);
+
+  // No low-zoom short-circuit: always generate requests for the full viewport
+  // so that the server can return Postgres-backed cached payloads for any zoom.
 
   const cachedRequestCount = requests.filter((request) => state.areaCache.has(request.areaKey)).length;
   const missingRequests = requests.filter(
     (request) => options.forceRefresh || !state.areaCache.has(request.areaKey)
   );
 
-  const previousVisibleKeys = new Set(state.visibleAreaKeys);
   const cachedInView = visibleCachedAreaKeysForViewport(rawBbox, modeRouteTypes);
-  const cachedNearView = visibleCachedAreaKeysForViewport(expandBbox(rawBbox, 0.05), modeRouteTypes);
-  const retainedCachedKeys = cachedInView.size > 0 ? cachedInView : cachedNearView;
 
   state.requestedAreaKeys = new Set([
     ...requests.map((request) => request.areaKey),
-    ...Array.from(retainedCachedKeys)
+    ...Array.from(cachedInView)
   ]);
   trimQueuedFetchesToCurrentView();
 
   syncActiveAreaKeys({
-    retainVisibleKeys: previousVisibleKeys,
-    mergeRetainedVisibleKeys: missingRequests.length > 0,
-    allowRetainOutsideRequested: missingRequests.length > 0,
     fallbackToAllCached: false
   });
   rebuildCombinedTransit();
@@ -297,33 +311,66 @@ async function loadVisibleTransit(options = {}) {
     successful: 0
   };
 
+  // First, queue cache-only fetches so we always attempt to surface Postgres cached
+  // payloads without triggering Transitland. This satisfies the requirement that
+  // Postgres is queried at all zoom levels.
+  const cacheOnlyBatch = missing.slice(0, MAX_NEW_FETCHES_PER_VIEW);
+  const queuedCacheOnly = queueTileFetches(cacheOnlyBatch, {
+    cacheOnly: true,
+    forceRefresh: Boolean(options.forceRefresh)
+  });
+  state.lastLoadStats.queued = queuedCacheOnly;
+
+  // If we're zoomed in enough, schedule non-cache-only fetches shortly after
+  // to allow cache-only responses to populate the session cache first; this
+  // prevents wiping existing data and avoids unnecessary Transitland calls.
+  if (Number(zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM) {
+    setTimeout(() => {
+      const stillMissing = missing.filter((r) => !state.areaCache.has(r.areaKey));
+      if (!stillMissing.length) return;
+      const nextFull = stillMissing.slice(0, MAX_NEW_FETCHES_PER_VIEW);
+      const queuedFull = queueTileFetches(nextFull, {
+        cacheOnly: false,
+        forceRefresh: Boolean(options.forceRefresh)
+      });
+      state.lastLoadStats.queued += queuedFull;
+    }, 250);
+  }
+
   if (!nextBatch.length) {
-    setStatus(
-      "Showing routes for the current map view.",
-      "ok",
-      `${cached}/${requests.length} nearby areas loaded from session cache. Select a route to load stops.`
-    );
-    setBackendStatus("No network fetch was needed for this view.");
+    if (state.lineSummaries.length > 0) {
+      clearMapNotice();
+      setBackendStatus(`${cached}/${requests.length} on-screen areas loaded from cache. Select a route to load stops.`);
+    } else {
+      setMapNotice(
+        "No stops found",
+        "Check this map for supported routes: https://www.transit.land/",
+        "error"
+      );
+      setBackendStatus(
+        `No routes are visible in this area. Check Transitland for supported routes: https://www.transit.land/`
+      );
+    }
     return;
   }
 
-  const queued = queueTileFetches(nextBatch, {
-    forceRefresh: Boolean(options.forceRefresh)
-  });
 
-  state.lastLoadStats.queued = queued;
-
-  setStatus(
-    "Loading routes for the current map view...",
-    "ok",
-    `${cached} cached - ${queued} loading${
-      state.lastLoadStats.deferred > 0 ? ` - ${state.lastLoadStats.deferred} deferred` : ""
-    }`
-  );
-
-  setBackendStatus(
-    `Route-first mode active. Stops are loaded only on focused routes (location types ${ROUTE_STOP_TYPES_QUERY}).`
-  );
+  if (state.lineSummaries.length > 0) {
+    clearMapNotice();
+    setBackendStatus(
+      `Loading more routes for the current map view... ${cached} cached - ${queued} loading${
+        state.lastLoadStats.deferred > 0 ? ` - ${state.lastLoadStats.deferred} deferred` : ""
+      }`
+    );
+  } else {
+    setMapNotice(
+      "Loading...",
+      `Fetching transit data for this area. ${queued} request${queued === 1 ? "" : "s"} queued.`
+    );
+    setBackendStatus(
+      `Loading transit data for the current map view... Route-first mode active. Stops are loaded only on focused routes (location types ${ROUTE_STOP_TYPES_QUERY}).`
+    );
+  }
 }
 
 function onMapMoveEnd() {

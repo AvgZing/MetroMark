@@ -2278,6 +2278,23 @@ async function getTransitForArea(area, options = {}) {
         stopLocationTypes
       };
     }
+
+    // If caller specifically requested cache-only behavior, return a miss
+    // but do not perform a Transitland fetch. This allows clients to query
+    // for Postgres-backed payloads without triggering Transitland calls.
+    if (options.cacheOnly) {
+      return {
+        payload: {
+          routesGeoJson: { type: "FeatureCollection", features: [] },
+          stopsGeoJson: { type: "FeatureCollection", features: [] },
+          lineSummaries: [],
+          area: { bbox: area.bbox }
+        },
+        cacheStatus: "miss",
+        cacheKey: area.key,
+        stopLocationTypes
+      };
+    }
   }
 
   const { routes, stops, vectorHeadwayMeta } = await fetchRoutesAndStopsForBbox(area.bbox, {

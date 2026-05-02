@@ -548,13 +548,7 @@ function rebuildCombinedTransit() {
     stopCountsByLine.set(lineKey, (stopCountsByLine.get(lineKey) || 0) + 1);
   }
 
-  const allowGlobalFallbackLines = state.requestedAreaKeys.size === 0;
-  const effectiveVisibleLineKeys =
-    visibleLineKeys.size > 0
-      ? visibleLineKeys
-      : allowGlobalFallbackLines
-        ? new Set(Array.from(lineByKeyAll.keys()))
-        : new Set();
+  const effectiveVisibleLineKeys = new Set(visibleLineKeys);
 
   for (const [lineKey, override] of state.manualLineVisibility.entries()) {
     const normalizedOverride = String(override || "").trim().toLowerCase();

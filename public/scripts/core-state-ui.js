@@ -225,6 +225,8 @@ const els = {
   statusText: document.getElementById("statusText"),
   statusMeta: document.getElementById("statusMeta"),
   backendStatusText: document.getElementById("backendStatusText"),
+  mapNotice: document.getElementById("mapNotice"),
+  mapLoadingBadge: document.getElementById("mapLoadingBadge"),
   clearSessionCacheBtn: document.getElementById("clearSessionCacheBtn"),
   lineSearch: document.getElementById("lineSearch"),
   filterPresetsBtn: document.getElementById("filterPresetsBtn"),
@@ -575,7 +577,71 @@ function setStatus(message, kind = "neutral", meta = "") {
 }
 
 function setBackendStatus(message) {
-  els.backendStatusText.textContent = String(message || "");
+  const raw = String(message || "");
+  const escaped = escapeHtml(raw);
+  const linked = escaped.replace(
+    /(https?:\/\/[^\s<]+)/g,
+    (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+  );
+  els.backendStatusText.innerHTML = linked;
+}
+
+function clearMapNotice() {
+  if (!els.mapNotice) {
+    return;
+  }
+
+  els.mapNotice.hidden = true;
+  els.mapNotice.innerHTML = "";
+}
+
+function setMapNotice(title, meta = "", kind = "neutral", placement = "center") {
+  if (!els.mapNotice) {
+    return;
+  }
+
+  const message = String(title || "").trim();
+  const detail = String(meta || "").trim();
+
+  // Corner placement is handled by the small badge element.
+  if (placement === "corner") {
+    if (!message) {
+      hideMapLoadingBadge();
+      return;
+    }
+    // show a compact badge for loading/brief status
+    showMapLoadingBadge();
+    return;
+  }
+
+  // Center placement: show a full map notice card. Errors use error styling;
+  // neutral messages are allowed here when the map has no visible routes.
+  if (!message) {
+    clearMapNotice();
+    return;
+  }
+
+  const className = kind === "error" ? "error" : kind === "ok" ? "ok" : "";
+  els.mapNotice.className = `map-notice${className ? ` ${className}` : ""}`;
+  els.mapNotice.innerHTML = `
+    <div class="map-notice-card">
+      <p class="map-notice-title">${escapeHtml(message)}</p>
+      ${detail ? `<p class="map-notice-meta">${escapeHtml(detail)}</p>` : ""}
+    </div>
+  `;
+  els.mapNotice.hidden = false;
+}
+
+function showMapLoadingBadge() {
+  if (!els.mapLoadingBadge) return;
+  els.mapLoadingBadge.hidden = false;
+  els.mapLoadingBadge.textContent = "⟳";
+}
+
+function hideMapLoadingBadge() {
+  if (!els.mapLoadingBadge) return;
+  els.mapLoadingBadge.hidden = true;
+  els.mapLoadingBadge.textContent = "";
 }
 
 function renderApiCounter() {
@@ -1899,7 +1965,9 @@ function canFetchViewportRoutes() {
     return false;
   }
 
-  return state.map.getZoom() >= MIN_VIEWPORT_FETCH_ZOOM;
+  // Always allow viewport fetches at any zoom level; server will decide
+  // whether to return cached Postgres payloads or to fallback to Transitland.
+  return true;
 }
 
 function areFilterCountsUncertain() {
@@ -2332,6 +2400,19 @@ function restoreUserStatusFromFocus() {
 
   if (!state.focusedLineKey) {
     const shownLines = getShownLines();
+    if (shownLines.length === 0) {
+      setUserStatus("Zoom in to see stops.", "Pan or zoom the map to load transit.", {
+        details: [
+          {
+            label: "Visible Routes",
+            value: "0 Matching Current Filters"
+          }
+        ],
+        feedback: ""
+      });
+      return;
+    }
+
     setUserStatus("No route selected.", "Select a route or station.", {
       details: [
         {

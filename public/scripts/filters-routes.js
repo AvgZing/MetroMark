@@ -1155,6 +1155,9 @@ function refreshUiFromState() {
   renderLineList();
   renderMapData();
   renderProgress();
+  if (typeof updateLoadingStatus === "function") {
+    updateLoadingStatus();
+  }
   if (typeof renderLineView === "function") {
     renderLineView();
   }

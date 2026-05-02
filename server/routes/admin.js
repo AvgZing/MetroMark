@@ -98,14 +98,8 @@ router.get("/admin/session", (req, res) => {
 });
 
 async function isAdminAuthorized(req) {
-  // Allow either a configured admin override key via header or a signed-in Supabase user with admin role.
   const session = getAdminSession(req);
   if (session) {
-    return true;
-  }
-
-  const overrideKey = String(req.headers["x-admin-key"] || "").trim();
-  if (overrideKey && overrideKey === config.ADMIN_OVERRIDE_KEY) {
     return true;
   }
 
@@ -124,28 +118,9 @@ async function isAdminAuthorized(req) {
   return false;
 }
 
-function validateAdminKey(req, res, key) {
-  const session = getAdminSession(req);
-  if (session) {
-    return true;
-  }
-
-  if (!key) {
-    res.status(404).json({ error: "Endpoint is disabled." });
-    return false;
-  }
-
-  const requestKey = String(req.headers["x-admin-key"] || "");
-  if (requestKey !== key) {
-    res.status(403).json({ error: "Invalid admin key." });
-    return false;
-  }
-
-  return true;
-}
-
 router.get("/admin/stats", async (req, res) => {
-  if (!validateAdminKey(req, res, config.ADMIN_STATS_KEY)) {
+  if (!(await isAdminAuthorized(req))) {
+    res.status(403).json({ error: "Admin authorization required." });
     return;
   }
 
@@ -245,7 +220,8 @@ router.get("/admin/stats", async (req, res) => {
 });
 
 router.get("/admin/harvest/queue", async (req, res) => {
-  if (!validateAdminKey(req, res, config.ADMIN_STATS_KEY)) {
+  if (!(await isAdminAuthorized(req))) {
+    res.status(403).json({ error: "Admin authorization required." });
     return;
   }
 
@@ -263,7 +239,8 @@ router.get("/admin/harvest/queue", async (req, res) => {
 });
 
 router.post("/admin/actions/harvest-core", async (req, res) => {
-  if (!validateAdminKey(req, res, config.ADMIN_STATS_KEY)) {
+  if (!(await isAdminAuthorized(req))) {
+    res.status(403).json({ error: "Admin authorization required." });
     return;
   }
 
@@ -279,7 +256,8 @@ router.post("/admin/actions/harvest-core", async (req, res) => {
 });
 
 router.post("/admin/actions/backup-nonrecoverable", async (req, res) => {
-  if (!validateAdminKey(req, res, config.ADMIN_STATS_KEY)) {
+  if (!(await isAdminAuthorized(req))) {
+    res.status(403).json({ error: "Admin authorization required." });
     return;
   }
 
@@ -295,7 +273,8 @@ router.post("/admin/actions/backup-nonrecoverable", async (req, res) => {
 });
 
 router.post("/admin/actions/queue-city/:slug", async (req, res) => {
-  if (!validateAdminKey(req, res, config.ADMIN_STATS_KEY)) {
+  if (!(await isAdminAuthorized(req))) {
+    res.status(403).json({ error: "Admin authorization required." });
     return;
   }
 
@@ -320,7 +299,8 @@ router.post("/admin/actions/queue-city/:slug", async (req, res) => {
 });
 
 router.post("/admin/overrides/station", async (req, res) => {
-  if (!validateAdminKey(req, res, config.ADMIN_OVERRIDE_KEY)) {
+  if (!(await isAdminAuthorized(req))) {
+    res.status(403).json({ error: "Admin authorization required." });
     return;
   }
 
