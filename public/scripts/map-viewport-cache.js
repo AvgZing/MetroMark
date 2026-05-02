@@ -125,20 +125,45 @@ function cacheEntryBbox(cacheKey, entry) {
   return tileToBbox(x, y, zoom);
 }
 
-function visibleCachedAreaKeysForViewport(rawBbox, routeTypes) {
+function geometryIntersectsBbox(geometry, bbox) {
+  if (!geometry || !bbox) {
+    return true;
+  }
+
+  const geometryBbox = {
+    minLng: Infinity,
+    minLat: Infinity,
+    maxLng: -Infinity,
+    maxLat: -Infinity
+  };
+
+  collectCoordsFromGeometry(geometry, geometryBbox);
+
+  if (
+    !Number.isFinite(geometryBbox.minLng) ||
+    !Number.isFinite(geometryBbox.minLat) ||
+    !Number.isFinite(geometryBbox.maxLng) ||
+    !Number.isFinite(geometryBbox.maxLat)
+  ) {
+    return true;
+  }
+
+  return !(
+    geometryBbox.maxLng < bbox[0] ||
+    geometryBbox.minLng > bbox[2] ||
+    geometryBbox.maxLat < bbox[1] ||
+    geometryBbox.minLat > bbox[3]
+  );
+}
+
+function visibleCachedAreaKeysForViewport(rawBbox) {
   const normalizedViewportBbox = normalizeBboxArray(rawBbox);
   if (!normalizedViewportBbox) {
     return new Set();
   }
-
-  const modeSuffix = `:modes:${modeCacheKeyFromRouteTypes(routeTypes)}`;
   const visible = new Set();
 
   for (const [cacheKey, entry] of state.areaCache.entries()) {
-    if (!String(cacheKey).endsWith(modeSuffix)) {
-      continue;
-    }
-
     const cachedBbox = cacheEntryBbox(cacheKey, entry);
     if (!cachedBbox) {
       continue;
@@ -464,7 +489,7 @@ function rebuildCombinedTransit() {
   const routeByLine = new Map();
   const lineByKeyAll = new Map();
   const visibleLineKeys = new Set();
-  const lineCityMap = new Map();
+  const viewportBbox = normalizeBboxArray(state.currentViewportBbox);
 
   for (const cacheKey of state.activeAreaKeys) {
     const payload = state.areaCache.get(cacheKey)?.payload;
@@ -490,17 +515,19 @@ function rebuildCombinedTransit() {
 
       const merged = mergeLineEntries(lineByKeyAll.get(lineKey), line);
       lineByKeyAll.set(lineKey, merged);
-      // remember which city this line came from so manual visibility respects active city
-      try {
-        const citySlug = payload?.city?.slug || "";
-        if (citySlug) {
-          lineCityMap.set(lineKey, String(citySlug || "").trim());
-        }
-      } catch (e) {}
-
       if (state.visibleAreaKeys.has(cacheKey)) {
         visibleLineKeys.add(lineKey);
       }
+    }
+  }
+
+  for (const [lineKey, routeFeature] of routeByLine.entries()) {
+    if (!lineKey || !routeFeature) {
+      continue;
+    }
+
+    if (!viewportBbox || geometryIntersectsBbox(routeFeature.geometry, viewportBbox)) {
+      visibleLineKeys.add(lineKey);
     }
   }
 
@@ -552,10 +579,7 @@ function rebuildCombinedTransit() {
 
   for (const [lineKey, override] of state.manualLineVisibility.entries()) {
     const normalizedOverride = String(override || "").trim().toLowerCase();
-    // Only honor manual overrides for lines that belong to the currently active city
-    const mappedCity = String(lineCityMap.get(lineKey) || "").trim();
-    const activeCity = String(state.initialCitySlug || "").trim();
-    if ((normalizedOverride === "on" || normalizedOverride === "off") && lineByKeyAll.has(lineKey) && mappedCity && mappedCity === activeCity) {
+    if ((normalizedOverride === "on" || normalizedOverride === "off") && lineByKeyAll.has(lineKey)) {
       effectiveVisibleLineKeys.add(lineKey);
     }
   }

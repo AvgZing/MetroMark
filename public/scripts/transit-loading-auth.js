@@ -10,8 +10,10 @@
     if (hasRoutes) {
       // Routes are visible; show a compact corner badge while loading additional data.
       showMapLoadingBadge();
+      clearMapNotice();
     } else {
       // No routes visible yet — center placeholder should show Loading...
+      hideMapLoadingBadge();
       setMapNotice("Loading...", "", "neutral", "center");
     }
     return;
@@ -199,7 +201,7 @@ function drainFetchQueue() {
     while (state.inFlightAreaKeys.size < MAX_PARALLEL_FETCHES && state.fetchQueue.length > 0) {
       const job = state.fetchQueue.shift();
       state.queuedAreaKeys.delete(job.cacheKey);
-
+              `No routes are visible in this area. Check Transitland for supported routes: https://www.transit.land/`
       fetchTile(job)
         .catch(() => {})
         .finally(() => {
@@ -229,6 +231,7 @@ async function loadVisibleTransit(options = {}) {
 
   const zoom = state.map.getZoom();
   const rawBbox = mapBoundsToBbox();
+  state.currentViewportBbox = rawBbox ? [...rawBbox] : null;
   if (!rawBbox) {
     const allCachedKeys = new Set(state.areaCache.keys());
     if (allCachedKeys.size === 0) {
@@ -241,6 +244,7 @@ async function loadVisibleTransit(options = {}) {
     }
 
     state.requestedAreaKeys = allCachedKeys;
+    state.currentViewportBbox = null;
     syncActiveAreaKeys({
       fallbackToAllCached: true
     });
@@ -279,7 +283,7 @@ async function loadVisibleTransit(options = {}) {
     (request) => options.forceRefresh || !state.areaCache.has(request.areaKey)
   );
 
-  const cachedInView = visibleCachedAreaKeysForViewport(rawBbox, modeRouteTypes);
+  const cachedInView = visibleCachedAreaKeysForViewport(rawBbox);
 
   state.requestedAreaKeys = new Set([
     ...requests.map((request) => request.areaKey),
@@ -312,8 +316,7 @@ async function loadVisibleTransit(options = {}) {
   };
 
   // First, queue cache-only fetches so we always attempt to surface Postgres cached
-  // payloads without triggering Transitland. This satisfies the requirement that
-  // Postgres is queried at all zoom levels.
+  // payloads without triggering Transitland.
   const cacheOnlyBatch = missing.slice(0, MAX_NEW_FETCHES_PER_VIEW);
   const queuedCacheOnly = queueTileFetches(cacheOnlyBatch, {
     cacheOnly: true,
@@ -348,24 +351,23 @@ async function loadVisibleTransit(options = {}) {
         "error"
       );
       setBackendStatus(
-        `No routes are visible in this area. Check Transitland for supported routes: https://www.transit.land/`
+        "No routes are visible in this area. Check Transitland for supported routes: https://www.transit.land/"
       );
     }
     return;
   }
 
-
   if (state.lineSummaries.length > 0) {
     clearMapNotice();
     setBackendStatus(
-      `Loading more routes for the current map view... ${cached} cached - ${queued} loading${
+      `Loading more routes for the current map view... ${cached} cached - ${queuedCacheOnly} loading${
         state.lastLoadStats.deferred > 0 ? ` - ${state.lastLoadStats.deferred} deferred` : ""
       }`
     );
   } else {
     setMapNotice(
       "Loading...",
-      `Fetching transit data for this area. ${queued} request${queued === 1 ? "" : "s"} queued.`
+      `Fetching transit data for this area. ${queuedCacheOnly} request${queuedCacheOnly === 1 ? "" : "s"} queued.`
     );
     setBackendStatus(
       `Loading transit data for the current map view... Route-first mode active. Stops are loaded only on focused routes (location types ${ROUTE_STOP_TYPES_QUERY}).`

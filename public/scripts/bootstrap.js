@@ -347,15 +347,6 @@ async function init() {
     await Promise.all([loadCities(), hydrateSession()]);
     await waitForMapReady();
 
-    const city = selectedCityPreset();
-
-    // Load reviews for the initial city
-    if (state.initialCitySlug) {
-      loadReviewsForCity(state.initialCitySlug).catch((err) => {
-        console.warn("Failed to load initial reviews:", err);
-      });
-    }
-
     let initialTriggered = false;
     const triggerInitialLoad = () => {
       if (initialTriggered) {
@@ -368,13 +359,7 @@ async function init() {
       });
     };
 
-    if (city) {
-      state.map.once("moveend", triggerInitialLoad);
-      fitToArea(city);
-    } else {
-      triggerInitialLoad();
-    }
-
+    triggerInitialLoad();
     window.setTimeout(triggerInitialLoad, 1400);
 
     await loadProgress();

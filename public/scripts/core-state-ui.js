@@ -155,6 +155,7 @@ const state = {
   inFlightLineStopKeys: new Set(),
   inFlightHeadwayLineKeys: new Set(),
   requestedAreaKeys: new Set(),
+  currentViewportBbox: null,
   visibleAreaKeys: new Set(),
   activeAreaKeys: new Set(),
   fetchQueue: [],
@@ -583,7 +584,8 @@ function setBackendStatus(message) {
     /(https?:\/\/[^\s<]+)/g,
     (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
   );
-  els.backendStatusText.innerHTML = linked;
+  const zoom = state.map && state.mapReady ? Number(state.map.getZoom()).toFixed(2) : "n/a";
+  els.backendStatusText.innerHTML = `<span class="backend-status-zoom">Current zoom level: ${zoom}</span><br>${linked}`;
 }
 
 function clearMapNotice() {
@@ -1877,13 +1879,10 @@ function modeCacheKeyFromRouteTypes(routeTypes) {
 }
 
 function viewportRequestsForMode(rawBbox, zoom, routeTypes) {
-  const selectedTypes = Array.isArray(routeTypes) ? routeTypes : [];
-  const modeCacheKey = modeCacheKeyFromRouteTypes(selectedTypes);
-
   return buildViewportTileRequests(rawBbox, zoom).map((request) => ({
     ...request,
-    routeTypes: selectedTypes,
-    areaKey: `${request.areaKey}:modes:${modeCacheKey}`
+    routeTypes: [],
+    areaKey: request.areaKey
   }));
 }
 
