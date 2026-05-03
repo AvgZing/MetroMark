@@ -2,7 +2,12 @@
   const areaLoadingCount = state.inFlightAreaKeys.size;
   const queuedCount = state.fetchQueue.length;
   const routeStopLoadingCount = state.inFlightLineStopKeys.size;
-  const hasRoutes = state.lineSummaries.length > 0;
+  const hasRoutes = Array.isArray(state.lineSummaries) && state.lineSummaries.some((line) => {
+    if (typeof lineIsVisible === "function") {
+      return lineIsVisible(line);
+    }
+    return true;
+  });
   const visibleAreaCount = state.visibleAreaKeys.size;
   const hasLoading = areaLoadingCount > 0 || queuedCount > 0 || routeStopLoadingCount > 0;
 
@@ -19,6 +24,7 @@
     return;
   }
 
+  // Not loading at this point
   if (hasRoutes) {
     const focusLabel = state.focusedLineKey ? "Focused route stop view." : "Select a route to load stops.";
     hideMapLoadingBadge();
@@ -28,10 +34,21 @@
   }
 
   if (state.lastLoadStats.failed > 0) {
+    const mapZoom = state.map ? Number(state.map.getZoom()) : 0;
+    if (mapZoom < MIN_VIEWPORT_FETCH_ZOOM) {
+      hideMapLoadingBadge();
+      setMapNotice("Zoom in to see stops", "Pan or zoom the map to load transit.", "neutral", "center");
+      setBackendStatus("Low-zoom Postgres-only lookup encountered request errors. Pan or zoom to retry.");
+      return;
+    }
+
+    const transitlandLink = `Reload or check the advanced information panel. Check <a href="https://www.transit.land/map" target="_blank" rel="noopener noreferrer">this map</a> for supported routes.`;
     setMapNotice(
       "No stops found",
-      "Reload or check the advanced information panel. Check this map for supported routes: https://www.transit.land/",
-      "error"
+      transitlandLink,
+      "error",
+      "center",
+      true
     );
     setBackendStatus(
       `Failed to fetch transit for this map area. Reload or check the advanced information panel. ${state.lastLoadStats.failed} area request${state.lastLoadStats.failed === 1 ? "" : "s"} failed.`
@@ -41,6 +58,14 @@
 
   if (state.lastLoadStats.requested > 0 && state.lastLoadStats.successful === 0) {
     if (state.lastLoadStats.failed > 0) {
+      const mapZoom = state.map ? Number(state.map.getZoom()) : 0;
+      if (mapZoom < MIN_VIEWPORT_FETCH_ZOOM) {
+        hideMapLoadingBadge();
+        setMapNotice("Zoom in to see stops", "Pan or zoom the map to load transit.", "neutral", "center");
+        setBackendStatus("Low-zoom Postgres-only lookup returned no successful requests yet.");
+        return;
+      }
+
       setMapNotice(
         "Failed to fetch",
         "Reload or check the advanced information panel.",
@@ -51,12 +76,25 @@
       return;
     }
 
-    // No routes returned for this area.
+    // Only show "no stops found" if we're zoomed in enough to have tried Transitland,
+    // or if sufficient time has passed to confirm Postgres has nothing.
+    // At low zoom, Postgres-only queries might legitimately return empty.
+    const mapZoom = state.map ? Number(state.map.getZoom()) : 0;
+    if (mapZoom < MIN_VIEWPORT_FETCH_ZOOM) {
+      // Low zoom: Transitland not called yet, just waiting for Postgres. Don't error.
+      hideMapLoadingBadge();
+      setMapNotice("Zoom in to see stops", "Pan or zoom the map to load transit.", "neutral", "center");
+      return;
+    }
+
+    // High zoom: Transitland would have been tried. No routes returned.
+    const transitlandLink = `Check <a href="https://www.transit.land/map" target="_blank" rel="noopener noreferrer">this map</a> for supported routes.`;
     setMapNotice(
       "No stops found",
-      "Check this map for supported routes: https://www.transit.land/",
+      transitlandLink,
       "error",
-      "center"
+      "center",
+      true
     );
     setBackendStatus(
       "No routes were returned for this area. Check Transitland for supported routes: https://www.transit.land/"
@@ -158,11 +196,24 @@ async function fetchTile(job) {
     // are cache hits. Avoid overwriting an existing good session cache with
     // an empty miss (which can happen when requesting cache-only).
     const hasRoutes = Array.isArray(payload?.lineSummaries) && payload.lineSummaries.length > 0;
-    const isHit = String(payload?.cacheStatus || "").toLowerCase() === "hit";
+    const cacheStatus = String(payload?.cacheStatus || "").trim().toLowerCase();
+    const isHit = cacheStatus === "hit" || cacheStatus === "partial-hit";
     if (hasRoutes || isHit) {
       cacheAreaPayload(job.cacheKey, payload, payload.cacheStatus || "miss");
     }
     state.lastLoadStats.successful += 1;
+
+    // Update viewport source counters so the advanced panel can prove whether
+    // data came from Postgres or from an actual Transitland fetch.
+    state.viewportRequestCount += 1;
+    if (cacheStatus === "hit" || cacheStatus === "partial-hit") {
+      state.postgresViewportHitCount += 1;
+    } else if (cacheStatus === "miss" && job.cacheOnly) {
+      state.postgresViewportMissCount += 1;
+    } else if (cacheStatus === "miss" || !cacheStatus) {
+      state.transitlandViewportFetchCount += 1;
+    }
+    renderApiCounter();
 
     syncActiveAreaKeys({
       fallbackToAllCached: false
@@ -173,11 +224,47 @@ async function fetchTile(job) {
     const lines = Number(payload?.lineSummaries?.length || 0);
     const vectorTileCount = Number(payload?.matchingStats?.vectorHeadwayTileCount || 0);
     const omittedVectorTiles = Number(payload?.matchingStats?.vectorHeadwayOmittedTileCount || 0);
+    
+    // Build source description based on cache status
+    let sourceDesc = "";
+    if (cacheStatus === "hit") {
+      sourceDesc = "Postgres cache (exact match)";
+    } else if (cacheStatus === "partial-hit") {
+      sourceDesc = "Postgres cache (spatial overlap)";
+    } else if (cacheStatus === "miss" && job.cacheOnly) {
+      sourceDesc = "Postgres cache miss (no overlap)";
+    } else {
+      sourceDesc = "Transitland (fetched)";
+    }
+    
     setBackendStatus(
-      `Fetched ${job.cacheKey} (${payload.cacheStatus || "miss"} cache, ${lines} routes, ${vectorTileCount} vector tiles${
+      `Fetched ${job.cacheKey} from ${sourceDesc} (${lines} routes${vectorTileCount > 0 ? `, ${vectorTileCount} vector tiles` : ""}${
         omittedVectorTiles > 0 ? `, +${omittedVectorTiles} omitted` : ""
       }). Select a route to load stops.`
     );
+
+    if (job.cacheOnly && cacheStatus === "miss" && Number(job.zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM) {
+      window.setTimeout(() => {
+        if (job.epoch !== state.loadEpoch) {
+          return;
+        }
+        if (state.areaCache.has(job.cacheKey)) {
+          return;
+        }
+
+        queueTileFetches([
+          {
+            areaKey: job.cacheKey,
+            bbox: job.bbox,
+            zoom: job.zoom,
+            routeTypes: Array.isArray(job.routeTypes) ? job.routeTypes : []
+          }
+        ], {
+          cacheOnly: false,
+          forceRefresh: Boolean(job.forceRefresh)
+        });
+      }, 300);
+    }
   } catch (error) {
     if (job.epoch !== state.loadEpoch) {
       return;
@@ -201,7 +288,6 @@ function drainFetchQueue() {
     while (state.inFlightAreaKeys.size < MAX_PARALLEL_FETCHES && state.fetchQueue.length > 0) {
       const job = state.fetchQueue.shift();
       state.queuedAreaKeys.delete(job.cacheKey);
-              `No routes are visible in this area. Check Transitland for supported routes: https://www.transit.land/`
       fetchTile(job)
         .catch(() => {})
         .finally(() => {
@@ -324,7 +410,7 @@ async function loadVisibleTransit(options = {}) {
   });
   state.lastLoadStats.queued = queuedCacheOnly;
 
-  // If we're zoomed in enough, schedule non-cache-only fetches shortly after
+  // Schedule non-cache-only fetches shortly after (only when zoomed in enough)
   // to allow cache-only responses to populate the session cache first; this
   // prevents wiping existing data and avoids unnecessary Transitland calls.
   if (Number(zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM) {
@@ -345,14 +431,20 @@ async function loadVisibleTransit(options = {}) {
       clearMapNotice();
       setBackendStatus(`${cached}/${requests.length} on-screen areas loaded from cache. Select a route to load stops.`);
     } else {
-      setMapNotice(
-        "No stops found",
-        "Check this map for supported routes: https://www.transit.land/",
-        "error"
-      );
-      setBackendStatus(
-        "No routes are visible in this area. Check Transitland for supported routes: https://www.transit.land/"
-      );
+      if (Number(zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM) {
+        setMapNotice(
+          "No stops found",
+          "Check this map for supported routes: https://www.transit.land/",
+          "error"
+        );
+        setBackendStatus(
+          "No routes are visible in this area. Check Transitland for supported routes: https://www.transit.land/"
+        );
+      } else {
+        hideMapLoadingBadge();
+        setMapNotice("Zoom in to see stops", "Pan or zoom the map to load transit.", "neutral", "center");
+        setBackendStatus("No cached routes are currently visible at this zoom. Pan or zoom to another area.");
+      }
     }
     return;
   }

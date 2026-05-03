@@ -130,6 +130,33 @@ function normalizeCacheRow(row) {
   };
 }
 
+function normalizeBboxArray(value) {
+  if (!Array.isArray(value) || value.length !== 4) {
+    return null;
+  }
+
+  const bbox = value.map((entry) => Number(entry));
+  if (!bbox.every((entry) => Number.isFinite(entry))) {
+    return null;
+  }
+
+  const [minLon, minLat, maxLon, maxLat] = bbox;
+  if (minLon >= maxLon || minLat >= maxLat) {
+    return null;
+  }
+
+  return bbox;
+}
+
+function bboxIntersects(a, b) {
+  return !(
+    a[2] < b[0] ||
+    a[0] > b[2] ||
+    a[3] < b[1] ||
+    a[1] > b[3]
+  );
+}
+
 function normalizeGeometryForStorage(geometry) {
   if (!geometry || !geometry.type || !Array.isArray(geometry.coordinates)) {
     return null;
@@ -497,10 +524,68 @@ async function getCacheAny(cacheKey) {
   return normalizeCacheRow(rows?.[0] || null);
 }
 
+// Query cache by spatial bbox intersection - finds overlapping cached data
+async function getCacheByBbox(minLon, minLat, maxLon, maxLat, options = {}) {
+  assertLocalConfigured();
+  const includeExpired = Boolean(options.includeExpired);
+  const whereClause = includeExpired ? "" : "AND c.expires_at > now()";
+  
+  const { rows } = await localQuery(
+    `SELECT c.cache_key, c.payload, c.fetched_at, c.expires_at, c.cache_kind, 
+            c.city_slug, c.feed_fingerprint, c.verified_at
+     FROM public.transit_cache c
+     WHERE c.bbox_geom IS NOT NULL 
+       AND ST_Intersects(
+             c.bbox_geom,
+             ST_MakeEnvelope($1, $2, $3, $4, 4326)
+           )
+       ${whereClause}
+     ORDER BY c.cache_kind DESC, c.fetched_at DESC
+     LIMIT 200`,
+    [minLon, minLat, maxLon, maxLat]
+  );
+
+  if (Array.isArray(rows) && rows.length > 0) {
+    return rows.map((r) => normalizeCacheRow(r));
+  }
+
+  // Fallback for legacy rows that may not have bbox_geom populated.
+  // Use payload.area.bbox for overlap checks in application code.
+  const { rows: fallbackRows } = await localQuery(
+    `SELECT c.cache_key, c.payload, c.fetched_at, c.expires_at, c.cache_kind,
+            c.city_slug, c.feed_fingerprint, c.verified_at
+     FROM public.transit_cache c
+     WHERE c.bbox_geom IS NULL
+       ${whereClause}
+     ORDER BY c.cache_kind DESC, c.fetched_at DESC
+     LIMIT 5000`,
+    []
+  );
+
+  const viewportBbox = [minLon, minLat, maxLon, maxLat];
+  const matchedFallbackRows = (fallbackRows || []).filter((row) => {
+    const payloadBbox = normalizeBboxArray(row?.payload?.area?.bbox);
+    if (!payloadBbox) {
+      return false;
+    }
+    return bboxIntersects(viewportBbox, payloadBbox);
+  });
+
+  return matchedFallbackRows.slice(0, 200).map((row) => normalizeCacheRow(row));
+}
+
 async function setCache(cacheKey, payload, ttlSeconds, options = {}) {
   assertLocalConfigured();
   const fetchedAt = nowSeconds();
   const expiresAt = fetchedAt + Math.max(60, Number(ttlSeconds || 0));
+
+  // Extract bbox from payload to populate bbox_geom for spatial queries
+  let bboxGeomParam = null;
+  const area = payload?.area;
+  if (Array.isArray(area?.bbox) && area.bbox.length === 4) {
+    const [minLon, minLat, maxLon, maxLat] = area.bbox;
+    bboxGeomParam = `SRID=4326;POLYGON((${minLon} ${minLat}, ${maxLon} ${minLat}, ${maxLon} ${maxLat}, ${minLon} ${maxLat}, ${minLon} ${minLat}))`;
+  }
 
   await localQuery(
     `insert into public.transit_cache (
@@ -511,8 +596,9 @@ async function setCache(cacheKey, payload, ttlSeconds, options = {}) {
       cache_kind,
       city_slug,
       feed_fingerprint,
-      verified_at
-    ) values ($1, $2::jsonb, to_timestamp($3), to_timestamp($4), $5, $6, $7, to_timestamp($8))
+      verified_at,
+      bbox_geom
+    ) values ($1, $2::jsonb, to_timestamp($3), to_timestamp($4), $5, $6, $7, to_timestamp($8), ${bboxGeomParam ? 'ST_GeomFromEWKT($9)' : 'NULL'})
     on conflict (cache_key) do update set
       payload = excluded.payload,
       fetched_at = excluded.fetched_at,
@@ -520,7 +606,8 @@ async function setCache(cacheKey, payload, ttlSeconds, options = {}) {
       cache_kind = excluded.cache_kind,
       city_slug = excluded.city_slug,
       feed_fingerprint = excluded.feed_fingerprint,
-      verified_at = excluded.verified_at`,
+      verified_at = excluded.verified_at,
+      bbox_geom = excluded.bbox_geom`,
     [
       cacheKey,
       JSON.stringify(payload),
@@ -529,7 +616,8 @@ async function setCache(cacheKey, payload, ttlSeconds, options = {}) {
       normalizeText(options.cacheKind, "bbox"),
       normalizeText(options.citySlug) || null,
       normalizeText(options.feedFingerprint) || null,
-      Number.isFinite(Number(options.verifiedAt)) ? Number(options.verifiedAt) : fetchedAt
+      Number.isFinite(Number(options.verifiedAt)) ? Number(options.verifiedAt) : fetchedAt,
+      ...(bboxGeomParam ? [bboxGeomParam] : [])
     ]
   );
 }
@@ -1573,6 +1661,7 @@ module.exports = {
   getUserById,
   getCache,
   getCacheAny,
+  getCacheByBbox,
   setCache,
   getRouteGeometryLod,
   upsertRouteGeometryLod,

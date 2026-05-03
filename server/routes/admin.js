@@ -5,6 +5,7 @@ const config = require("../config");
 const db = require("../db");
 const { getCityBySlug } = require("../city-presets");
 const { TRANSIT_CACHE_PREFIX, getTransitlandMetrics } = require("../transitland");
+const { postgresMetrics } = require("../postgres");
 const { runHarvestCore } = require("../../scripts/harvest-core");
 const { runNonrecoverableBackup } = require("../../scripts/backup-nonrecoverable");
 
@@ -195,6 +196,11 @@ router.get("/admin/stats", async (req, res) => {
         lastRestRequestAt: transitland.lastRestRequestAt || null,
         lastVectorTileRequestAt: transitland.lastVectorTileRequestAt || null,
         lastRoutingRequestAt: transitland.lastRoutingRequestAt || null
+      },
+      postgres: {
+        queries: Number(postgresMetrics.queryCount || 0),
+        failures: Number(postgresMetrics.queryFailureCount || 0),
+        lastQueryAt: postgresMetrics.lastQueryAt || null
       },
       performance: {
         processUptimeSec: Math.floor(process.uptime()),

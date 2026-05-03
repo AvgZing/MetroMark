@@ -66,7 +66,9 @@ function mapBoundsToBbox() {
   const north = clamp(bounds.getNorth(), -85, 85);
 
   if (west > east) {
-    return null;
+    // Antimeridian wrap (common on very wide/world views). Return a world bbox
+    // so Postgres-backed viewport requests still run instead of early-returning.
+    return [-180, south, 180, north];
   }
 
   return [west, south, east, north];
@@ -187,11 +189,15 @@ function expandBbox(bbox, paddingDegrees) {
 }
 
 function tileZoomFromMapZoom(zoom) {
+  // Use coarser tile zooms for broad map views so the request set covers
+  // continent-scale extents without dropping distant metros.
   if (zoom >= 13) return 12;
   if (zoom >= 11) return 11;
-  if (zoom >= 9) return 10;
-  if (zoom >= 7) return 9;
-  return 8;
+  if (zoom >= 9) return 9;
+  if (zoom >= 7) return 8;
+  if (zoom >= 5) return 7;
+  if (zoom >= 3) return 6;
+  return 5;
 }
 
 function lngLatToTile(lon, lat, zoom) {
@@ -238,6 +244,21 @@ function bboxQueryText(bbox) {
 }
 
 function buildViewportTileRequests(rawBbox, zoom) {
+  // For low-zoom views (below Transitland threshold), do a single viewport overlap
+  // request against Postgres instead of tile-budgeting. This avoids city-like limits
+  // and allows all intersecting cached geometry in the viewport to be returned.
+  if (Number(zoom || 0) < MIN_VIEWPORT_FETCH_ZOOM) {
+    const paddedViewport = expandBbox(rawBbox, 0.18);
+    return [
+      {
+        areaKey: `viewport:${bboxQueryText(paddedViewport)}`,
+        bbox: paddedViewport,
+        zoom,
+        distanceScore: 0
+      }
+    ];
+  }
+
   const tileZoom = tileZoomFromMapZoom(zoom);
   const padded = expandBbox(rawBbox, 0.18);
   const center = bboxCenter(rawBbox);
@@ -276,7 +297,21 @@ function buildViewportTileRequests(rawBbox, zoom) {
     }
   }
 
-  return Array.from(requestsByKey.values())
+  const allTiles = Array.from(requestsByKey.values());
+  
+  // At very low zoom (world/continent), ensure we don't drop distant metros
+  // by selecting tiles more carefully: sort by distance but use a larger budget
+  // rather than slicing aggressively.
+  if (zoom < 5) {
+    // Low zoom: increase budget to 128 (vs default 24) to cover distant metros
+    // but still sort by distance to prioritize the most relevant tiles
+    return allTiles
+      .sort((a, b) => a.distanceScore - b.distanceScore)
+      .slice(0, 128);
+  }
+  
+  // At higher zoom (5+), sort by distance and limit with standard budget
+  return allTiles
     .sort((a, b) => a.distanceScore - b.distanceScore)
     .slice(0, MAX_TARGET_TILES_PER_VIEW);
 }
@@ -375,7 +410,7 @@ function syncActiveAreaKeys(options = {}) {
   const retainedVisibleKeys = options.retainVisibleKeys || null;
   const allowRetainOutsideRequested = Boolean(options.allowRetainOutsideRequested);
 
-  state.activeAreaKeys = new Set(state.areaCache.keys());
+  state.activeAreaKeys = new Set(state.visibleAreaKeys);
   state.visibleAreaKeys = new Set();
 
   for (const key of state.requestedAreaKeys) {
@@ -410,6 +445,7 @@ function syncActiveAreaKeys(options = {}) {
 
   if (state.visibleAreaKeys.size === 0 && options.fallbackToAllCached) {
     state.visibleAreaKeys = new Set(state.activeAreaKeys);
+    state.activeAreaKeys = new Set(state.visibleAreaKeys);
   }
 }
 
@@ -579,8 +615,15 @@ function rebuildCombinedTransit() {
 
   for (const [lineKey, override] of state.manualLineVisibility.entries()) {
     const normalizedOverride = String(override || "").trim().toLowerCase();
-    if ((normalizedOverride === "on" || normalizedOverride === "off") && lineByKeyAll.has(lineKey)) {
-      effectiveVisibleLineKeys.add(lineKey);
+    if (normalizedOverride === "on" && lineByKeyAll.has(lineKey)) {
+      // Only include manual override if route geometry intersects current viewport
+      const line = lineByKeyAll.get(lineKey);
+      if (line && geometryIntersectsBbox(line.geometry, state.currentViewportBbox)) {
+        effectiveVisibleLineKeys.add(lineKey);
+      }
+    } else if (normalizedOverride === "off") {
+      // Explicitly hidden lines are removed from visibility
+      effectiveVisibleLineKeys.delete(lineKey);
     }
   }
 

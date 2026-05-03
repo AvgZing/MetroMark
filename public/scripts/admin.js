@@ -265,6 +265,10 @@ async function refreshStats() {
       value: `${Number(payload.transitland.routingApiRequests || 0)}/${Number(payload.transitland.routingApiFailures || 0)}`,
     },
     {
+      label: "Postgres (req/fail)",
+      value: `${Number(payload.postgres?.queries || 0)}/${Number(payload.postgres?.failures || 0)}`,
+    },
+    {
       label: "Last REST",
       value: payload.transitland.lastRestRequestAt
         ? new Date(payload.transitland.lastRestRequestAt).toLocaleString()
@@ -280,6 +284,12 @@ async function refreshStats() {
       label: "Last Routing",
       value: payload.transitland.lastRoutingRequestAt
         ? new Date(payload.transitland.lastRoutingRequestAt).toLocaleString()
+        : "-",
+    },
+    {
+      label: "Last Postgres",
+      value: payload.postgres?.lastQueryAt
+        ? new Date(payload.postgres.lastQueryAt).toLocaleString()
         : "-",
     },
   ]);

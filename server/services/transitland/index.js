@@ -176,7 +176,7 @@ function getTransitlandMetrics() {
   return readTransitlandMetrics();
 }
 
-function parseBboxArray(rawBbox) {
+function parseBboxArray(rawBbox, options = {}) {
   if (!Array.isArray(rawBbox) || rawBbox.length !== 4) {
     throw new Error("bbox must contain four comma-separated coordinates.");
   }
@@ -198,7 +198,8 @@ function parseBboxArray(rawBbox) {
   const width = east - west;
   const height = north - south;
 
-  if (width > config.BBOX_MAX_SPAN_DEGREES || height > config.BBOX_MAX_SPAN_DEGREES) {
+  const allowWideBbox = Boolean(options.allowWideBbox);
+  if (!allowWideBbox && (width > config.BBOX_MAX_SPAN_DEGREES || height > config.BBOX_MAX_SPAN_DEGREES)) {
     throw new Error(
       `bbox span is too large. Zoom in so width/height are under ${config.BBOX_MAX_SPAN_DEGREES} degrees.`
     );
@@ -233,8 +234,10 @@ function snapBboxToGrid(bbox, step) {
   ];
 }
 
-function normalizeBboxForCache(rawBbox, zoom) {
-  const parsed = parseBboxArray(rawBbox);
+function normalizeBboxForCache(rawBbox, zoom, options = {}) {
+  const parsed = parseBboxArray(rawBbox, {
+    allowWideBbox: Boolean(options.allowWideBbox)
+  });
   const step = bboxStepFromZoom(zoom);
   const snapped = snapBboxToGrid(parsed, step);
   const [west, south, east, north] = snapped;
@@ -2279,10 +2282,68 @@ async function getTransitForArea(area, options = {}) {
       };
     }
 
-    // If caller specifically requested cache-only behavior, return a miss
-    // but do not perform a Transitland fetch. This allows clients to query
-    // for Postgres-backed payloads without triggering Transitland calls.
+    // If caller specifically requested cache-only behavior, try to find overlapping cached data
     if (options.cacheOnly) {
+      // Query Postgres for any cached data that spatially overlaps this bbox
+      const [minLon, minLat, maxLon, maxLat] = area.bbox;
+      const overlappingCaches = await db.getCacheByBbox(minLon, minLat, maxLon, maxLat, {
+        includeExpired: false
+      });
+
+      // If we found overlapping data, aggregate and return it
+      if (overlappingCaches && overlappingCaches.length > 0) {
+        const mergedRoutes = new Map();
+        const mergedStops = new Map();
+        const mergedLines = new Map();
+
+        for (const cacheEntry of overlappingCaches) {
+          const payload = cacheEntry.payload || {};
+          
+          // Merge route geometries
+          for (const feature of payload?.routesGeoJson?.features || []) {
+            const lineKey = feature?.properties?.line_key;
+            if (lineKey && !mergedRoutes.has(lineKey)) {
+              mergedRoutes.set(lineKey, feature);
+            }
+          }
+
+          // Merge line summaries
+          for (const line of payload?.lineSummaries || []) {
+            const lineKey = line?.lineKey;
+            if (lineKey && !mergedLines.has(lineKey)) {
+              mergedLines.set(lineKey, line);
+            }
+          }
+
+          // Merge stops (by stop ID)
+          for (const feature of payload?.stopsGeoJson?.features || []) {
+            const stopId = feature?.properties?.stop_id || feature?.id;
+            if (stopId && !mergedStops.has(stopId)) {
+              mergedStops.set(stopId, feature);
+            }
+          }
+        }
+
+        return {
+          payload: {
+            routesGeoJson: {
+              type: "FeatureCollection",
+              features: Array.from(mergedRoutes.values())
+            },
+            stopsGeoJson: {
+              type: "FeatureCollection",
+              features: Array.from(mergedStops.values())
+            },
+            lineSummaries: Array.from(mergedLines.values()),
+            area: { bbox: area.bbox }
+          },
+          cacheStatus: "partial-hit",
+          cacheKey: area.key,
+          stopLocationTypes
+        };
+      }
+
+      // No overlapping cache found - return empty
       return {
         payload: {
           routesGeoJson: { type: "FeatureCollection", features: [] },
@@ -2398,7 +2459,11 @@ async function getCityFeedFingerprint(slug, options = {}) {
 
 async function getBboxTransit(rawBbox, options = {}) {
   const zoom = Number(options.zoom);
-  const bboxInfo = normalizeBboxForCache(rawBbox, zoom);
+  const bboxInfo = normalizeBboxForCache(rawBbox, zoom, {
+    // Cache-only requests are Postgres overlap lookups and should work for broad views.
+    // Transitland-fetching requests still obey BBOX_MAX_SPAN_DEGREES.
+    allowWideBbox: Boolean(options.cacheOnly)
+  });
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
   const routeTypes = normalizeRouteTypes(options.routeTypes);
   const routeTypeKey = routeTypes.length ? routeTypes.join("-") : "all";

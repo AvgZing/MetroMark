@@ -1,5 +1,5 @@
 # Local prototypes and non-app reference material
-docs/*
+docs/*.md
 
 # Environment and secrets
 .env

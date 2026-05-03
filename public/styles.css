@@ -160,8 +160,10 @@ body.line-view-open .map-overlay-controls {
   font-size: 12px;
 }
 
+/* Explicitly hide when hidden attribute or class is present */
+.map-loading-badge[hidden],
 .map-loading-badge.hidden {
-  display: none;
+  display: none !important;
 }
 
 .map-notice-card {

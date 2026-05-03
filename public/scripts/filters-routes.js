@@ -50,6 +50,10 @@ function getRouteListLines() {
       return lineSearchText(line).includes(query);
     }
 
+    if (typeof lineIntersectsCurrentViewport === "function" && !lineIntersectsCurrentViewport(line)) {
+      return false;
+    }
+
     if (lineVisibilityOverride(line.lineKey)) {
       return true;
     }

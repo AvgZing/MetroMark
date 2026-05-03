@@ -1,4 +1,5 @@
 const { getTransitlandMetrics } = require("../transitland");
+const { postgresMetrics } = require("../postgres");
 
 function asBoolean(value) {
   const text = String(value || "").toLowerCase();
@@ -43,6 +44,9 @@ function withTransitlandMetrics(payload) {
   const metrics = getTransitlandMetrics();
   return {
     ...payload,
+    postgresQueryCount: Number(postgresMetrics.queryCount || 0),
+    postgresQueryFailureCount: Number(postgresMetrics.queryFailureCount || 0),
+    postgresLastQueryAt: postgresMetrics.lastQueryAt || null,
     transitlandRestApiRequests: Number(metrics.restApiRequestCount || 0),
     transitlandRestApiRequestFailures: Number(metrics.restApiRequestFailureCount || 0),
     transitlandVectorTileRequests: Number(metrics.vectorTileRequestCount || 0),

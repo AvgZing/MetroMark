@@ -1,6 +1,10 @@
-﻿const MIN_VIEWPORT_FETCH_ZOOM = 10.6;
-const MAX_TARGET_TILES_PER_VIEW = 6;
-const MAX_NEW_FETCHES_PER_VIEW = 6;
+﻿// Postgres (cache-only) is primary at all zoom levels.
+// Transitland fallback only triggers when zoomed in (zoom 10+) to avoid excessive API usage.
+const MIN_VIEWPORT_FETCH_ZOOM = 10.0;
+// Low-zoom views can span multiple metro regions; keep a larger request budget so
+// distant cached areas (e.g. Seattle + DC at US scale) can load together.
+const MAX_TARGET_TILES_PER_VIEW = 24;
+const MAX_NEW_FETCHES_PER_VIEW = 18;
 const MAX_PARALLEL_FETCHES = 2;
 const MAX_SESSION_AREAS = 220;
 const MAX_SESSION_ROUTE_STOP_PAYLOADS = 120;
@@ -203,6 +207,12 @@ const state = {
     progress: null
   },
   clientApiRequestCount: 0,
+  postgresQueryCount: 0,
+  postgresQueryFailureCount: 0,
+  viewportRequestCount: 0,
+  postgresViewportHitCount: 0,
+  postgresViewportMissCount: 0,
+  transitlandViewportFetchCount: 0,
   transitlandRestApiRequestCount: 0,
   transitlandRestApiFailureCount: 0,
   transitlandVectorTileRequestCount: 0,
@@ -597,7 +607,7 @@ function clearMapNotice() {
   els.mapNotice.innerHTML = "";
 }
 
-function setMapNotice(title, meta = "", kind = "neutral", placement = "center") {
+function setMapNotice(title, meta = "", kind = "neutral", placement = "center", detailIsHtml = false) {
   if (!els.mapNotice) {
     return;
   }
@@ -628,7 +638,7 @@ function setMapNotice(title, meta = "", kind = "neutral", placement = "center") 
   els.mapNotice.innerHTML = `
     <div class="map-notice-card">
       <p class="map-notice-title">${escapeHtml(message)}</p>
-      ${detail ? `<p class="map-notice-meta">${escapeHtml(detail)}</p>` : ""}
+      ${detail ? `<p class="map-notice-meta">${detailIsHtml ? detail : escapeHtml(detail)}</p>` : ""}
     </div>
   `;
   els.mapNotice.hidden = false;
@@ -637,7 +647,7 @@ function setMapNotice(title, meta = "", kind = "neutral", placement = "center") 
 function showMapLoadingBadge() {
   if (!els.mapLoadingBadge) return;
   els.mapLoadingBadge.hidden = false;
-  els.mapLoadingBadge.textContent = "⟳";
+  els.mapLoadingBadge.textContent = "Loading...";
 }
 
 function hideMapLoadingBadge() {
@@ -648,16 +658,17 @@ function hideMapLoadingBadge() {
 
 function renderApiCounter() {
   els.apiRequestCounter.textContent =
-    `Client API calls: ${state.clientApiRequestCount} | ` +
-    `Transitland REST: ${state.transitlandRestApiRequestCount}/10000 | ` +
-    `Vector Tiles: ${state.transitlandVectorTileRequestCount}/100000 | ` +
-    `Routing: ${state.transitlandRoutingApiRequestCount}/1000`;
+    `Queries - REST: ${state.transitlandRestApiRequestCount}, ` +
+    `Vector: ${state.transitlandVectorTileRequestCount}, ` +
+    `Routing: ${state.transitlandRoutingApiRequestCount}, ` +
+    `Postgres: ${state.postgresQueryCount}`;
 
   if (els.apiRequestCounterDetail) {
     els.apiRequestCounterDetail.textContent =
       `Failures - REST: ${state.transitlandRestApiFailureCount}, ` +
-      `Vector Tiles: ${state.transitlandVectorTileFailureCount}, ` +
-      `Routing: ${state.transitlandRoutingApiFailureCount}`;
+      `Vector: ${state.transitlandVectorTileFailureCount}, ` +
+      `Routing: ${state.transitlandRoutingApiFailureCount}, ` +
+      `Postgres: ${state.postgresQueryFailureCount}`;
   }
 }
 
@@ -1799,13 +1810,42 @@ function lineVisibleFromFilters(line, options = {}) {
   return true;
 }
 
-function lineIsVisible(line, options = {}) {
-  const override = lineVisibilityOverride(line?.lineKey);
-  if (override === "on") {
+function lineIntersectsCurrentViewport(line) {
+  const viewportBbox = normalizeBboxArray(state.currentViewportBbox);
+  if (!viewportBbox) {
     return true;
   }
+
+  const lineKey = String(line?.lineKey || "").trim();
+  if (!lineKey) {
+    return false;
+  }
+
+  const features = state.transit?.routesGeoJson?.features;
+  if (!Array.isArray(features) || !features.length) {
+    return false;
+  }
+
+  const routeFeature = features.find((feature) => String(feature?.properties?.line_key || "").trim() === lineKey);
+  if (!routeFeature || typeof geometryIntersectsBbox !== "function") {
+    return false;
+  }
+
+  return geometryIntersectsBbox(routeFeature.geometry, viewportBbox);
+}
+
+function lineIsVisible(line, options = {}) {
+  const override = lineVisibilityOverride(line?.lineKey);
   if (override === "off") {
     return false;
+  }
+
+  if (!lineIntersectsCurrentViewport(line)) {
+    return false;
+  }
+
+  if (override === "on") {
+    return true;
   }
 
   // Check problematic geometry review
@@ -2541,6 +2581,8 @@ async function apiRequest(path, options = {}) {
   const nextVectorFailures = Number(payload?.transitlandVectorTileRequestFailures);
   const nextRoutingRequests = Number(payload?.transitlandRoutingApiRequests);
   const nextRoutingFailures = Number(payload?.transitlandRoutingApiRequestFailures);
+  const nextPostgresQueries = Number(payload?.postgresQueryCount);
+  const nextPostgresFailures = Number(payload?.postgresQueryFailureCount);
 
   if (Number.isFinite(nextRestRequests) && nextRestRequests >= 0) {
     state.transitlandRestApiRequestCount = nextRestRequests;
@@ -2559,6 +2601,12 @@ async function apiRequest(path, options = {}) {
   }
   if (Number.isFinite(nextRoutingFailures) && nextRoutingFailures >= 0) {
     state.transitlandRoutingApiFailureCount = nextRoutingFailures;
+  }
+  if (Number.isFinite(nextPostgresQueries) && nextPostgresQueries >= 0) {
+    state.postgresQueryCount = nextPostgresQueries;
+  }
+  if (Number.isFinite(nextPostgresFailures) && nextPostgresFailures >= 0) {
+    state.postgresQueryFailureCount = nextPostgresFailures;
   }
   renderApiCounter();
 

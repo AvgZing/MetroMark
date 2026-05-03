@@ -5,6 +5,12 @@ const config = require("./config");
 let pool = null;
 let initializePromise = null;
 
+const postgresMetrics = {
+  queryCount: 0,
+  queryFailureCount: 0,
+  lastQueryAt: ""
+};
+
 function hasLocalPostgresConfig() {
   return Boolean(config.LOCAL_PG_URL || config.LOCAL_PG_HOST || config.LOCAL_PG_DATABASE);
 }
@@ -60,7 +66,15 @@ function getPool() {
 
 async function query(text, params = []) {
   const client = getPool();
-  return client.query(text, params);
+  postgresMetrics.queryCount += 1;
+  postgresMetrics.lastQueryAt = new Date().toISOString();
+
+  try {
+    return await client.query(text, params);
+  } catch (error) {
+    postgresMetrics.queryFailureCount += 1;
+    throw error;
+  }
 }
 
 async function initializeLocalPostgres() {
@@ -217,5 +231,6 @@ module.exports = {
   hasLocalPostgresConfig,
   initializeLocalPostgres,
   query,
-  localDbLabel
+  localDbLabel,
+  postgresMetrics
 };
