@@ -449,6 +449,24 @@ function syncActiveAreaKeys(options = {}) {
   }
 }
 
+// Debounced scheduler for syncActiveAreaKeys to avoid rapid duplicate calls
+let _pendingSyncActiveOptions = null;
+let _syncActiveAreaKeysTimer = null;
+function scheduleSyncActiveAreaKeys(options = {}) {
+  _pendingSyncActiveOptions = Object.assign({}, _pendingSyncActiveOptions || {}, options || {});
+  if (_syncActiveAreaKeysTimer) {
+    clearTimeout(_syncActiveAreaKeysTimer);
+  }
+  _syncActiveAreaKeysTimer = setTimeout(() => {
+    try {
+      syncActiveAreaKeys(_pendingSyncActiveOptions || {});
+    } finally {
+      _pendingSyncActiveOptions = null;
+      _syncActiveAreaKeysTimer = null;
+    }
+  }, 80);
+}
+
 function resetViewAggregation() {
   state.loadEpoch += 1;
   state.requestedAreaKeys = new Set();

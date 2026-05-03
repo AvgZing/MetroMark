@@ -262,12 +262,27 @@ async function saveCurrentAsPreset() {
     const existing = cachedPresets.find((p) => String(p.name || "") === name) || null;
 
     let mergedSnapshot = snapshot;
-    if (existing && existing.snapshot && existing.snapshot.manualLineVisibility) {
+    if (existing && existing.snapshot) {
       // Merge manualLineVisibility: preserve keys not present in current snapshot
       const existingVis = existing.snapshot.manualLineVisibility || {};
       const currentVis = snapshot.manualLineVisibility || {};
       const mergedVis = { ...existingVis, ...currentVis };
-      mergedSnapshot = { ...snapshot, manualLineVisibility: mergedVis };
+
+      // Merge active mode keys and frequency keys by union (add visible data)
+      const existingModes = Array.isArray(existing.snapshot.activeModeKeys) ? existing.snapshot.activeModeKeys : [];
+      const currentModes = Array.isArray(snapshot.activeModeKeys) ? snapshot.activeModeKeys : [];
+      const mergedModes = Array.from(new Set([...(existingModes || []), ...(currentModes || [])]));
+
+      const existingFreq = Array.isArray(existing.snapshot.activeFrequencyKeys) ? existing.snapshot.activeFrequencyKeys : [];
+      const currentFreq = Array.isArray(snapshot.activeFrequencyKeys) ? snapshot.activeFrequencyKeys : [];
+      const mergedFreq = Array.from(new Set([...(existingFreq || []), ...(currentFreq || [])]));
+
+      mergedSnapshot = {
+        ...snapshot,
+        manualLineVisibility: mergedVis,
+        activeModeKeys: mergedModes,
+        activeFrequencyKeys: mergedFreq
+      };
     }
 
     const payload = await apiRequest("/api/presets/filters", {

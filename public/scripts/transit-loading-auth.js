@@ -240,7 +240,7 @@ async function fetchTile(job) {
     }
     renderApiCounter();
 
-    syncActiveAreaKeys({
+    scheduleSyncActiveAreaKeys({
       fallbackToAllCached: false
     });
     rebuildCombinedTransit();
@@ -375,7 +375,7 @@ async function loadVisibleTransit(options = {}) {
 
     state.requestedAreaKeys = allCachedKeys;
     state.currentViewportBbox = null;
-    syncActiveAreaKeys({
+    scheduleSyncActiveAreaKeys({
       fallbackToAllCached: true
     });
     rebuildCombinedTransit();
@@ -421,9 +421,9 @@ async function loadVisibleTransit(options = {}) {
   ]);
   trimQueuedFetchesToCurrentView();
 
-  syncActiveAreaKeys({
-    fallbackToAllCached: false
-  });
+    scheduleSyncActiveAreaKeys({
+      fallbackToAllCached: false
+    });
   rebuildCombinedTransit();
   refreshUiFromState();
 
