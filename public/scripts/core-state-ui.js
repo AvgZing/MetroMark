@@ -1919,10 +1919,11 @@ function modeCacheKeyFromRouteTypes(routeTypes) {
 }
 
 function viewportRequestsForMode(rawBbox, zoom, routeTypes) {
+  const modeKey = modeCacheKeyFromRouteTypes(routeTypes);
   return buildViewportTileRequests(rawBbox, zoom).map((request) => ({
     ...request,
-    routeTypes: [],
-    areaKey: request.areaKey
+    routeTypes: Array.isArray(routeTypes) ? routeTypes : [],
+    areaKey: `${request.areaKey}:types:${modeKey}`
   }));
 }
 

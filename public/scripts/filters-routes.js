@@ -358,16 +358,17 @@ function renderModeFilterBar() {
   els.modeFilterBar.innerHTML = "";
 
   const query = String(state.lineSearchQuery || "").trim().toLowerCase();
+  // Compute counts from the shown lines (respecting viewport intersection
+  // and search) so the mode chips reflect what the route list will display.
+  const linesForCounts = getShownLines({ ignoreFrequency: true });
   const counts = new Map(MODE_DEFS.map((mode) => [mode.key, 0]));
   let totalMatchingSearch = 0;
 
-  for (const line of state.lineSummaries) {
+  for (const line of linesForCounts) {
     if (query && !lineSearchText(line).includes(query)) {
       continue;
     }
-
     totalMatchingSearch += 1;
-
     const modeKey = lineModeKey(line);
     counts.set(modeKey, (counts.get(modeKey) || 0) + 1);
   }

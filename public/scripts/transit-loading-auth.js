@@ -33,6 +33,25 @@
     return;
   }
 
+  // If we've requested area data, are zoomed in enough to have triggered
+  // Transitland, but no routes were returned (even successful empty responses),
+  // show the explicit "No stops found" error rather than the generic zoom hint.
+  const mapZoom = state.map ? Number(state.map.getZoom()) : 0;
+  if (state.lastLoadStats?.requested > 0 && Array.isArray(state.lineSummaries) && state.lineSummaries.length === 0 && mapZoom >= MIN_VIEWPORT_FETCH_ZOOM) {
+    const transitlandLink = `Check <a href="https://www.transit.land/map" target="_blank" rel="noopener noreferrer">this map</a> for supported routes.`;
+    setMapNotice(
+      "No stops found",
+      transitlandLink,
+      "error",
+      "center",
+      true
+    );
+    setBackendStatus(
+      "No routes were returned for this area. Check Transitland for supported routes: https://www.transit.land/"
+    );
+    return;
+  }
+
   if (state.lastLoadStats.failed > 0) {
     const mapZoom = state.map ? Number(state.map.getZoom()) : 0;
     if (mapZoom < MIN_VIEWPORT_FETCH_ZOOM) {
@@ -162,6 +181,12 @@ function trimQueuedFetchesToCurrentView() {
   state.queuedAreaKeys = nextQueuedKeys;
 }
 
+// Track progressive follow-up attempts for partial cache hits so we can
+// repeatedly try Transitland until coverage stabilizes or we hit a limit.
+if (!state.partialFetchAttempts) {
+  state.partialFetchAttempts = new Map();
+}
+
 async function fetchTile(job) {
   state.inFlightAreaKeys.add(job.cacheKey);
   updateLoadingStatus();
@@ -243,27 +268,46 @@ async function fetchTile(job) {
       }). Select a route to load stops.`
     );
 
-    if (job.cacheOnly && cacheStatus === "miss" && Number(job.zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM) {
-      window.setTimeout(() => {
-        if (job.epoch !== state.loadEpoch) {
-          return;
-        }
-        if (state.areaCache.has(job.cacheKey)) {
-          return;
-        }
+    if (job.cacheOnly && (cacheStatus === "miss" || cacheStatus === "partial-hit") && Number(job.zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM) {
+      const attempts = Number(state.partialFetchAttempts.get(job.cacheKey) || 0);
+      const MAX_ATTEMPTS = 6;
 
-        queueTileFetches([
-          {
-            areaKey: job.cacheKey,
-            bbox: job.bbox,
-            zoom: job.zoom,
-            routeTypes: Array.isArray(job.routeTypes) ? job.routeTypes : []
+      // If we've already exceeded attempts, stop retrying.
+      if (attempts >= MAX_ATTEMPTS) {
+        state.partialFetchAttempts.delete(job.cacheKey);
+      } else {
+        // Schedule a follow-up non-cache fetch. For partial-hits allow re-fetch
+        // even if the session cache has an entry (forceRefresh=true). Use
+        // exponential backoff to avoid hammering Transitland.
+        const backoffMs = 250 * Math.pow(2, Math.min(attempts, 5));
+        window.setTimeout(() => {
+          if (job.epoch !== state.loadEpoch) {
+            return;
           }
-        ], {
-          cacheOnly: false,
-          forceRefresh: Boolean(job.forceRefresh)
-        });
-      }, 300);
+
+          // For partial-hits we still want to try re-fetching even if a
+          // cached payload exists, because Postgres may only have partial
+          // coverage and we need Transitland to fill gaps progressively.
+          const shouldProceed = cacheStatus === "partial-hit" || !state.areaCache.has(job.cacheKey);
+          if (!shouldProceed) {
+            return;
+          }
+
+          state.partialFetchAttempts.set(job.cacheKey, attempts + 1);
+
+          queueTileFetches([
+            {
+              areaKey: job.cacheKey,
+              bbox: job.bbox,
+              zoom: job.zoom,
+              routeTypes: Array.isArray(job.routeTypes) ? job.routeTypes : []
+            }
+          ], {
+            cacheOnly: false,
+            forceRefresh: true
+          });
+        }, backoffMs);
+      }
     }
   } catch (error) {
     if (job.epoch !== state.loadEpoch) {

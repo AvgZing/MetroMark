@@ -1325,11 +1325,44 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
     routeParams.route_types = routeTypes.join(",");
   }
 
-  const routesResponse = await transitlandRequest("/routes", routeParams, {
-    enforceDailyCap: Boolean(options.enforceDailyCap),
-    requestSource: options.requestSource
-  });
-  const fetchedRoutes = Array.isArray(routesResponse.routes) ? routesResponse.routes : [];
+  // Page through /routes results to avoid missing routes when a single page
+  // is truncated by Transitland limits. Respect routeLimit as the per-request
+  // page size and stop when we reach a reasonable maxResults cap.
+  const fetchedRoutes = [];
+  let afterCursor = null;
+  const pageLimit = Math.max(40, Math.min(routeLimit, 500));
+  const maxResults = Math.max(routeLimit, Number(config.ROUTE_CATALOG_MAX_RESULTS || 220));
+
+  let pagesFetched = 0;
+  while (fetchedRoutes.length < maxResults) {
+    const params = {
+      ...routeParams,
+      limit: String(pageLimit)
+    };
+    if (afterCursor !== null) {
+      params.after = String(afterCursor);
+    }
+
+    const pageResponse = await transitlandRequest("/routes", params, {
+      enforceDailyCap: Boolean(options.enforceDailyCap),
+      requestSource: options.requestSource
+    });
+
+    const pageRoutes = Array.isArray(pageResponse.routes) ? pageResponse.routes : [];
+    for (const r of pageRoutes) {
+      fetchedRoutes.push(r);
+      if (fetchedRoutes.length >= maxResults) break;
+    }
+
+    pagesFetched += 1;
+
+    const nextAfter = Number(pageResponse?.meta?.after);
+    const hasNext = Boolean(pageResponse?.meta?.next) && Number.isFinite(nextAfter);
+    if (!hasNext || pageRoutes.length === 0) {
+      break;
+    }
+    afterCursor = nextAfter;
+  }
   const filteredRoutes = routeTypes.length
     ? fetchedRoutes.filter((route) => allowedRouteTypes.has(Number(route?.route_type)))
     : fetchedRoutes;
@@ -1367,6 +1400,14 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
       tileCount: vectorHeadways.tileCount,
       omittedTileCount: vectorHeadways.omittedTileCount,
       zoom: vectorHeadways.zoom
+    }
+    ,
+    diagnostics: {
+      pagesFetched,
+      fetchedRoutes: fetchedRoutes.length,
+      filteredRoutes: filteredRoutes.length,
+      requestedRouteLimit: routeLimit,
+      pageLimit
     }
   };
 }
@@ -2358,14 +2399,15 @@ async function getTransitForArea(area, options = {}) {
     }
   }
 
-  const { routes, stops, vectorHeadwayMeta } = await fetchRoutesAndStopsForBbox(area.bbox, {
+  const fetchResult = await fetchRoutesAndStopsForBbox(area.bbox, {
     routeTypes,
     zoom: options.zoom,
     forceRefresh,
     enforceDailyCap: Boolean(options.enforceDailyCap),
     requestSource: options.requestSource
   });
-  const payload = await buildTransitPayload(area, routes, stops, {
+  const { routes, stops, vectorHeadwayMeta, diagnostics: fetchDiagnostics } = fetchResult || {};
+  const payload = await buildTransitPayload(area, routes || [], stops || [], {
     stopLocationTypes,
     routeTypes,
     vectorHeadwayMeta
@@ -2381,7 +2423,7 @@ async function getTransitForArea(area, options = {}) {
     verifiedAt
   });
 
-  return {
+  const result = {
     payload,
     cacheStatus: "miss",
     cacheKey: area.key,
@@ -2389,6 +2431,16 @@ async function getTransitForArea(area, options = {}) {
     feedFingerprint,
     stopLocationTypes
   };
+
+  if (options.debug) {
+    result.debug = {
+      fetchDiagnostics: fetchDiagnostics || null,
+      areaBbox: area.bbox,
+      requestedRouteTypes: routeTypes
+    };
+  }
+
+  return result;
 }
 
 async function getCityTransit(slug, options = {}) {
