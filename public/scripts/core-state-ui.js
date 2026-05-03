@@ -1122,8 +1122,7 @@ function uniqueStopFeaturesForLine(lineKey) {
     return true;
   });
 
-  // Sort stops sequentially along the line (prefer route geometry when available)
-  return sortStopsSequentially(unique, lineKey);
+  return unique;
 }
 
 async function toggleVisitedForStation(properties, coords) {
@@ -1272,20 +1271,33 @@ async function renderLineViewStops(lineKey, lineColor) {
     return;
   }
 
-  els.lineViewStops.innerHTML = "";
   els.lineViewStops.style.setProperty("--line-color", lineColor || "#177ca2");
 
   const cacheKey = routeStopCacheKey(lineKey);
   const isLoading = state.inFlightLineStopKeys.has(cacheKey);
+  const sameLine = String(els.lineViewStops.dataset.lineKey || "") === String(lineKey || "");
 
   const stopFeatures = uniqueStopFeaturesForLine(lineKey);
   if (!stopFeatures.length) {
+    if (isLoading && sameLine && els.lineViewStops.children.length > 0) {
+      return;
+    }
+
+    els.lineViewStops.innerHTML = "";
+    els.lineViewStops.dataset.lineKey = String(lineKey || "");
     const empty = document.createElement("p");
     empty.className = "microcopy";
     empty.textContent = isLoading ? "Loading stops..." : "Stops are not loaded yet.";
     els.lineViewStops.append(empty);
     return;
   }
+
+  if (isLoading && sameLine && els.lineViewStops.children.length > 0) {
+    return;
+  }
+
+  els.lineViewStops.innerHTML = "";
+  els.lineViewStops.dataset.lineKey = String(lineKey || "");
 
   // Add simple reverse toggle control
   let controlBar = els.lineViewStops.querySelector('.line-view-controls');
@@ -1344,7 +1356,9 @@ async function renderLineViewStops(lineKey, lineColor) {
     orderedFeatures = null;
   }
 
-  const featuresToRender = Array.isArray(orderedFeatures) && orderedFeatures.length ? orderedFeatures : stopFeatures;
+  const featuresToRender = Array.isArray(orderedFeatures) && orderedFeatures.length
+    ? orderedFeatures
+    : sortStopsSequentially(stopFeatures, lineKey);
   if (state.lineViewReverse) {
     featuresToRender.reverse();
   }
@@ -1480,6 +1494,10 @@ function renderLineView() {
       els.lineViewProgressText.textContent = "";
       els.lineViewProgressFill.style.width = "0%";
     }
+  }
+
+  if (els.lineViewStops) {
+    els.lineViewStops.dataset.lineKey = lineKey;
   }
 
   // Update button labels based on layout
@@ -2046,6 +2064,23 @@ function lineDisplayName(line) {
   return shortName || longName || line.lineName || "Line";
 }
 
+function hashLineKeyOffset(lineKey, totalLines = 1) {
+  const normalized = String(lineKey || "").trim();
+  if (!normalized || Number(totalLines || 0) <= 1) {
+    return 0;
+  }
+
+  let hash = 0;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash = (hash * 31 + normalized.charCodeAt(index)) | 0;
+  }
+
+  const spread = Math.min(4, Math.max(1, Math.floor(Number(totalLines) / 3)));
+  const span = spread * 2 + 1;
+  const bucket = Math.abs(hash) % span;
+  return bucket - spread;
+}
+
 function lineSearchText(line) {
   return [
     line.lineName,
@@ -2409,10 +2444,11 @@ function setUserStatusFromLine(line) {
 
 function setUserStatusFromStation(properties, extraMessage = "") {
   const stationName = String(properties?.station_name || "Unnamed Station");
-  const lineLabel = [properties?.line_short_name, properties?.line_long_name || properties?.line_name]
-    .filter(Boolean)
-    .join(" | ");
-  const lineDescriptor = lineLabel || properties?.line_name || properties?.line_key || "Unknown line";
+  const lineDescriptor = lineDisplayName({
+    lineShortName: properties?.line_short_name,
+    lineLongName: properties?.line_long_name || properties?.line_name,
+    lineName: properties?.line_name
+  }) || properties?.line_key || "Unknown line";
 
   const relatedLineKey = String(properties?.line_key || "").trim();
   const relatedLine = state.lineSummaries.find((entry) => entry.lineKey === relatedLineKey);

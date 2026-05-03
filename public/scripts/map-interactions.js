@@ -186,6 +186,7 @@ function initializeMap() {
       filter: ["==", ["get", "is_focused"], 0],
       paint: {
         "line-color": "#111920",
+        "line-offset": ["coalesce", ["to-number", ["get", "render_offset"]], 0],
         "line-width": [
           "interpolate",
           ["linear"],
@@ -224,6 +225,7 @@ function initializeMap() {
       filter: ["==", ["get", "is_focused"], 0],
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
+        "line-offset": ["coalesce", ["to-number", ["get", "render_offset"]], 0],
         "line-width": [
           "interpolate",
           ["linear"],
@@ -272,6 +274,7 @@ function initializeMap() {
       filter: ["==", ["get", "is_focused"], 1],
       paint: {
         "line-color": "#0f1b22",
+        "line-offset": ["coalesce", ["to-number", ["get", "render_offset"]], 0],
         "line-width": [
           "interpolate",
           ["linear"],
@@ -310,6 +313,7 @@ function initializeMap() {
       filter: ["==", ["get", "is_focused"], 1],
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
+        "line-offset": ["coalesce", ["to-number", ["get", "render_offset"]], 0],
         "line-width": [
           "interpolate",
           ["linear"],
@@ -348,6 +352,7 @@ function initializeMap() {
       filter: ["==", ["get", "is_visible"], 1],
       paint: {
         "line-color": "#000000",
+        "line-offset": ["coalesce", ["to-number", ["get", "render_offset"]], 0],
         "line-width": [
           "interpolate",
           ["linear"],

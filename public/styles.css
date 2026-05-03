@@ -147,9 +147,10 @@ body.line-view-open .map-overlay-controls {
   z-index: 7;
   left: 14px;
   bottom: 14px;
-  width: 46px;
-  height: 46px;
-  border-radius: 10px;
+  min-width: 94px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -158,6 +159,7 @@ body.line-view-open .map-overlay-controls {
   box-shadow: 0 8px 20px rgba(5, 15, 22, 0.24);
   pointer-events: none;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 /* Explicitly hide when hidden attribute or class is present */
@@ -464,7 +466,7 @@ body[data-theme="dark"] .filter-sections {
 .filter-section-summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   margin-bottom: 0;
   user-select: none;
@@ -499,6 +501,7 @@ body[data-theme="dark"] .filter-sections {
 .show-stops-btn {
   width: auto;
   min-width: 0;
+  margin-left: auto;
   padding: 3px 8px;
   border-radius: 999px;
   font-size: 10px;
@@ -530,6 +533,7 @@ body[data-theme="dark"] .show-stops-btn {
 
 .filter-toolbar .filter-section-title {
   margin: 0;
+  flex: 1;
 }
 
 .filter-presets-btn {
@@ -651,16 +655,15 @@ body[data-theme="dark"] .user-status-card {
 }
 
 .status-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  flex-wrap: nowrap;
   margin-bottom: 6px;
 }
 
 .status-header .mono-label {
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 .line-view-btn {
@@ -1047,6 +1050,11 @@ body[data-theme="dark"] .line-visibility-btn {
   background: rgba(255, 255, 255, 0.4);
 }
 
+.overall-progress-card[hidden],
+.line-progress-list[hidden] {
+  display: none !important;
+}
+
 body[data-theme="dark"] .overall-progress-card {
   background: rgba(10, 20, 30, 0.3);
 }
@@ -1155,11 +1163,18 @@ body[data-theme="dark"] .overall-progress-card {
 
 .line-progress-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
   margin-bottom: 6px;
   font-size: 11px;
-  align-items: start;
+  align-items: center;
+}
+
+.line-progress-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .line-progress-color-dot {
@@ -1167,7 +1182,8 @@ body[data-theme="dark"] .overall-progress-card {
   height: 8px;
   min-width: 8px;
   border-radius: 999px;
-  margin-top: 3px;
+  margin-top: 0;
+  flex-shrink: 0;
 }
 
 .line-progress-name {
@@ -1179,7 +1195,10 @@ body[data-theme="dark"] .overall-progress-card {
   text-align: left;
   font: inherit;
   cursor: pointer;
-  grid-column: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .line-progress-name:hover {
@@ -1258,6 +1277,7 @@ body[data-theme="dark"] .advanced-section + .advanced-section {
   width: min(430px, calc(100vw - 24px));
   max-height: calc(100vh - 32px);
   overflow-y: auto;
+  background: var(--panel);
 }
 
 .popup-header {
@@ -1281,6 +1301,17 @@ body[data-theme="dark"] .advanced-section + .advanced-section {
   margin-top: 12px;
   border-top: 1px dashed rgba(24, 57, 76, 0.2);
   padding-top: 10px;
+}
+
+#loginRemember,
+.settings-list input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  padding: 0;
+  margin: 0 8px 0 0;
+  vertical-align: middle;
+  accent-color: var(--accent);
 }
 
 .auth-separator {
@@ -1448,8 +1479,18 @@ body[data-theme="dark"] .route-select-close {
   box-shadow: var(--shadow);
   padding: 10px;
   max-width: min(360px, 100%);
-  max-height: 60vh;
+  max-height: min(60vh, calc(100dvh - 180px));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.route-select-list {
+  display: grid;
+  gap: 6px;
   overflow-y: auto;
+  max-height: min(52vh, calc(100dvh - 240px));
 }
 
 .line-view-panel {
@@ -1485,16 +1526,15 @@ body[data-theme="dark"] .route-select-close {
 }
 
 .line-view-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: nowrap;
   min-height: 40px;
 }
 
 .line-view-title {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
   min-width: 0;
@@ -1621,7 +1661,7 @@ body[data-theme="dark"] .route-select-close {
   height: 10px;
   border-radius: 999px;
   border: 2px solid #d9563a;
-  background: #d9563a;
+  background: #ffffff;
   margin-top: 2px;
   z-index: 1;
 }
@@ -1825,11 +1865,18 @@ body.app-ready .map-overlay-controls {
     top: 10px;
     width: auto;
     max-height: min(70vh, 640px);
+    background: var(--panel);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   .line-view-panel {
     width: min(420px, 46vw);
     min-width: 300px;
+  }
+
+  .line-view-auto-toggle-btn {
+    display: none !important;
   }
 }
 
@@ -1973,7 +2020,7 @@ body.app-ready .map-overlay-controls {
     width: auto;
     max-height: calc(100dvh - 146px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     z-index: 30;
-    background: rgba(254, 254, 252, 0.98);
+    background: var(--panel);
     border: 1px solid rgba(17, 42, 61, 0.18);
     box-shadow: 0 18px 36px rgba(8, 22, 32, 0.24);
     backdrop-filter: none;
@@ -1981,9 +2028,11 @@ body.app-ready .map-overlay-controls {
   }
 
   .route-select-panel {
+    top: calc(116px + env(safe-area-inset-top));
     bottom: calc(70px + env(safe-area-inset-bottom));
     left: 10px;
     right: 10px;
+    align-items: stretch;
   }
 
   .line-view-panel {
@@ -1993,7 +2042,7 @@ body.app-ready .map-overlay-controls {
     height: 100dvh;
     padding: calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
     z-index: 20;
-    background: rgba(245, 242, 235, 0.98);
+    background: var(--shell);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     display: flex;
@@ -2006,6 +2055,13 @@ body.app-ready .map-overlay-controls {
     height: 100%;
     width: 100%;
   }
+
+  .sidebar .panel,
+  .sidebar-head.panel,
+  .user-status-card {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 @media (max-width: 640px) {
@@ -2016,6 +2072,10 @@ body.app-ready .map-overlay-controls {
   .dropdown-panel {
     top: calc(116px + env(safe-area-inset-top));
     max-height: calc(100dvh - 132px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  .line-view-auto-toggle-btn {
+    display: none !important;
   }
 
   .sidebar-head h1 {

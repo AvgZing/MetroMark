@@ -62,8 +62,14 @@ function getRouteListLines() {
   });
 
   listed.sort((a, b) => {
-    // If there's a search query, prioritize search score first
+    // If there's a search query, prioritize visible matches first, then score.
     if (hasQuery) {
+      const visibleA = typeof lineIntersectsCurrentViewport === "function" && lineIntersectsCurrentViewport(a) ? 1 : 0;
+      const visibleB = typeof lineIntersectsCurrentViewport === "function" && lineIntersectsCurrentViewport(b) ? 1 : 0;
+      if (visibleA !== visibleB) {
+        return visibleB - visibleA;
+      }
+
       const scoreA = calculateLineSearchScore(a, query);
       const scoreB = calculateLineSearchScore(b, query);
       if (scoreA !== scoreB) {
@@ -116,6 +122,7 @@ function getFilteredData() {
   const allowedStopTypes = new Set(ROUTE_STOP_TYPES);
   const hasFocus = Boolean(state.focusedLineKey) && visibleLineKeys.has(state.focusedLineKey);
   const showAllStops = Boolean(state.showAllStops) && !hasFocus;
+  const visibleLineCount = visibleLineKeys.size;
 
   const routes = state.transit.routesGeoJson.features
     .map((feature) => {
@@ -123,6 +130,9 @@ function getFilteredData() {
       const targetVisible = visibleLineKeys.has(lineKey);
       const focused = targetVisible && (!hasFocus || lineKey === state.focusedLineKey) ? 1 : 0;
       const interactive = targetVisible ? 1 : 0;
+      const renderOffset = Number.isFinite(visibleLineCount) && visibleLineCount > 1
+        ? hashLineKeyOffset(lineKey, visibleLineCount)
+        : 0;
 
       return {
         ...feature,
@@ -131,7 +141,8 @@ function getFilteredData() {
           is_focused: focused,
           has_focus: hasFocus ? 1 : 0,
           is_interactive: interactive,
-          is_visible: targetVisible ? 1 : 0
+          is_visible: targetVisible ? 1 : 0,
+          render_offset: renderOffset
         }
       };
     });
@@ -239,8 +250,19 @@ function renderProgress() {
   if (!state.user) {
     els.progressSummary.textContent = "Sign in to track progress.";
     els.lineProgressList.innerHTML = "";
+    const overallProgressCard = document.getElementById("overallProgressCard");
+    if (overallProgressCard) {
+      overallProgressCard.hidden = true;
+    }
+    els.lineProgressList.hidden = true;
     return;
   }
+
+  const overallProgressCard = document.getElementById("overallProgressCard");
+  if (overallProgressCard) {
+    overallProgressCard.hidden = false;
+  }
+  els.lineProgressList.hidden = false;
 
   if (!state.transit) {
     els.progressSummary.textContent = "Pan or zoom the map and routes will load automatically.";
@@ -343,11 +365,14 @@ function renderProgress() {
 
     meter.append(fill);
 
-    wrapper.append(colorDot, label);
+    const mainRow = document.createElement("div");
+    mainRow.className = "line-progress-main";
+    mainRow.append(colorDot, label);
+
     const percentLabel = document.createElement("span");
     percentLabel.textContent = `${linePercent}%`;
 
-    wrapper.append(label, percentLabel);
+    wrapper.append(mainRow, percentLabel);
     wrapper.append(meter);
 
     els.lineProgressList.append(wrapper);
@@ -935,8 +960,8 @@ function renderLineList() {
     if (hasQuery) {
       els.routeListSummary.textContent =
         overrideCount > 0
-          ? `Search results (${routeListLines.length}, ${overrideCount} overrides)`
-          : `Search results (${routeListLines.length})`;
+          ? `Results (${routeListLines.length}, ${overrideCount} overrides)`
+          : `Results (${routeListLines.length})`;
     } else {
       els.routeListSummary.textContent =
         overrideCount > 0
@@ -945,7 +970,7 @@ function renderLineList() {
     }
   }
 
-  if (els.routeListDropdown && hasQuery && routeListLines.length > 0) {
+  if (els.routeListDropdown && hasQuery) {
     els.routeListDropdown.open = true;
   }
 
@@ -961,7 +986,7 @@ function renderLineList() {
     const empty = document.createElement("p");
     empty.className = "microcopy";
     empty.textContent = hasQuery
-      ? "No loaded routes match this search yet. Pan/zoom to load more nearby routes."
+      ? "No matching routes found. Try adjusting the filters? If a route you're looking for isn't available, first check if it exists on https://www.transit.land/map."
       : "No routes are visible. Adjust filters or search for a route and set it ON.";
     els.lineList.append(empty);
     return;

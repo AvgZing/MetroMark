@@ -60,7 +60,7 @@
 
             <div class="filter-sections routes-top-controls" aria-label="Route filters">
               <div class="filter-toolbar">
-                <p class="filter-section-title">Filter Presets</p>
+                <p class="filter-section-title">Filters</p>
                 <button
                   id="filterPresetsBtn"
                   class="btn btn-icon filter-presets-btn"
@@ -89,7 +89,7 @@
               </div>
 
               <div class="filter-section">
-                <details class="filter-section-dropdown" id="modeFilterSection" open>
+                <details class="filter-section-dropdown" id="modeFilterSection">
                   <summary class="filter-section-summary">
                     <p class="filter-section-title">Modes</p>
                     <button
@@ -106,7 +106,7 @@
               </div>
               <div class="filter-section-divider" aria-hidden="true"></div>
               <div class="filter-section">
-                <details class="filter-section-dropdown" id="frequencyFilterSection" open>
+                <details class="filter-section-dropdown" id="frequencyFilterSection">
                   <summary class="filter-section-summary">
                     <p class="filter-section-title">Frequencies</p>
                   </summary>
@@ -177,7 +177,7 @@
         <details class="panel panel-dropdown progress-panel" id="progressPanel" open>
           <summary class="panel-summary"><span class="panel-summary-label">Progress</span></summary>
           <div class="panel-dropdown-body">
-            <div class="overall-progress-card">
+            <div id="overallProgressCard" class="overall-progress-card">
               <p class="overall-progress-label">Overall Progress</p>
               <p id="overallProgressText" class="overall-progress-text">0 / 0 (0%)</p>
               <div class="progress-track">
