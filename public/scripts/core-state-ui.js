@@ -1278,9 +1278,12 @@ async function renderLineViewStops(lineKey, lineColor) {
   const sameLine = String(els.lineViewStops.dataset.lineKey || "") === String(lineKey || "");
 
   const stopFeatures = uniqueStopFeaturesForLine(lineKey);
+  // Detect whether stop rows are already rendered (ignore control bar or other wrappers)
+  const hasRenderedStopRows = !!els.lineViewStops.querySelector('.line-view-stop-row');
+
   if (!stopFeatures.length) {
-    if (isLoading && sameLine && els.lineViewStops.children.length > 0) {
-      // Keep existing content while loading; don't flicker
+    if (isLoading && sameLine && hasRenderedStopRows) {
+      // Keep existing stop rows while loading; don't flicker
       return;
     }
 
@@ -1294,18 +1297,17 @@ async function renderLineViewStops(lineKey, lineColor) {
     return;
   }
 
-  if (isLoading && sameLine && els.lineViewStops.children.length > 0) {
-    // Keep existing content while loading; don't flicker
+  if (isLoading && sameLine && hasRenderedStopRows) {
+    // Keep existing stop rows while loading; don't flicker
     return;
   }
 
-  // Only clear and re-render if data has changed or line changed
-  if (String(els.lineViewStops.dataset.lineKey || "") !== String(lineKey || "") || 
-      !els.lineViewStops.children.length) {
+  // Only clear and re-render if data has changed (different line) or no stop rows exist
+  if (String(els.lineViewStops.dataset.lineKey || "") !== String(lineKey || "") || !hasRenderedStopRows) {
     els.lineViewStops.innerHTML = "";
     els.lineViewStops.dataset.lineKey = String(lineKey || "");
   } else {
-    // Same line, already has content, and not loading - preserve DOM to prevent flicker
+    // Same line with rendered rows, nothing to do
     return;
   }
 
