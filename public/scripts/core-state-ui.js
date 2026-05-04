@@ -1280,9 +1280,11 @@ async function renderLineViewStops(lineKey, lineColor) {
   const stopFeatures = uniqueStopFeaturesForLine(lineKey);
   if (!stopFeatures.length) {
     if (isLoading && sameLine && els.lineViewStops.children.length > 0) {
+      // Keep existing content while loading; don't flicker
       return;
     }
 
+    // Only clear and show empty state if not loading or if line changed
     els.lineViewStops.innerHTML = "";
     els.lineViewStops.dataset.lineKey = String(lineKey || "");
     const empty = document.createElement("p");
@@ -1293,38 +1295,101 @@ async function renderLineViewStops(lineKey, lineColor) {
   }
 
   if (isLoading && sameLine && els.lineViewStops.children.length > 0) {
+    // Keep existing content while loading; don't flicker
     return;
   }
 
-  els.lineViewStops.innerHTML = "";
-  els.lineViewStops.dataset.lineKey = String(lineKey || "");
+  // Only clear and re-render if data has changed or line changed
+  if (String(els.lineViewStops.dataset.lineKey || "") !== String(lineKey || "") || 
+      !els.lineViewStops.children.length) {
+    els.lineViewStops.innerHTML = "";
+    els.lineViewStops.dataset.lineKey = String(lineKey || "");
+  } else {
+    // Same line, already has content, and not loading - preserve DOM to prevent flicker
+    return;
+  }
 
-  // Add simple reverse toggle control
+  // Add direction control (Inbound / Outbound toggle)
   let controlBar = els.lineViewStops.querySelector('.line-view-controls');
   if (!controlBar) {
     controlBar = document.createElement('div');
     controlBar.className = 'line-view-controls';
     controlBar.style.display = 'flex';
     controlBar.style.justifyContent = 'flex-end';
+    controlBar.style.gap = '4px';
     controlBar.style.marginBottom = '6px';
-    els.lineViewStops.append(controlBar);
+    els.lineViewStops.prepend(controlBar);
   }
 
-  let reverseBtn = controlBar.querySelector('.line-view-reverse-btn');
-  if (!reverseBtn) {
-    reverseBtn = document.createElement('button');
-    reverseBtn.type = 'button';
-    reverseBtn.className = 'line-view-reverse-btn';
-    reverseBtn.textContent = state.lineViewReverse ? 'Reverse ▲' : 'Reverse ▼';
-    reverseBtn.addEventListener('click', () => {
-      state.lineViewReverse = !state.lineViewReverse;
-      reverseBtn.textContent = state.lineViewReverse ? 'Reverse ▲' : 'Reverse ▼';
-      // Re-render stops with new order
+  // Create segmented control with two buttons for direction toggle
+  let directionControl = controlBar.querySelector('.line-view-direction-control');
+  if (!directionControl) {
+    directionControl = document.createElement('div');
+    directionControl.className = 'line-view-direction-control';
+    directionControl.style.display = 'inline-flex';
+    directionControl.style.borderRadius = '6px';
+    directionControl.style.border = '1px solid var(--panel-border)';
+    directionControl.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
+    directionControl.style.overflow = 'hidden';
+
+    const inboundBtn = document.createElement('button');
+    inboundBtn.type = 'button';
+    inboundBtn.className = 'line-view-direction-btn';
+    inboundBtn.textContent = 'Inbound';
+    inboundBtn.style.flex = '1';
+    inboundBtn.style.padding = '4px 10px';
+    inboundBtn.style.border = 'none';
+    inboundBtn.style.background = 'transparent';
+    inboundBtn.style.cursor = 'pointer';
+    inboundBtn.style.fontSize = '11px';
+    inboundBtn.style.fontWeight = '500';
+    inboundBtn.dataset.direction = '0';
+
+    const outboundBtn = document.createElement('button');
+    outboundBtn.type = 'button';
+    outboundBtn.className = 'line-view-direction-btn';
+    outboundBtn.textContent = 'Outbound';
+    outboundBtn.style.flex = '1';
+    outboundBtn.style.padding = '4px 10px';
+    outboundBtn.style.borderLeft = '1px solid var(--panel-border)';
+    outboundBtn.style.background = 'transparent';
+    outboundBtn.style.cursor = 'pointer';
+    outboundBtn.style.fontSize = '11px';
+    outboundBtn.style.fontWeight = '500';
+    outboundBtn.dataset.direction = '1';
+
+    const updateDirectionUI = () => {
+      const isReverse = state.lineViewReverse;
+      inboundBtn.style.background = !isReverse ? 'rgba(23, 124, 162, 0.14)' : 'transparent';
+      inboundBtn.style.color = !isReverse ? 'var(--ink)' : 'var(--muted)';
+      outboundBtn.style.background = isReverse ? 'rgba(23, 124, 162, 0.14)' : 'transparent';
+      outboundBtn.style.color = isReverse ? 'var(--ink)' : 'var(--muted)';
+    };
+
+    inboundBtn.addEventListener('click', () => {
+      state.lineViewReverse = false;
+      updateDirectionUI();
       renderLineViewStops(lineKey, lineColor).catch(() => {});
     });
-    controlBar.append(reverseBtn);
+
+    outboundBtn.addEventListener('click', () => {
+      state.lineViewReverse = true;
+      updateDirectionUI();
+      renderLineViewStops(lineKey, lineColor).catch(() => {});
+    });
+
+    directionControl.append(inboundBtn, outboundBtn);
+    controlBar.append(directionControl);
+    updateDirectionUI();
   } else {
-    reverseBtn.textContent = state.lineViewReverse ? 'Reverse ▲' : 'Reverse ▼';
+    const buttons = directionControl.querySelectorAll('.line-view-direction-btn');
+    if (buttons.length === 2) {
+      const isReverse = state.lineViewReverse;
+      buttons[0].style.background = !isReverse ? 'rgba(23, 124, 162, 0.14)' : 'transparent';
+      buttons[0].style.color = !isReverse ? 'var(--ink)' : 'var(--muted)';
+      buttons[1].style.background = isReverse ? 'rgba(23, 124, 162, 0.14)' : 'transparent';
+      buttons[1].style.color = isReverse ? 'var(--ink)' : 'var(--muted)';
+    }
   }
 
   const visitedSet = getVisitedSetForLine(lineKey);
@@ -2064,6 +2129,11 @@ function lineDisplayName(line) {
   return shortName || longName || line.lineName || "Line";
 }
 
+// Interlining offset calculation - DISABLED
+// This was used for rendering interlined routes with visual offset,
+// but it wasn't working well. Abandoned in favor of letting overlapping
+// lines stack naturally on the map.
+/*
 function hashLineKeyOffset(lineKey, totalLines = 1) {
   const normalized = String(lineKey || "").trim();
   if (!normalized || Number(totalLines || 0) <= 1) {
@@ -2080,6 +2150,7 @@ function hashLineKeyOffset(lineKey, totalLines = 1) {
   const bucket = Math.abs(hash) % span;
   return bucket - spread;
 }
+*/
 
 function lineSearchText(line) {
   return [

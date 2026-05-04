@@ -130,9 +130,6 @@ function getFilteredData() {
       const targetVisible = visibleLineKeys.has(lineKey);
       const focused = targetVisible && (!hasFocus || lineKey === state.focusedLineKey) ? 1 : 0;
       const interactive = targetVisible ? 1 : 0;
-      const renderOffset = Number.isFinite(visibleLineCount) && visibleLineCount > 1
-        ? hashLineKeyOffset(lineKey, visibleLineCount)
-        : 0;
 
       return {
         ...feature,
@@ -141,8 +138,7 @@ function getFilteredData() {
           is_focused: focused,
           has_focus: hasFocus ? 1 : 0,
           is_interactive: interactive,
-          is_visible: targetVisible ? 1 : 0,
-          render_offset: renderOffset
+          is_visible: targetVisible ? 1 : 0
         }
       };
     });
