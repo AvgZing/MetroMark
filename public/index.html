@@ -50,11 +50,11 @@
           </div>
         </div>
 
-        <!-- User Status Panel (non-collapsible, visible on mobile) -->
-        <div class="panel user-status-panel">
+        <!-- User Status Panel -->
+        <details class="panel panel-dropdown user-status-panel" open>
+          <summary class="panel-summary"><span class="panel-summary-label">Status</span></summary>
           <div class="user-status-card" aria-live="polite">
-            <div class="status-header">
-              <p class="mono-label">Status</p>
+            <div class="user-status-header-actions">
               <button
                 id="lineViewBtn"
                 class="btn btn-icon line-view-btn"
@@ -68,20 +68,6 @@
                   <circle cx="19" cy="6" r="1.5" />
                   <circle cx="19" cy="12" r="1.5" />
                   <circle cx="19" cy="18" r="1.5" />
-                </svg>
-              </button>
-              <button
-                id="toggleLineViewAutoBtn"
-                class="btn btn-icon line-view-auto-toggle-btn"
-                type="button"
-                aria-label="Toggle line view auto-open on route selection"
-                aria-pressed="true"
-                hidden
-                title="Auto-open line view when selecting a route (desktop only)"
-              >
-                <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M9 6c-1 0-2 1-2 2v8c0 1 1 2 2 2h6c1 0 2-1 2-2V8c0-1-1-2-2-2H9zm0 2h6v8H9V8z" />
-                  <rect x="4" y="4" width="16" height="16" fill="none" stroke="currentColor" rx="2" />
                 </svg>
               </button>
             </div>
@@ -103,10 +89,10 @@
             </div>
             <p id="clearRouteProgressConfirmText" class="clear-progress-confirm" hidden></p>
           </div>
-        </div>
+        </details>
 
-        <!-- Routes panel collapsed by default -->
-        <details class="panel panel-dropdown routes-panel" id="routesPanel">
+        <!-- Routes panel open by default -->
+        <details class="panel panel-dropdown routes-panel" id="routesPanel" open>
           <summary class="panel-summary"><span class="panel-summary-label">Routes</span></summary>
           <div class="panel-dropdown-body routes-panel-body">
             <!-- Search Input -->
@@ -116,7 +102,7 @@
             </label>
 
             <!-- Filters Dropdown containing Modes and Frequencies -->
-            <details class="filter-dropdown-wrapper" id="filtersDropdown">
+            <details class="filter-dropdown-wrapper" id="filtersDropdown" open>
               <summary class="filter-section-summary">
                 <p class="filter-section-title">Filters</p>
                 <button
@@ -348,6 +334,7 @@
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
+    <script src="/scripts/line-view-stop-ordering.js" defer></script>
     <script src="/scripts/core-state-ui.js" defer></script>
     <script src="/scripts/map-viewport-cache.js" defer></script>
     <script src="/scripts/filters-routes.js" defer></script>

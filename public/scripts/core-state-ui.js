@@ -729,6 +729,16 @@ function renderUserFeedback() {
 }
 
 function renderUserStatus() {
+  const statusLineKey = String(
+    state.userStatus?.routeLineKey || state.lineViewLineKey || state.focusedLineKey || ""
+  ).trim();
+  const statusLine = state.lineSummaries.find((entry) => entry.lineKey === statusLineKey);
+  const statusLineColor = statusLine?.color || "#177ca2";
+
+  if (els.userStatusTitle) {
+    els.userStatusTitle.style.setProperty("--status-line-color", statusLineColor);
+  }
+
   els.userStatusTitle.textContent = state.userStatus.title;
   els.userStatusSubtitle.textContent = state.userStatus.subtitle;
 
@@ -969,143 +979,6 @@ function stopKeyForFeature(feature) {
   return String(props.station_key || props.stop_id || "").trim();
 }
 
-function sortStopsSequentially(features, lineKey) {
-  if (!Array.isArray(features) || features.length <= 1) {
-    return features;
-  }
-
-  const coords = features.map((f) => f?.geometry?.coordinates).filter((c) => Array.isArray(c));
-  if (coords.length <= 1) {
-    return features;
-  }
-
-  // If we have the route geometry for this line, project stops onto the route
-  // polyline and compute a distance-along-route to order stops robustly for loops.
-  try {
-    const routeFeatures = Array.isArray(state.transit?.routesGeoJson?.features)
-      ? state.transit.routesGeoJson.features
-      : [];
-
-    const routeFeature = routeFeatures.find((r) => String(r?.properties?.line_key || "") === String(lineKey || ""));
-    const routeCoords = (routeFeature && routeFeature.geometry && Array.isArray(routeFeature.geometry.coordinates))
-      ? (routeFeature.geometry.type === 'MultiLineString'
-          ? routeFeature.geometry.coordinates.flat()
-          : routeFeature.geometry.coordinates)
-      : null;
-
-    if (Array.isArray(routeCoords) && routeCoords.length >= 2) {
-      // Helper: Euclidean distance (approx) in lon/lat degrees scaled by cosine of latitude
-      const haversineDistance = (a, b) => {
-        const toRad = (v) => (v * Math.PI) / 180;
-        const R = 6371000; // meters
-        const dLat = toRad(b[1] - a[1]);
-        const dLon = toRad(b[0] - a[0]);
-        const lat1 = toRad(a[1]);
-        const lat2 = toRad(b[1]);
-        const sinDLat = Math.sin(dLat / 2);
-        const sinDLon = Math.sin(dLon / 2);
-        const aa = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
-        const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
-        return R * c;
-      };
-
-      // Precompute segment lengths and cumulative lengths
-      const segLengths = [];
-      const cumLengths = [0];
-      for (let i = 0; i < routeCoords.length - 1; i++) {
-        const l = haversineDistance(routeCoords[i], routeCoords[i + 1]);
-        segLengths.push(l);
-        cumLengths.push(cumLengths[cumLengths.length - 1] + l);
-      }
-
-      const computeAlongDistance = (pt) => {
-        let best = { dist: Infinity, along: 0 };
-        for (let i = 0; i < routeCoords.length - 1; i++) {
-          const a = routeCoords[i];
-          const b = routeCoords[i + 1];
-          const ax = a[0];
-          const ay = a[1];
-          const bx = b[0];
-          const by = b[1];
-          const vx = bx - ax;
-          const vy = by - ay;
-          const wx = pt[0] - ax;
-          const wy = pt[1] - ay;
-          const segLenSq = vx * vx + vy * vy;
-          const t = segLenSq > 0 ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / segLenSq)) : 0;
-          const proj = [ax + t * vx, ay + t * vy];
-          const d = haversineDistance(pt, proj);
-          const along = cumLengths[i] + (t * segLengths[i]);
-          if (d < best.dist) {
-            best = { dist: d, along };
-          }
-        }
-        return best.along;
-      };
-
-      const mapped = features.map((feature) => {
-        const coord = feature?.geometry?.coordinates;
-        if (!Array.isArray(coord)) {
-          return { feature, along: Number.POSITIVE_INFINITY };
-        }
-        return { feature, along: computeAlongDistance(coord) };
-      });
-
-      mapped.sort((a, b) => a.along - b.along);
-      return mapped.map((m) => m.feature);
-    }
-  } catch (e) {
-    // Fall back to the simple projection-based sort on any error
-  }
-
-  // Fallback: previous heuristic - find two most distant points then project
-  // Find the two most distant points to establish the line direction
-  let maxDist = 0;
-  let startIdx = 0;
-  let endIdx = 1;
-
-  for (let i = 0; i < coords.length; i++) {
-    for (let j = i + 1; j < coords.length; j++) {
-      const dx = coords[i][0] - coords[j][0];
-      const dy = coords[i][1] - coords[j][1];
-      const dist = dx * dx + dy * dy;
-      if (dist > maxDist) {
-        maxDist = dist;
-        startIdx = i;
-        endIdx = j;
-      }
-    }
-  }
-
-  const start = coords[startIdx];
-  const end = coords[endIdx];
-
-  // Project each stop onto the line from start to end
-  const dx = end[0] - start[0];
-  const dy = end[1] - start[1];
-  const lineLenSq = dx * dx + dy * dy;
-
-  if (lineLenSq < 0.0001) {
-    return features; // Points are too close, can't determine direction
-  }
-
-  const projections = features.map((feature, idx) => {
-    const coord = feature?.geometry?.coordinates;
-    if (!Array.isArray(coord)) {
-      return { feature, projection: -1, index: idx };
-    }
-
-    const px = coord[0] - start[0];
-    const py = coord[1] - start[1];
-    const projection = (px * dx + py * dy) / lineLenSq;
-    return { feature, projection, index: idx };
-  });
-
-  // Sort by projection along the line
-  projections.sort((a, b) => a.projection - b.projection);
-  return projections.map((p) => p.feature);
-}
-
 function uniqueStopFeaturesForLine(lineKey) {
   const cacheEntry = state.lineStopsCache.get(routeStopCacheKey(lineKey));
   const stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
@@ -1276,13 +1149,17 @@ async function renderLineViewStops(lineKey, lineColor) {
   const cacheKey = routeStopCacheKey(lineKey);
   const isLoading = state.inFlightLineStopKeys.has(cacheKey);
   const sameLine = String(els.lineViewStops.dataset.lineKey || "") === String(lineKey || "");
+  const directionKey = state.lineViewReverse ? "1" : "0";
+  const sameDirection = String(els.lineViewStops.dataset.lineViewReverse || "") === directionKey;
+  const cacheEntry = state.lineStopsCache.get(cacheKey);
 
   const stopFeatures = uniqueStopFeaturesForLine(lineKey);
   // Detect whether stop rows are already rendered (ignore control bar or other wrappers)
   const hasRenderedStopRows = !!els.lineViewStops.querySelector('.line-view-stop-row');
+  const directionSequences = cacheEntry?.payload?.directionStopSequences || null;
 
   if (!stopFeatures.length) {
-    if (isLoading && sameLine && hasRenderedStopRows) {
+    if (isLoading && sameLine && sameDirection && hasRenderedStopRows) {
       // Keep existing stop rows while loading; don't flicker
       return;
     }
@@ -1290,6 +1167,7 @@ async function renderLineViewStops(lineKey, lineColor) {
     // Only clear and show empty state if not loading or if line changed
     els.lineViewStops.innerHTML = "";
     els.lineViewStops.dataset.lineKey = String(lineKey || "");
+    els.lineViewStops.dataset.lineViewReverse = directionKey;
     const empty = document.createElement("p");
     empty.className = "microcopy";
     empty.textContent = isLoading ? "Loading stops..." : "Stops are not loaded yet.";
@@ -1297,15 +1175,20 @@ async function renderLineViewStops(lineKey, lineColor) {
     return;
   }
 
-  if (isLoading && sameLine && hasRenderedStopRows) {
+  if (isLoading && sameLine && sameDirection && hasRenderedStopRows) {
     // Keep existing stop rows while loading; don't flicker
     return;
   }
 
-  // Only clear and re-render if data has changed (different line) or no stop rows exist
-  if (String(els.lineViewStops.dataset.lineKey || "") !== String(lineKey || "") || !hasRenderedStopRows) {
+  // Only clear and re-render if data has changed, direction changed, or no stop rows exist.
+  if (
+    String(els.lineViewStops.dataset.lineKey || "") !== String(lineKey || "") ||
+    String(els.lineViewStops.dataset.lineViewReverse || "") !== directionKey ||
+    !hasRenderedStopRows
+  ) {
     els.lineViewStops.innerHTML = "";
     els.lineViewStops.dataset.lineKey = String(lineKey || "");
+    els.lineViewStops.dataset.lineViewReverse = directionKey;
   } else {
     // Same line with rendered rows, nothing to do
     return;
@@ -1396,39 +1279,13 @@ async function renderLineViewStops(lineKey, lineColor) {
 
   const visitedSet = getVisitedSetForLine(lineKey);
 
-  // Attempt to request server-side linear referencing fractions
-  let orderedFeatures = null;
-  try {
-    const stopsPayload = stopFeatures.map((f) => ({ id: stopKeyForFeature(f), lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0] }));
-    const payload = await apiRequest('/api/transit/stop-fractions', {
-      method: 'POST',
-      body: JSON.stringify({ lineKey, stops: stopsPayload, zoom: state.mapZoom || null })
-    }).catch(() => null);
-
-    if (payload && Array.isArray(payload.results)) {
-      const fracById = new Map(payload.results.map((r) => [String(r.id || ''), r.fraction]));
-      const withFrac = stopFeatures.map((f) => ({ feature: f, frac: fracById.get(stopKeyForFeature(f)) }));
-      const hasAny = withFrac.some((w) => Number.isFinite(Number(w.frac)));
-      if (hasAny) {
-        withFrac.sort((a, b) => {
-          const va = Number.isFinite(Number(a.frac)) ? Number(a.frac) : Number.POSITIVE_INFINITY;
-          const vb = Number.isFinite(Number(b.frac)) ? Number(b.frac) : Number.POSITIVE_INFINITY;
-          return va - vb;
-        });
-        orderedFeatures = withFrac.map((w) => w.feature);
-      }
-    }
-  } catch (e) {
-    // ignore server ordering errors and fall back
-    orderedFeatures = null;
-  }
-
-  const featuresToRender = Array.isArray(orderedFeatures) && orderedFeatures.length
-    ? orderedFeatures
-    : sortStopsSequentially(stopFeatures, lineKey);
-  if (state.lineViewReverse) {
-    featuresToRender.reverse();
-  }
+  // Use the dedicated line-view stop ordering module to handle all ordering logic
+  const featuresToRender = await orderStopsForLineView(
+    stopFeatures,
+    lineKey,
+    state.lineViewReverse,
+    directionSequences
+  );
 
   featuresToRender.forEach((feature) => {
     const props = feature?.properties || {};
@@ -1563,10 +1420,6 @@ function renderLineView() {
     }
   }
 
-  if (els.lineViewStops) {
-    els.lineViewStops.dataset.lineKey = lineKey;
-  }
-
   // Update button labels based on layout
   const isMobileLayout = isPortraitMobileLayout();
   if (els.lineViewReturnBtn) {
@@ -1577,6 +1430,7 @@ function renderLineView() {
     els.lineViewMapBtn.textContent = isMobileLayout ? "Map" : "Zoom";
   }
 
+  // renderLineViewStops will manage dataset.lineKey itself to detect line changes
   renderLineViewStops(lineKey, lineColor).catch(() => {});
 }
 

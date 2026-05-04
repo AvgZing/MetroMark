@@ -73,7 +73,6 @@ body[data-theme="dark"] {
   overflow-y: auto;
   border-right: 1px solid var(--panel-border);
   background: var(--shell);
-  backdrop-filter: blur(4px);
 }
 
 .map-stage {
@@ -430,18 +429,18 @@ label {
 
 .filter-sections {
   margin-top: 6px;
-  border: 1px solid rgba(20, 53, 71, 0.12);
+  border: 1px solid var(--panel-border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.4);
+  background: var(--panel);
   padding: 6px 6px 5px;
 }
 
 .filter-dropdown-wrapper {
   list-style: none;
   margin-top: 6px;
-  border: 1px solid rgba(20, 53, 71, 0.12);
+  border: 1px solid var(--panel-border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.4);
+  background: var(--panel);
   padding: 0;
   overflow: hidden;
 }
@@ -476,7 +475,7 @@ label {
   margin-top: 6px;
   padding: 6px 6px 5px;
   border: none;
-  border-top: 1px solid rgba(20, 53, 71, 0.12);
+  border-top: 1px solid var(--panel-border);
   border-radius: 0;
   background: transparent;
 }
@@ -484,16 +483,12 @@ label {
 .filter-dropdown-wrapper[open] .route-list-dropdown {
   margin-top: 6px;
   border: none;
-  border-top: 1px solid rgba(20, 53, 71, 0.12);
+  border-top: 1px solid var(--panel-border);
   border-radius: 0;
 }
 
 .filter-dropdown-wrapper[open] .route-list-dropdown > .route-list-summary {
   padding: 6px 2px;
-}
-
-body[data-theme="dark"] .filter-sections {
-  background: rgba(10, 20, 30, 0.38);
 }
 
 .filter-section-title {
@@ -520,13 +515,23 @@ body[data-theme="dark"] .filter-sections {
 }
 
 .filter-section-summary {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 8px;
   margin-bottom: 0;
   user-select: none;
   padding: 4px 2px;
+  padding-right: 0;
+}
+
+.filter-section-summary .filter-section-title {
+  margin: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .filter-section-summary::before {
@@ -594,6 +599,10 @@ body[data-theme="dark"] .show-stops-btn {
 }
 
 .filter-presets-btn {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  transform: translateY(-50%);
   width: 30px;
   min-width: 30px;
   height: 30px;
@@ -697,18 +706,24 @@ body[data-theme="dark"] .mode-chip {
 
 .user-status-card {
   margin: 8px 0;
+  position: relative;
   border: 1px solid rgba(20, 53, 71, 0.14);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.46);
   padding: 7px 8px;
 }
 
-body[data-theme="dark"] .user-status-card {
-  background: rgba(10, 20, 30, 0.42);
+.user-status-header-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  z-index: 2;
 }
 
-.user-status-card .mono-label {
-  margin: 0;
+body[data-theme="dark"] .user-status-card {
+  background: rgba(10, 20, 30, 0.42);
 }
 
 .status-header {
@@ -738,13 +753,29 @@ body[data-theme="dark"] .user-status-card {
 
 .user-status-title {
   margin: 5px 0 2px;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  --status-line-color: #177ca2;
+}
+
+.user-status-title::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid var(--status-line-color);
+  background: #ffffff;
+  flex-shrink: 0;
 }
 
 .user-status-subtitle {
-  margin: 0;
-  font-size: 12px;
+  margin: 0 0 0 12px;
+  font-size: 13px;
   color: var(--muted);
   line-height: 1.32;
 }
@@ -1285,7 +1316,7 @@ body[data-theme="dark"] .overall-progress-card {
 #statusText {
   margin: 0;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 #statusText.error {
@@ -1571,6 +1602,7 @@ body[data-theme="dark"] .route-select-close {
 }
 
 .line-view-card {
+  position: relative;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -1584,14 +1616,19 @@ body[data-theme="dark"] .route-select-close {
 }
 
 .line-view-header {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 8px;
   min-height: 40px;
+  padding-right: 76px;
 }
 
 .line-view-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1728,13 +1765,14 @@ body[data-theme="dark"] .route-select-close {
 }
 
 .line-view-stop-dot {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 999px;
   border: 2px solid #d9563a;
   background: #ffffff;
   margin-top: 2px;
   z-index: 1;
+  flex-shrink: 0;
 }
 
 .line-view-stop-row.is-visited .line-view-stop-dot {
@@ -1998,31 +2036,56 @@ body.app-ready .map-overlay-controls {
     padding: 0;
   }
 
+  body:not(.mobile-panels-open) .routes-panel {
+    display: none;
+  }
+
   .routes-panel-body {
     padding: 8px;
   }
 
-  /* Show status card floating on mobile even when panel minimized */
+  .user-status-panel {
+    display: block;
+    margin-bottom: 8px;
+  }
+
   .user-status-card {
     margin: 0;
     padding: 6px 7px;
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    right: 8px;
-    max-width: calc(100vw - 16px);
-    z-index: 9;
+    position: relative;
+    top: auto;
+    left: auto;
+    right: auto;
+    max-width: none;
+    z-index: auto;
+    background: var(--panel);
+    pointer-events: auto;
+  }
+
+  .user-status-header-actions {
+    top: 6px;
+    right: 6px;
   }
 
   .user-status-title {
-    margin: 4px 0 2px;
-    font-size: 12px;
+    margin: 18px 0 2px;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.2;
+    gap: 8px;
+  }
+
+  .user-status-title::before {
+    width: 12px;
+    height: 12px;
   }
 
   .user-status-subtitle,
   .user-status-feedback {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.24;
+    margin-left: 12px;
+    font-weight: 500;
   }
 
   body:not(.mobile-panels-open) .user-status-details dt:nth-of-type(n + 4),
@@ -2089,6 +2152,7 @@ body.app-ready .map-overlay-controls {
   }
 
   body.mobile-panels-open .routes-panel {
+    display: block;
     padding: 0;
   }
 
