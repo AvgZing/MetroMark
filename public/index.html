@@ -271,6 +271,16 @@
                   <div id="lineViewProgressFill" class="progress-fill"></div>
                 </div>
               </div>
+              <div id="lineViewDiagnostics" class="line-view-diagnostics" hidden>
+                <label for="lineViewOrderingMode" class="diagnostic-label">Ordering Mode:</label>
+                <select id="lineViewOrderingMode" class="diagnostic-select">
+                  <option value="auto">Auto (Direction → Fractions → Geometry)</option>
+                  <option value="direction">Direction Sequences Only</option>
+                  <option value="fractions">Fractions Only</option>
+                  <option value="geometry">Geometry Only</option>
+                  <option value="pca">PCA Projection (Fallback)</option>
+                </select>
+              </div>
             </div>
             <div id="lineViewStops" class="line-view-stop-list"></div>
           </div>

@@ -310,29 +310,119 @@ async function orderStopsByFractions(stopFeatures, lineKey) {
 }
 
 /**
+ * Order stops by projecting them onto the first principal component
+ * of the stop coordinates. This gives a robust linear ordering for
+ * routes that are approximately linear even when route geometry
+ * is missing or noisy.
+ */
+function orderStopsByPCA(features) {
+  const pts = features
+    .map((f) => ({ f, c: (f?.geometry?.coordinates || []).slice(0, 2) }))
+    .filter((w) => Array.isArray(w.c) && Number.isFinite(w.c[0]) && Number.isFinite(w.c[1]));
+
+  if (!pts.length) return features;
+
+  // Compute mean
+  let meanX = 0, meanY = 0;
+  for (const p of pts) { meanX += p.c[0]; meanY += p.c[1]; }
+  meanX /= pts.length; meanY /= pts.length;
+
+  // Covariance matrix
+  let sxx = 0, sxy = 0, syy = 0;
+  for (const p of pts) {
+    const dx = p.c[0] - meanX;
+    const dy = p.c[1] - meanY;
+    sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
+  }
+
+  // Principal eigenvector (for 2x2 symmetric matrix) via analytic formula
+  const trace = sxx + syy;
+  const det = sxx * syy - sxy * sxy;
+  const temp = Math.sqrt(Math.max(0, trace * trace / 4 - det));
+  const lambda1 = trace / 2 + temp;
+
+  // Compute eigenvector for lambda1: (sxy, lambda1 - sxx) or (lambda1 - syy, sxy)
+  let vx = sxy;
+  let vy = lambda1 - sxx;
+  if (Math.abs(vx) < 1e-12 && Math.abs(vy) < 1e-12) {
+    vx = lambda1 - syy;
+    vy = sxy;
+  }
+  const norm = Math.sqrt(vx * vx + vy * vy) || 1;
+  vx /= norm; vy /= norm;
+
+  // Project and sort
+  const projected = pts.map((p) => ({
+    feature: p.f,
+    score: (p.c[0] - meanX) * vx + (p.c[1] - meanY) * vy
+  }));
+
+  projected.sort((a, b) => a.score - b.score);
+  return projected.map((p) => p.feature);
+}
+
+/**
  * Order stops for line view rendering
  * Applies direction sequences first (if available), then linear referencing fractions
  */
-async function orderStopsForLineView(stopFeatures, lineKey, lineViewReverse, directionSequences) {
+async function orderStopsForLineView(stopFeatures, lineKey, directionSequences = null, orderingMode = 'auto') {
   const uniqueStopFeatures = dedupeStopFeatures(stopFeatures);
-
-  // Step 1: Build a stable base order from fractions or route geometry.
-  const fractionOrderedFeatures = await orderStopsByFractions(uniqueStopFeatures, lineKey);
-
-  // Step 2: Apply direction sequence only when it has strong coverage.
-  const directionKey = lineViewReverse ? "1" : "0";
-  const { features: directionOrderedFeatures, usedSequences } = orderStopsByDirection(
-    fractionOrderedFeatures,
-    directionSequences,
-    directionKey
-  );
-
-  let featuresToRender = usedSequences ? directionOrderedFeatures : fractionOrderedFeatures;
-
-  // Step 3: Reverse fallback order when sequence data is not trusted/available.
-  if (!usedSequences && lineViewReverse) {
-    featuresToRender = Array.from(featuresToRender).reverse();
+  
+  console.log(`[orderStopsForLineView] Starting with mode=${orderingMode}, lineKey=${lineKey}, stopCount=${uniqueStopFeatures.length}, hasDirectionSeqs=${!!directionSequences}`);
+  
+  // If ordering mode is explicitly set to geometry only, skip all other strategies
+  if (orderingMode === 'geometry') {
+    console.log(`[orderStopsForLineView] Using GEOMETRY mode`);
+    return sortStopsSequentially(uniqueStopFeatures, lineKey);
+  }
+  
+  // If ordering mode is explicitly set to fractions only, skip direction sequences
+  if (orderingMode === 'fractions') {
+    console.log(`[orderStopsForLineView] Using FRACTIONS mode`);
+    return orderStopsByFractions(uniqueStopFeatures, lineKey);
+  }
+  
+  // Try direction sequences if available and in auto or direction mode
+  if (orderingMode !== 'fractions' && directionSequences && typeof directionSequences === 'object') {
+    console.log(`[orderStopsForLineView] Attempting DIRECTION mode (auto fallback)`);
+    // Try both directions and pick the one with the best match ratio
+    let bestResult = null;
+    let bestRatio = 0;
+    
+    for (const directionKey of ['0', '1']) {
+      const result = orderStopsByDirection(uniqueStopFeatures, directionSequences, directionKey);
+      console.log(`[orderStopsForLineView] Direction ${directionKey}: usedSequences=${result.usedSequences}, matchRatio=${result.matchRatio}`);
+      if (result.usedSequences && result.matchRatio > bestRatio) {
+        bestResult = result;
+        bestRatio = result.matchRatio;
+      }
+    }
+    
+    if (bestResult && bestResult.usedSequences) {
+      console.log(`[orderStopsForLineView] Direction mode succeeded with ratio ${bestRatio}`);
+      return bestResult.features;
+    }
+    console.log(`[orderStopsForLineView] Direction mode failed, falling back to fractions`);
+  }
+  
+  // Fall back to fractions and then geometry
+  console.log(`[orderStopsForLineView] Falling back to FRACTIONS mode`);
+  const fracResult = await orderStopsByFractions(uniqueStopFeatures, lineKey);
+  if (Array.isArray(fracResult) && fracResult.length && fracResult.length === uniqueStopFeatures.length) {
+    return fracResult;
   }
 
-  return dedupeStopFeatures(featuresToRender);
+  // If fractions didn't produce usable ordering, try geometry
+  try {
+    const geomResult = sortStopsSequentially(uniqueStopFeatures, lineKey);
+    if (Array.isArray(geomResult) && geomResult.length >= 2) {
+      return geomResult;
+    }
+  } catch (e) {
+    // continue to PCA fallback
+  }
+
+  // Last resort: PCA projection ordering (robust when geometry or metadata is incomplete)
+  console.log(`[orderStopsForLineView] Falling back to PCA ordering`);
+  return orderStopsByPCA(uniqueStopFeatures);
 }

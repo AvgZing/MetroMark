@@ -190,6 +190,7 @@ const state = {
   lineViewOpen: false,
   lineViewLineKey: "",
   lineViewReturn: null,
+  lineViewOrderingMode: localStorage.getItem("metromark_line_view_ordering_mode") || "auto",
   lineViewAutoOpenEnabled: localStorage.getItem("metromark_line_view_auto_open") !== "false", // Default to true
   userStatusPinnedKind: "",
   clearRouteProgressConfirmLineKey: "",
@@ -266,6 +267,8 @@ const els = {
   lineViewProgressText: document.getElementById("lineViewProgressText"),
   lineViewProgressFill: document.getElementById("lineViewProgressFill"),
   lineViewStops: document.getElementById("lineViewStops"),
+  lineViewDiagnostics: document.getElementById("lineViewDiagnostics"),
+  lineViewOrderingModeSelect: document.getElementById("lineViewOrderingMode"),
   userStatusTitle: document.getElementById("userStatusTitle"),
   userStatusSubtitle: document.getElementById("userStatusSubtitle"),
   userStatusFeedback: document.getElementById("userStatusFeedback"),
@@ -801,14 +804,6 @@ function renderUserStatus() {
     els.lineViewBtn.setAttribute("aria-pressed", state.lineViewOpen ? "true" : "false");
   }
 
-  if (els.toggleLineViewAutoBtn) {
-    const hasLine = Boolean(state.focusedLineKey);
-    els.toggleLineViewAutoBtn.hidden = !hasLine;
-    els.toggleLineViewAutoBtn.disabled = !hasLine;
-    els.toggleLineViewAutoBtn.classList.toggle("is-active", state.lineViewAutoOpenEnabled);
-    els.toggleLineViewAutoBtn.setAttribute("aria-pressed", state.lineViewAutoOpenEnabled ? "true" : "false");
-  }
-
   if (els.deselectRouteBtn) {
     els.deselectRouteBtn.hidden = !state.focusedLineKey;
   }
@@ -1139,7 +1134,7 @@ function createLineConnector(lineColor) {
   els.lineViewStops.insertBefore(svg, els.lineViewStops.firstChild);
 }
 
-async function renderLineViewStops(lineKey, lineColor) {
+async function renderLineViewStops(lineKey, lineColor, options = {}) {
   if (!els.lineViewStops) {
     return;
   }
@@ -1149,25 +1144,17 @@ async function renderLineViewStops(lineKey, lineColor) {
   const cacheKey = routeStopCacheKey(lineKey);
   const isLoading = state.inFlightLineStopKeys.has(cacheKey);
   const sameLine = String(els.lineViewStops.dataset.lineKey || "") === String(lineKey || "");
-  const directionKey = state.lineViewReverse ? "1" : "0";
-  const sameDirection = String(els.lineViewStops.dataset.lineViewReverse || "") === directionKey;
-  const cacheEntry = state.lineStopsCache.get(cacheKey);
-
   const stopFeatures = uniqueStopFeaturesForLine(lineKey);
-  // Detect whether stop rows are already rendered (ignore control bar or other wrappers)
   const hasRenderedStopRows = !!els.lineViewStops.querySelector('.line-view-stop-row');
-  const directionSequences = cacheEntry?.payload?.directionStopSequences || null;
+  const forceRefresh = Boolean(options?.forceRefresh);
 
   if (!stopFeatures.length) {
-    if (isLoading && sameLine && sameDirection && hasRenderedStopRows) {
-      // Keep existing stop rows while loading; don't flicker
+    if (isLoading && sameLine && hasRenderedStopRows) {
       return;
     }
 
-    // Only clear and show empty state if not loading or if line changed
     els.lineViewStops.innerHTML = "";
     els.lineViewStops.dataset.lineKey = String(lineKey || "");
-    els.lineViewStops.dataset.lineViewReverse = directionKey;
     const empty = document.createElement("p");
     empty.className = "microcopy";
     empty.textContent = isLoading ? "Loading stops..." : "Stops are not loaded yet.";
@@ -1175,116 +1162,39 @@ async function renderLineViewStops(lineKey, lineColor) {
     return;
   }
 
-  if (isLoading && sameLine && sameDirection && hasRenderedStopRows) {
-    // Keep existing stop rows while loading; don't flicker
+  if (isLoading && sameLine && hasRenderedStopRows && !forceRefresh) {
     return;
   }
 
-  // Only clear and re-render if data has changed, direction changed, or no stop rows exist.
-  if (
-    String(els.lineViewStops.dataset.lineKey || "") !== String(lineKey || "") ||
-    String(els.lineViewStops.dataset.lineViewReverse || "") !== directionKey ||
-    !hasRenderedStopRows
-  ) {
+  if (forceRefresh || String(els.lineViewStops.dataset.lineKey || "") !== String(lineKey || "") || !hasRenderedStopRows) {
     els.lineViewStops.innerHTML = "";
     els.lineViewStops.dataset.lineKey = String(lineKey || "");
-    els.lineViewStops.dataset.lineViewReverse = directionKey;
   } else {
-    // Same line with rendered rows, nothing to do
     return;
-  }
-
-  // Add direction control (Inbound / Outbound toggle)
-  let controlBar = els.lineViewStops.querySelector('.line-view-controls');
-  if (!controlBar) {
-    controlBar = document.createElement('div');
-    controlBar.className = 'line-view-controls';
-    controlBar.style.display = 'flex';
-    controlBar.style.justifyContent = 'flex-end';
-    controlBar.style.gap = '4px';
-    controlBar.style.marginBottom = '6px';
-    els.lineViewStops.prepend(controlBar);
-  }
-
-  // Create segmented control with two buttons for direction toggle
-  let directionControl = controlBar.querySelector('.line-view-direction-control');
-  if (!directionControl) {
-    directionControl = document.createElement('div');
-    directionControl.className = 'line-view-direction-control';
-    directionControl.style.display = 'inline-flex';
-    directionControl.style.borderRadius = '6px';
-    directionControl.style.border = '1px solid var(--panel-border)';
-    directionControl.style.backgroundColor = 'rgba(255, 255, 255, 0.5)';
-    directionControl.style.overflow = 'hidden';
-
-    const inboundBtn = document.createElement('button');
-    inboundBtn.type = 'button';
-    inboundBtn.className = 'line-view-direction-btn';
-    inboundBtn.textContent = 'Inbound';
-    inboundBtn.style.flex = '1';
-    inboundBtn.style.padding = '4px 10px';
-    inboundBtn.style.border = 'none';
-    inboundBtn.style.background = 'transparent';
-    inboundBtn.style.cursor = 'pointer';
-    inboundBtn.style.fontSize = '11px';
-    inboundBtn.style.fontWeight = '500';
-    inboundBtn.dataset.direction = '0';
-
-    const outboundBtn = document.createElement('button');
-    outboundBtn.type = 'button';
-    outboundBtn.className = 'line-view-direction-btn';
-    outboundBtn.textContent = 'Outbound';
-    outboundBtn.style.flex = '1';
-    outboundBtn.style.padding = '4px 10px';
-    outboundBtn.style.borderLeft = '1px solid var(--panel-border)';
-    outboundBtn.style.background = 'transparent';
-    outboundBtn.style.cursor = 'pointer';
-    outboundBtn.style.fontSize = '11px';
-    outboundBtn.style.fontWeight = '500';
-    outboundBtn.dataset.direction = '1';
-
-    const updateDirectionUI = () => {
-      const isReverse = state.lineViewReverse;
-      inboundBtn.style.background = !isReverse ? 'rgba(23, 124, 162, 0.14)' : 'transparent';
-      inboundBtn.style.color = !isReverse ? 'var(--ink)' : 'var(--muted)';
-      outboundBtn.style.background = isReverse ? 'rgba(23, 124, 162, 0.14)' : 'transparent';
-      outboundBtn.style.color = isReverse ? 'var(--ink)' : 'var(--muted)';
-    };
-
-    inboundBtn.addEventListener('click', () => {
-      state.lineViewReverse = false;
-      updateDirectionUI();
-      renderLineViewStops(lineKey, lineColor).catch(() => {});
-    });
-
-    outboundBtn.addEventListener('click', () => {
-      state.lineViewReverse = true;
-      updateDirectionUI();
-      renderLineViewStops(lineKey, lineColor).catch(() => {});
-    });
-
-    directionControl.append(inboundBtn, outboundBtn);
-    controlBar.append(directionControl);
-    updateDirectionUI();
-  } else {
-    const buttons = directionControl.querySelectorAll('.line-view-direction-btn');
-    if (buttons.length === 2) {
-      const isReverse = state.lineViewReverse;
-      buttons[0].style.background = !isReverse ? 'rgba(23, 124, 162, 0.14)' : 'transparent';
-      buttons[0].style.color = !isReverse ? 'var(--ink)' : 'var(--muted)';
-      buttons[1].style.background = isReverse ? 'rgba(23, 124, 162, 0.14)' : 'transparent';
-      buttons[1].style.color = isReverse ? 'var(--ink)' : 'var(--muted)';
-    }
   }
 
   const visitedSet = getVisitedSetForLine(lineKey);
 
-  // Use the dedicated line-view stop ordering module to handle all ordering logic
+  // Get direction sequences from cache payload if available
+  const cacheEntry = state.lineStopsCache.get(routeStopCacheKey(lineKey));
+  const directionSequences = cacheEntry?.payload?.directionStopSequences || null;
+  const orderingMode = String(
+    options?.orderingMode ||
+    els.lineViewOrderingModeSelect?.value ||
+    state.lineViewOrderingMode ||
+    'auto'
+  ).trim() || 'auto';
+  
+  // Debug logging for ordering mode
+  if (typeof console !== 'undefined' && console.log) {
+    console.log(`[renderLineViewStops] Ordering mode: ${orderingMode}, from options: ${options?.orderingMode}, from select: ${els.lineViewOrderingModeSelect?.value}, from state: ${state.lineViewOrderingMode}, has directionSequences: ${!!directionSequences}`);
+  }
+
   const featuresToRender = await orderStopsForLineView(
     stopFeatures,
     lineKey,
-    state.lineViewReverse,
-    directionSequences
+    directionSequences,
+    orderingMode
   );
 
   featuresToRender.forEach((feature) => {
@@ -2580,5 +2490,65 @@ async function apiRequest(path, options = {}) {
   }
 
   return payload;
+}
+
+// Initialize diagnostic switcher
+function initializeDiagnostics() {
+  // Check if diagnostics should be visible (URL param or feature flag)
+  const urlParams = new URLSearchParams(window.location.search);
+  const showDiagnostics = urlParams.has('diagnostics') || localStorage.getItem('metromark_diagnostics') === 'true';
+  
+  if (els.lineViewDiagnostics) {
+    els.lineViewDiagnostics.hidden = !showDiagnostics;
+  }
+  
+  // Keyboard shortcut to toggle diagnostics: Ctrl+Shift+D
+  document.addEventListener('keydown', (event) => {
+    if (event.ctrlKey && event.shiftKey && event.key === 'D') {
+      event.preventDefault();
+      const isHidden = els.lineViewDiagnostics?.hidden ?? true;
+      if (els.lineViewDiagnostics) {
+        els.lineViewDiagnostics.hidden = !isHidden;
+        localStorage.setItem('metromark_diagnostics', !isHidden ? 'true' : 'false');
+      }
+    }
+  });
+  
+  // Wire up the ordering mode select
+  if (els.lineViewOrderingModeSelect) {
+    // Set initial value from state
+    els.lineViewOrderingModeSelect.value = state.lineViewOrderingMode;
+    console.log(`[initializeDiagnostics] Set dropdown initial value to: ${state.lineViewOrderingMode}`);
+    
+    els.lineViewOrderingModeSelect.addEventListener('change', (event) => {
+      const newMode = event.target.value;
+      console.log(`[dropdown change] Changed ordering mode from ${state.lineViewOrderingMode} to ${newMode}`);
+      
+      state.lineViewOrderingMode = newMode;
+      localStorage.setItem("metromark_line_view_ordering_mode", state.lineViewOrderingMode);
+      console.log(`[dropdown change] Saved to localStorage and state`);
+      
+      // Trigger re-rendering of the current line view if open
+      if (state.lineViewOpen && state.lineViewLineKey) {
+        const lineKey = String(state.lineViewLineKey).trim();
+        console.log(`[dropdown change] Triggering rerender for line ${lineKey} with mode ${newMode}`);
+        renderLineViewStops(
+          lineKey,
+          state.lineSummaries.find(l => l.lineKey === lineKey)?.color || '#177ca2',
+          { forceRefresh: true, orderingMode: newMode }
+        )
+          .catch((error) => console.error('Error re-rendering line view stops:', error));
+      } else {
+        console.log(`[dropdown change] Line view not open: lineViewOpen=${state.lineViewOpen}, lineViewLineKey=${state.lineViewLineKey}`);
+      }
+    });
+  }
+}
+
+// Initialize when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeDiagnostics);
+} else {
+  initializeDiagnostics();
 }
 
