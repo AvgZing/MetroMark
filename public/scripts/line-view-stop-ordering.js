@@ -571,101 +571,11 @@ function sortStopsSequentially(features, lineKey) {
     return features;
   }
 
-  const coords = features.map((f) => f?.geometry?.coordinates).filter((c) => Array.isArray(c));
-  if (coords.length <= 1) {
-    return features;
+  const endpointOrder = buildEndpointAnchoredGeometryOrder(features, lineKey);
+  if (Array.isArray(endpointOrder.orderedFeatures) && endpointOrder.orderedFeatures.length >= 2) {
+    return endpointOrder.orderedFeatures;
   }
 
-  // If we have the route geometry for this line, project stops onto the route
-  // polyline and compute a distance-along-route to order stops robustly for loops.
-  try {
-    const routeFeatures = Array.isArray(state.transit?.routesGeoJson?.features)
-      ? state.transit.routesGeoJson.features
-      : [];
-
-    const routeFeature = routeFeatures.find((r) => String(r?.properties?.line_key || "") === String(lineKey || ""));
-    const routeCoords = (routeFeature && routeFeature.geometry && Array.isArray(routeFeature.geometry.coordinates))
-      ? (routeFeature.geometry.type === 'MultiLineString'
-          ? routeFeature.geometry.coordinates.flat()
-          : routeFeature.geometry.coordinates)
-      : null;
-
-    if (Array.isArray(routeCoords) && routeCoords.length >= 2) {
-      // Helper: Euclidean distance (approx) in lon/lat degrees scaled by cosine of latitude
-      const haversineDistance = (a, b) => {
-        const toRad = (v) => (v * Math.PI) / 180;
-        const R = 6371000; // meters
-        const dLat = toRad(b[1] - a[1]);
-        const dLon = toRad(b[0] - a[0]);
-        const lat1 = toRad(a[1]);
-        const lat2 = toRad(b[1]);
-        const sinDLat = Math.sin(dLat / 2);
-        const sinDLon = Math.sin(dLon / 2);
-        const aa = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
-        const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
-        return R * c;
-      };
-
-      // Precompute segment lengths and cumulative lengths
-      const segLengths = [];
-      const cumLengths = [0];
-      for (let i = 0; i < routeCoords.length - 1; i++) {
-        const l = haversineDistance(routeCoords[i], routeCoords[i + 1]);
-        segLengths.push(l);
-        cumLengths.push(cumLengths[cumLengths.length - 1] + l);
-      }
-
-      const computeAlongDistance = (pt) => {
-        let best = { dist: Infinity, along: 0 };
-        for (let i = 0; i < routeCoords.length - 1; i++) {
-          const a = routeCoords[i];
-          const b = routeCoords[i + 1];
-          const ax = a[0];
-          const ay = a[1];
-          const bx = b[0];
-          const by = b[1];
-          const px = pt[0];
-          const py = pt[1];
-
-          const abx = bx - ax;
-          const aby = by - ay;
-          const apx = px - ax;
-          const apy = py - ay;
-          const abab = abx * abx + aby * aby;
-          let t = 0;
-          if (abab > 0) {
-            t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abab));
-          }
-
-          const closestx = ax + t * abx;
-          const closesty = ay + t * aby;
-          const dx = px - closestx;
-          const dy = py - closesty;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-
-          if (dist < best.dist) {
-            best = {
-              dist,
-              along: cumLengths[i] + t * segLengths[i]
-            };
-          }
-        }
-        return best.along;
-      };
-
-      const withAlongDist = features.map((f) => ({
-        feature: f,
-        along: computeAlongDistance(f.geometry.coordinates)
-      }));
-
-      withAlongDist.sort((a, b) => a.along - b.along);
-      return withAlongDist.map((w) => w.feature);
-    }
-  } catch (e) {
-    // Fall through to default sort
-  }
-
-  // Default: sort by latitude (simple north-south)
   return Array.from(features).sort((a, b) => {
     const aLat = a?.geometry?.coordinates?.[1] || 0;
     const bLat = b?.geometry?.coordinates?.[1] || 0;
@@ -820,13 +730,185 @@ function detectBranches(directionSequences) {
       });
     }
   }
+
   return branches;
+}
+
+function stopCoordinate(feature) {
+  const coordinates = feature?.geometry?.coordinates;
+  if (!Array.isArray(coordinates) || coordinates.length < 2) {
+    return null;
+  }
+
+  const lng = Number(coordinates[0]);
+  const lat = Number(coordinates[1]);
+  if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+    return null;
+  }
+
+  return [lng, lat];
+}
+
+function haversineMeters(leftPoint, rightPoint) {
+  const toRad = (value) => (value * Math.PI) / 180;
+  const earthRadius = 6371000;
+  const deltaLat = toRad(rightPoint[1] - leftPoint[1]);
+  const deltaLon = toRad(rightPoint[0] - leftPoint[0]);
+  const lat1 = toRad(leftPoint[1]);
+  const lat2 = toRad(rightPoint[1]);
+  const sinLat = Math.sin(deltaLat / 2);
+  const sinLon = Math.sin(deltaLon / 2);
+  const aa = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
+  return 2 * earthRadius * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+}
+
+function buildEndpointAnchoredGeometryOrder(stopFeatures, lineKey) {
+  const features = Array.from(Array.isArray(stopFeatures) ? stopFeatures : []).filter((feature) => stopCoordinate(feature));
+  if (features.length <= 1) {
+    return { orderedFeatures: features, rankMap: new Map() };
+  }
+
+  let startFeature = features[0];
+  let endFeature = features[1];
+  let farthestDistance = -1;
+
+  for (let leftIndex = 0; leftIndex < features.length; leftIndex += 1) {
+    const leftPoint = stopCoordinate(features[leftIndex]);
+    if (!leftPoint) {
+      continue;
+    }
+
+    for (let rightIndex = leftIndex + 1; rightIndex < features.length; rightIndex += 1) {
+      const rightPoint = stopCoordinate(features[rightIndex]);
+      if (!rightPoint) {
+        continue;
+      }
+
+      const distance = haversineMeters(leftPoint, rightPoint);
+      if (distance > farthestDistance) {
+        farthestDistance = distance;
+        startFeature = features[leftIndex];
+        endFeature = features[rightIndex];
+      }
+    }
+  }
+
+  const terminalHints = lineTerminalHints(lineKey);
+  if (terminalHints.length) {
+    const startName = stopFeatureDisplayName(startFeature);
+    const endName = stopFeatureDisplayName(endFeature);
+    const forwardScore = stopNameSimilarity(terminalHints[0], startName) + (terminalHints[1] ? stopNameSimilarity(terminalHints[1], endName) : 0);
+    const reverseScore = stopNameSimilarity(terminalHints[0], endName) + (terminalHints[1] ? stopNameSimilarity(terminalHints[1], startName) : 0);
+    if (reverseScore > forwardScore) {
+      [startFeature, endFeature] = [endFeature, startFeature];
+    }
+  } else if (stopFeatureSortLabel(endFeature).localeCompare(stopFeatureSortLabel(startFeature)) < 0) {
+    [startFeature, endFeature] = [endFeature, startFeature];
+  }
+
+  const startPoint = stopCoordinate(startFeature);
+  const endPoint = stopCoordinate(endFeature);
+  const axisX = endPoint[0] - startPoint[0];
+  const axisY = endPoint[1] - startPoint[1];
+  const axisLengthSquared = axisX * axisX + axisY * axisY || 1;
+
+  const orderedFeatures = features
+    .map((feature) => {
+      const point = stopCoordinate(feature);
+      const relativeX = point[0] - startPoint[0];
+      const relativeY = point[1] - startPoint[1];
+      const projection = Math.max(0, Math.min(1, ((relativeX * axisX) + (relativeY * axisY)) / axisLengthSquared));
+      return {
+        feature,
+        projection,
+        sortLabel: stopFeatureSortLabel(feature)
+      };
+    })
+    .sort((left, right) => {
+      if (left.projection !== right.projection) {
+        return left.projection - right.projection;
+      }
+      return left.sortLabel.localeCompare(right.sortLabel);
+    })
+    .map((entry) => entry.feature);
+
+  const rankMap = new Map();
+  orderedFeatures.forEach((feature, index) => {
+    const identity = stopIdentityKey(feature);
+    const stationKey = stopKeyForFeature(feature);
+
+    if (identity && !rankMap.has(identity)) {
+      rankMap.set(identity, index);
+    }
+
+    if (stationKey && !rankMap.has(stationKey)) {
+      rankMap.set(stationKey, index);
+    }
+  });
+
+  return { orderedFeatures, rankMap };
+}
+
+/**
+ * Build rank map for geometry-revised mode
+ * Uses the line's end point (determined by terminal names) as the starting point
+ * Sorts all stops by cumulative distance along the geometry from that endpoint
+ */
+function buildGeometryRevisedRankMap(stopFeatures, lineKey) {
+  return buildEndpointAnchoredGeometryOrder(stopFeatures, lineKey).rankMap;
+}
+
+/**
+ * Build rank map for hybrid-endpoint mode
+ * A novel approach that combines trip pattern matching with geometry endpoint anchoring
+ * Prioritizes trip patterns but anchors to the line's drawn endpoints for disambiguation
+ */
+function buildHybridEndpointRankMap(stopFeatures, directionSequences, lineKey) {
+  try {
+    // First, try to get a good trip pattern match
+    const tripPatternResult = buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+
+    if (tripPatternResult.coverage >= 0.4) {
+      // If trip pattern is strong, use it but verify endpoint orientation
+      const geometryRevisedRankMap = buildGeometryRevisedRankMap(stopFeatures, lineKey);
+
+      if (tripPatternResult.rankMap.size > 0 && geometryRevisedRankMap.size > 0) {
+        // Blend: use trip pattern as primary but apply geometry-based endpoint validation
+        const blendedRankMap = new Map(tripPatternResult.rankMap);
+
+        // Adjust unmatched stops using geometry-revised ordering
+        for (const [key, tripRank] of tripPatternResult.rankMap.entries()) {
+          const geometryRank = geometryRevisedRankMap.get(key);
+          if (Number.isFinite(geometryRank)) {
+            // Weight the trip rank more heavily but consider geometry
+            const blendedRank = (tripRank * 0.7) + (geometryRank * 0.3);
+            blendedRankMap.set(key, blendedRank);
+          }
+        }
+
+        return blendedRankMap;
+      }
+
+      return tripPatternResult.rankMap;
+    }
+
+    // Weak trip pattern: fall back to geometry-revised approach
+    const geometryRevisedRankMap = buildGeometryRevisedRankMap(stopFeatures, lineKey);
+    if (geometryRevisedRankMap.size > 0) {
+      return geometryRevisedRankMap;
+    }
+
+    // Final fallback: geometry-based ranking
+    return buildGeometryRankMap(stopFeatures, lineKey);
+  } catch (e) {
+    return buildGeometryRankMap(stopFeatures, lineKey);
+  }
 }
 
 /**
  * Order stops for line view rendering
  * Supports multiple ordering strategies with trip-pattern as primary (NEW)
- * Modes: trip-pattern (NEW), direction, fractions, geometry, payload, auto
+ * Modes: trip-pattern (NEW), direction, fractions, geometry, geometry-revised (NEW), hybrid-endpoint (NEW), payload, auto
  */
 async function orderStopsForLineView(stopFeatures, lineKey, directionSequences = null, orderingMode = 'auto', routeLookupKey = null) {
   const uniqueStopFeatures = dedupeStopFeatures(stopFeatures);
@@ -838,6 +920,7 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
   // Build all available rank maps
   const payloadRankMap = buildPayloadRankMap(uniqueStopFeatures);
   const geometryRankMap = buildGeometryRankMap(uniqueStopFeatures, lineKey);
+  const geometryRevisedRankMap = buildGeometryRevisedRankMap(uniqueStopFeatures, lineKey);
 
   // Trip-pattern rank map (NEW PRIMARY METHOD - uses actual trip data)
   const tripPatternRankInfo = directionSequences && typeof directionSequences === 'object'
@@ -848,6 +931,11 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
   const directionRankInfo = directionSequences && typeof directionSequences === 'object'
     ? buildDirectionRankMap(uniqueStopFeatures, directionSequences)
     : { rankMap: new Map(), matchedCount: 0, coverage: 0 };
+
+  // Hybrid-endpoint rank map (novel mode combining trip pattern and geometry endpoint anchoring)
+  const hybridEndpointRankMap = directionSequences && typeof directionSequences === 'object'
+    ? buildHybridEndpointRankMap(uniqueStopFeatures, directionSequences, lineKey)
+    : geometryRevisedRankMap;
 
   // Delay fraction requests so auto mode does not issue extra failing network calls.
   const resolvedRouteLookupKey = String(routeLookupKey || lineKey || '').trim();
@@ -862,6 +950,14 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
 
   if (orderingMode === 'geometry') {
     return sortFeaturesByRanking(uniqueStopFeatures, geometryRankMap);
+  }
+
+  if (orderingMode === 'geometry-revised') {
+    return sortFeaturesByRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
+  }
+
+  if (orderingMode === 'hybrid-endpoint') {
+    return sortFeaturesByRanking(uniqueStopFeatures, hybridEndpointRankMap, geometryRankMap);
   }
 
   if (orderingMode === 'direction') {
@@ -887,14 +983,19 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
       return sortFeaturesByRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
     }
 
+    // FALLBACK: Try hybrid-endpoint (trip + geometry anchoring)
+    if (hybridEndpointRankMap.size > 0 && hybridEndpointRankMap.size >= geometryRankMap.size * 0.3) {
+      return sortFeaturesByRanking(uniqueStopFeatures, hybridEndpointRankMap, geometryRankMap);
+    }
+
     // FALLBACK: Try direction ranking if available
     if (directionRankInfo.coverage >= 0.2) {
       return sortFeaturesByRanking(uniqueStopFeatures, directionRankInfo.rankMap, geometryRankMap);
     }
 
-    // FINAL: Use geometry-based ordering which should work for most routes
-    return sortFeaturesByRanking(uniqueStopFeatures, geometryRankMap);
+    // FINAL: Use geometry-revised which should work for most routes
+    return sortFeaturesByRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
   }
 
-  return sortFeaturesByRanking(uniqueStopFeatures, geometryRankMap);
+  return sortFeaturesByRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
 }

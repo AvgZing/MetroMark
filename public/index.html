@@ -274,8 +274,10 @@
               <div id="lineViewDiagnostics" class="line-view-diagnostics" hidden>
                 <label for="lineViewOrderingMode" class="diagnostic-label">Ordering Mode:</label>
                 <select id="lineViewOrderingMode" class="diagnostic-select">
-                  <option value="auto">Auto (Trip Pattern → Direction → Geometry)</option>
+                  <option value="auto">Auto (Trip Pattern → Hybrid → Direction → Geometry)</option>
                   <option value="trip-pattern">Trip Pattern (Experimental)</option>
+                  <option value="hybrid-endpoint">Hybrid + Endpoint Anchor (Novel)</option>
+                  <option value="geometry-revised">Geometry (Revised - Endpoint Anchored)</option>
                   <option value="direction">Direction Sequences Only</option>
                   <option value="fractions">Fractions Only</option>
                   <option value="payload">Route Payload Order</option>

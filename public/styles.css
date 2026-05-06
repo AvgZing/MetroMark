@@ -108,6 +108,8 @@ body.line-view-open .map-overlay-controls {
   text-align: left;
   border-color: rgba(14, 42, 60, 0.28);
   box-shadow: 0 8px 24px rgba(5, 18, 28, 0.26);
+  overflow: hidden;
+  background-clip: padding-box;
 }
 
 .map-mode-icon {
@@ -397,6 +399,10 @@ label {
   background: linear-gradient(135deg, var(--accent-strong) 0%, var(--accent) 100%);
 }
 
+.btn-primary:active {
+  background: linear-gradient(135deg, var(--accent-strong) 0%, var(--accent) 100%);
+}
+
 .btn-icon {
   min-width: 80px;
 }
@@ -600,13 +606,18 @@ body[data-theme="dark"] .show-stops-btn {
 
 .filter-presets-btn {
   position: absolute;
-  top: 50%;
+  top: calc(50% + 1px);
   right: 2px;
-  transform: translateY(-40%);
+  transform: translateY(-50%);
   width: 30px;
   min-width: 30px;
   height: 30px;
   padding: 0;
+}
+
+.filter-presets-btn:hover {
+  transform: translateY(-50%) scale(1.05);
+  box-shadow: 0 6px 16px rgba(10, 28, 40, 0.18);
 }
 
 .filter-presets-panel {
@@ -707,10 +718,10 @@ body[data-theme="dark"] .mode-chip {
 .user-status-card {
   margin: 0;
   position: relative;
-  border: 1px solid rgba(20, 53, 71, 0.14);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.46);
-  padding: 6px 8px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 3px 0 4px;
 }
 
 .user-status-header-actions {
@@ -723,7 +734,7 @@ body[data-theme="dark"] .mode-chip {
 }
 
 body[data-theme="dark"] .user-status-card {
-  background: rgba(10, 20, 30, 0.42);
+  background: transparent;
 }
 
 .status-header {
@@ -752,7 +763,8 @@ body[data-theme="dark"] .user-status-card {
 }
 
 .user-status-title {
-  margin: 3px 0 2px;
+  margin: 0 0 2px;
+  padding-left: 2px;
   font-size: 15px;
   font-weight: 600;
   line-height: 1.2;
@@ -775,7 +787,7 @@ body[data-theme="dark"] .user-status-card {
 }
 
 .user-status-subtitle {
-  margin: 0 0 0 18px;
+  margin: 0 0 0 20px;
   font-size: 11px;
   color: var(--muted);
   line-height: 1.32;
@@ -787,7 +799,7 @@ body[data-theme="dark"] .user-status-card {
   }
 
   .user-status-title {
-    margin: 6px 0 2px;
+    margin: 0 0 2px;
   }
 
   .user-status-subtitle {
@@ -1621,8 +1633,12 @@ body[data-theme="dark"] .route-select-close {
   z-index: 7;
   pointer-events: auto;
   padding: 10px;
-  background: transparent;
-  border-left: none;
+  background: rgba(254, 254, 252, 1);
+  border-left: 1px solid var(--panel-border);
+}
+
+body[data-theme="dark"] .line-view-panel {
+  background: rgba(16, 28, 40, 1);
 }
 
 .line-view-panel[hidden] {
@@ -1635,12 +1651,16 @@ body[data-theme="dark"] .route-select-close {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: var(--panel);
+  background: rgba(254, 254, 252, 1);
   border: 1px solid var(--panel-border);
   border-radius: 16px;
   box-shadow: var(--shadow);
   padding: 12px;
   overflow: hidden;
+}
+
+body[data-theme="dark"] .line-view-card {
+  background: rgba(16, 28, 40, 1);
 }
 
 .line-view-header {
@@ -1788,6 +1808,20 @@ body[data-theme="dark"] .route-select-close {
   position: relative;
 }
 
+.line-view-stop-list::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 9px;
+  width: 4px;
+  border-radius: 999px;
+  background: var(--line-color);
+  opacity: 0.92;
+  pointer-events: none;
+  z-index: 0;
+}
+
 .line-view-stop-row {
   display: grid;
   grid-template-columns: 18px 1fr;
@@ -1819,28 +1853,8 @@ body[data-theme="dark"] .route-select-close {
   justify-content: center;
 }
 
-/* Each row renders its own connector segment so it remains continuous while scrolling */
 .line-view-stop-marker::before {
-  content: "";
-  position: absolute;
-  top: -10px;
-  bottom: -10px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  border-radius: 999px;
-  background: var(--line-color);
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.9;
-}
-
-.line-view-stop-row.is-first .line-view-stop-marker::before {
-  top: 8px;
-}
-
-.line-view-stop-row.is-last .line-view-stop-marker::before {
-  bottom: 8px;
+  content: none;
 }
 
 .line-view-stop-dot {
@@ -1887,7 +1901,7 @@ body[data-theme="dark"] .route-select-close {
   }
 
   .line-view-header {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     padding-right: 0;
     min-height: 0;
   }
@@ -1896,9 +1910,10 @@ body[data-theme="dark"] .route-select-close {
     position: static;
     flex-direction: column;
     justify-content: flex-start;
-    align-items: center;
+    align-items: flex-end;
     gap: 6px;
     margin-top: 2px;
+    justify-self: end;
   }
 
   .line-view-actions .line-view-nav {

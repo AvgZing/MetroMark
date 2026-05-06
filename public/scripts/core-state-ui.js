@@ -1178,11 +1178,6 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
 
     els.lineViewStops.append(row);
   });
-
-  // Create SVG connector line after a brief delay to ensure DOM is laid out
-  setTimeout(() => {
-    createLineConnector(lineColor || "#177ca2");
-  }, 10);
 }
 
 function renderLineView() {
@@ -1368,7 +1363,11 @@ async function openLineViewMap() {
     return;
   }
 
-  closeLineView({ restore: false });
+  const shouldClosePanel = isPortraitMobileLayout();
+  if (shouldClosePanel) {
+    closeLineView({ restore: false });
+  }
+
   await setFocusedLine(lineKey, { forceRefresh: false });
   await ensureLineStopsLoaded(lineKey, { silent: true });
   fitMapToLine(lineKey);
