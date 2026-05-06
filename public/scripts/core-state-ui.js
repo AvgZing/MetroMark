@@ -1052,11 +1052,77 @@ function createLineConnector(lineColor) {
     return;
   }
 
-  // Remove any existing SVG
-  const existingSvg = els.lineViewStops.querySelector("svg");
+  const existingSvg = els.lineViewStops.querySelector("#lineViewConnectorSvg");
   if (existingSvg) {
     existingSvg.remove();
   }
+
+  const stopRows = Array.from(els.lineViewStops.querySelectorAll(".line-view-stop-row"));
+  if (stopRows.length < 2) {
+    return;
+  }
+
+  const containerRect = els.lineViewStops.getBoundingClientRect();
+  const scrollTop = els.lineViewStops.scrollTop;
+  const scrollLeft = els.lineViewStops.scrollLeft;
+  const dotPositions = stopRows.map((row) => {
+    const dot = row.querySelector(".line-view-stop-dot");
+    if (!dot) {
+      return null;
+    }
+
+    const dotRect = dot.getBoundingClientRect();
+
+    const relativeY = dotRect.top - containerRect.top + scrollTop + dotRect.height / 2;
+    const relativeX = dotRect.left - containerRect.left + scrollLeft + dotRect.width / 2;
+
+    return {
+      y: relativeY,
+      x: relativeX
+    };
+  });
+
+  const validPositions = dotPositions.filter((p) => p !== null);
+  if (validPositions.length < 2) {
+    return;
+  }
+
+  const maxY = Math.max(...validPositions.map((p) => p.y));
+  const containerWidth = els.lineViewStops.offsetWidth;
+  const containerHeight = Math.max(els.lineViewStops.scrollHeight, maxY + 20);
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.id = "lineViewConnectorSvg";
+  svg.setAttribute("viewBox", `0 0 ${containerWidth} ${containerHeight}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.style.position = "absolute";
+  svg.style.left = "0";
+  svg.style.top = "0";
+  svg.style.width = "100%";
+  svg.style.height = `${containerHeight}px`;
+  svg.style.pointerEvents = "none";
+  svg.style.zIndex = "0";
+
+  const pathData = validPositions
+    .map((pos, idx) => {
+      if (idx === 0) {
+        return `M ${pos.x} ${pos.y}`;
+      }
+      return `L ${pos.x} ${pos.y}`;
+    })
+    .join(" ");
+
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", pathData);
+  path.setAttribute("stroke", lineColor);
+  path.setAttribute("stroke-width", "4");
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke-linecap", "butt");
+  path.setAttribute("stroke-linejoin", "round");
+  path.setAttribute("opacity", "0.85");
+
+  svg.append(path);
+  els.lineViewStops.insertBefore(svg, els.lineViewStops.firstChild);
 }
 
 async function renderLineViewStops(lineKey, lineColor, options = {}) {
@@ -1178,6 +1244,8 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
 
     els.lineViewStops.append(row);
   });
+
+  createLineConnector(lineColor);
 }
 
 function renderLineView() {

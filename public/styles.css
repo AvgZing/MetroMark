@@ -606,13 +606,14 @@ body[data-theme="dark"] .show-stops-btn {
 
 .filter-presets-btn {
   position: absolute;
-  top: calc(50% + 1px);
+  top: calc(50% + 3px);
   right: 2px;
   transform: translateY(-50%);
   width: 30px;
   min-width: 30px;
   height: 30px;
   padding: 0;
+  margin-top: 8px;
 }
 
 .filter-presets-btn:hover {
@@ -721,7 +722,11 @@ body[data-theme="dark"] .mode-chip {
   border: none;
   border-radius: 0;
   background: transparent;
-  padding: 3px 0 4px;
+  padding: 3px 0 4px 12px;
+}
+
+.user-status-panel {
+  border-left: 1px solid var(--panel-border);
 }
 
 .user-status-header-actions {
@@ -1670,7 +1675,7 @@ body[data-theme="dark"] .line-view-card {
   align-items: start;
   gap: 8px;
   min-height: 40px;
-  padding-right: 76px;
+  padding-right: 72px;
 }
 
 .line-view-actions {
@@ -1691,7 +1696,7 @@ body[data-theme="dark"] .line-view-card {
 .line-view-title {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 10px;
   min-width: 0;
   flex: 1;
@@ -1709,8 +1714,11 @@ body[data-theme="dark"] .line-view-card {
   font-weight: 600;
   line-height: 1.2;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  max-width: 100%;
 }
 
 .line-view-meta {
@@ -1808,18 +1816,33 @@ body[data-theme="dark"] .line-view-card {
   position: relative;
 }
 
-.line-view-stop-list::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 9px;
-  width: 4px;
-  border-radius: 999px;
-  background: var(--line-color);
-  opacity: 0.92;
+#lineViewConnectorSvg {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
   pointer-events: none;
   z-index: 0;
+}
+
+.line-view-stop-row:first-child::before,
+.line-view-stop-row:last-child::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 24px;
+  height: 12px;
+  background: var(--panel);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.line-view-stop-row:first-child::before {
+  top: 0;
+}
+
+.line-view-stop-row:last-child::after {
+  bottom: 0;
 }
 
 .line-view-stop-row {
@@ -1851,10 +1874,6 @@ body[data-theme="dark"] .line-view-card {
   width: 18px;
   display: flex;
   justify-content: center;
-}
-
-.line-view-stop-marker::before {
-  content: none;
 }
 
 .line-view-stop-dot {

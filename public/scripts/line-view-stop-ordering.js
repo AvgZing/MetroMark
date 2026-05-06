@@ -106,6 +106,28 @@ function buildFeatureLookupMap(stopFeatures) {
   return featureByLookupKey;
 }
 
+function routeGeometryCoordinatesForLine(lineKey) {
+  const features = Array.isArray(state.transit?.routesGeoJson?.features)
+    ? state.transit.routesGeoJson.features
+    : [];
+
+  const routeFeature = features.find((feature) => String(feature?.properties?.line_key || "") === String(lineKey || ""));
+  const geometry = routeFeature?.geometry;
+  if (!geometry || !Array.isArray(geometry.coordinates)) {
+    return null;
+  }
+
+  if (geometry.type === "LineString") {
+    return geometry.coordinates;
+  }
+
+  if (geometry.type === "MultiLineString") {
+    return geometry.coordinates.flat();
+  }
+
+  return null;
+}
+
 function stopNameTokens(value) {
   return normalizeStopLookupKey(value)
     .split(" ")
@@ -301,6 +323,43 @@ function sortFeaturesByRanking(stopFeatures, ...rankMaps) {
       const meanDiff = compareRankValues(scoreA, scoreB);
       if (meanDiff !== 0) {
         return meanDiff;
+      }
+
+      const labelDiff = a.label.localeCompare(b.label);
+      if (labelDiff !== 0) {
+        return labelDiff;
+      }
+
+      return a.index - b.index;
+    })
+    .map((entry) => entry.feature);
+}
+
+function sortFeaturesByPrimaryRanking(stopFeatures, primaryRankMap, secondaryRankMap = null) {
+  return Array.from(Array.isArray(stopFeatures) ? stopFeatures : [])
+    .map((feature, index) => ({
+      feature,
+      index,
+      primaryRank: rankValueForFeature(primaryRankMap, feature),
+      secondaryRank: rankValueForFeature(secondaryRankMap, feature),
+      label: stopFeatureSortLabel(feature)
+    }))
+    .sort((a, b) => {
+      const aPrimaryFinite = Number.isFinite(a.primaryRank);
+      const bPrimaryFinite = Number.isFinite(b.primaryRank);
+
+      if (aPrimaryFinite && bPrimaryFinite) {
+        const primaryDiff = a.primaryRank - b.primaryRank;
+        if (primaryDiff !== 0) {
+          return primaryDiff;
+        }
+      } else if (aPrimaryFinite !== bPrimaryFinite) {
+        return aPrimaryFinite ? -1 : 1;
+      }
+
+      const secondaryDiff = compareRankValues(a.secondaryRank, b.secondaryRank);
+      if (secondaryDiff !== 0) {
+        return secondaryDiff;
       }
 
       const labelDiff = a.label.localeCompare(b.label);
@@ -571,9 +630,102 @@ function sortStopsSequentially(features, lineKey) {
     return features;
   }
 
-  const endpointOrder = buildEndpointAnchoredGeometryOrder(features, lineKey);
-  if (Array.isArray(endpointOrder.orderedFeatures) && endpointOrder.orderedFeatures.length >= 2) {
-    return endpointOrder.orderedFeatures;
+  const routeCoords = routeGeometryCoordinatesForLine(lineKey);
+  if (Array.isArray(routeCoords) && routeCoords.length >= 2) {
+    const toRad = (value) => (value * Math.PI) / 180;
+    const earthRadius = 6371000;
+    const haversineDistance = (a, b) => {
+      const deltaLat = toRad(b[1] - a[1]);
+      const deltaLon = toRad(b[0] - a[0]);
+      const lat1 = toRad(a[1]);
+      const lat2 = toRad(b[1]);
+      const sinLat = Math.sin(deltaLat / 2);
+      const sinLon = Math.sin(deltaLon / 2);
+      const aa = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
+      return 2 * earthRadius * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+    };
+
+    const segmentLengths = [];
+    const cumulativeLengths = [0];
+    for (let index = 0; index < routeCoords.length - 1; index += 1) {
+      const segmentLength = haversineDistance(routeCoords[index], routeCoords[index + 1]);
+      segmentLengths.push(segmentLength);
+      cumulativeLengths.push(cumulativeLengths[cumulativeLengths.length - 1] + segmentLength);
+    }
+
+    const totalLength = cumulativeLengths[cumulativeLengths.length - 1] || 1;
+    const computeAlongDistance = (point) => {
+      let best = { distance: Infinity, along: 0 };
+
+      for (let index = 0; index < routeCoords.length - 1; index += 1) {
+        const start = routeCoords[index];
+        const end = routeCoords[index + 1];
+        const ax = start[0];
+        const ay = start[1];
+        const bx = end[0];
+        const by = end[1];
+        const px = point[0];
+        const py = point[1];
+
+        const abx = bx - ax;
+        const aby = by - ay;
+        const apx = px - ax;
+        const apy = py - ay;
+        const denominator = abx * abx + aby * aby;
+        let t = 0;
+        if (denominator > 0) {
+          t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / denominator));
+        }
+
+        const closestX = ax + t * abx;
+        const closestY = ay + t * aby;
+        const deltaX = px - closestX;
+        const deltaY = py - closestY;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+        if (distance < best.distance) {
+          best = {
+            distance,
+            along: cumulativeLengths[index] + (t * segmentLengths[index])
+          };
+        }
+      }
+
+      return best.along;
+    };
+
+    const scored = features.map((feature) => {
+      const point = stopCoordinate(feature);
+      const along = point ? computeAlongDistance(point) : 0;
+      return { feature, along };
+    });
+
+    const terminalHints = lineTerminalHints(lineKey);
+    const labels = scored.map((entry) => stopFeatureDisplayName(entry.feature));
+    const firstLabel = labels[0] || "";
+    const lastLabel = labels[labels.length - 1] || "";
+    const forwardScore = terminalHints.length >= 2
+      ? stopNameSimilarity(terminalHints[0], firstLabel) + stopNameSimilarity(terminalHints[1], lastLabel)
+      : 0;
+    const reverseScore = terminalHints.length >= 2
+      ? stopNameSimilarity(terminalHints[0], lastLabel) + stopNameSimilarity(terminalHints[1], firstLabel)
+      : 0;
+
+    scored.sort((left, right) => left.along - right.along);
+    const forwardOrdered = scored.map((entry) => entry.feature);
+    const reverseOrdered = [...scored].reverse().map((entry) => entry.feature);
+
+    // Only reverse if the reverseScore is significantly higher (threshold of 0.4)
+    // to avoid reversing when scores are ambiguous
+    if (reverseScore > forwardScore + 0.4) {
+      return reverseOrdered;
+    }
+
+    if (!terminalHints.length && totalLength > 0) {
+      return forwardOrdered;
+    }
+
+    return forwardOrdered;
   }
 
   return Array.from(features).sort((a, b) => {
@@ -942,60 +1094,61 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
 
   // Handle explicit mode selections
   if (orderingMode === 'trip-pattern') {
-    if (tripPatternRankInfo.coverage > 0.2) {
-      return sortFeaturesByRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
-    }
-    return sortFeaturesByRanking(uniqueStopFeatures, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
+  }
+
+  if (orderingMode === 'branch-aware') {
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
   }
 
   if (orderingMode === 'geometry') {
-    return sortFeaturesByRanking(uniqueStopFeatures, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
   }
 
   if (orderingMode === 'geometry-revised') {
-    return sortFeaturesByRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
   }
 
   if (orderingMode === 'hybrid-endpoint') {
-    return sortFeaturesByRanking(uniqueStopFeatures, hybridEndpointRankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, hybridEndpointRankMap, geometryRankMap);
   }
 
   if (orderingMode === 'direction') {
-    return sortFeaturesByRanking(uniqueStopFeatures, directionRankInfo.rankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, directionRankInfo.rankMap, geometryRankMap);
   }
 
   if (orderingMode === 'fractions') {
     const fractionRankInfo = await buildFractionRankMap(uniqueStopFeatures, lineKey, resolvedRouteLookupKey);
     if (fractionRankInfo.coverage > 0.3) {
-      return sortFeaturesByRanking(uniqueStopFeatures, fractionRankInfo.rankMap, geometryRankMap);
+      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, fractionRankInfo.rankMap, geometryRankMap);
     }
-    return sortFeaturesByRanking(uniqueStopFeatures, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
   }
 
   if (orderingMode === 'payload') {
-    return sortFeaturesByRanking(uniqueStopFeatures, payloadRankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, payloadRankMap, geometryRankMap);
   }
 
   // AUTO MODE: Select best available strategy
   if (orderingMode === 'auto') {
     // PRIMARY: Use trip-pattern if available and good coverage
     if (tripPatternRankInfo.coverage >= 0.2) {
-      return sortFeaturesByRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
+      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
     }
 
     // FALLBACK: Try hybrid-endpoint (trip + geometry anchoring)
     if (hybridEndpointRankMap.size > 0 && hybridEndpointRankMap.size >= geometryRankMap.size * 0.3) {
-      return sortFeaturesByRanking(uniqueStopFeatures, hybridEndpointRankMap, geometryRankMap);
+      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, hybridEndpointRankMap, geometryRankMap);
     }
 
     // FALLBACK: Try direction ranking if available
     if (directionRankInfo.coverage >= 0.2) {
-      return sortFeaturesByRanking(uniqueStopFeatures, directionRankInfo.rankMap, geometryRankMap);
+      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, directionRankInfo.rankMap, geometryRankMap);
     }
 
     // FINAL: Use geometry-revised which should work for most routes
-    return sortFeaturesByRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
   }
 
-  return sortFeaturesByRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
+  return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
 }
