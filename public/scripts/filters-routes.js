@@ -1075,7 +1075,36 @@ function renderLineList() {
 
     const routeStopsCacheEntry = state.lineStopsCache.get(routeStopCacheKey(line.lineKey));
     const routeStopsLoaded = Boolean(routeStopsCacheEntry);
-    const routeStopsCount = Number(routeStopsCacheEntry?.payload?.stopsGeoJson?.features?.length || 0);
+    const loadedFeatures = Array.isArray(routeStopsCacheEntry?.payload?.stopsGeoJson?.features)
+      ? routeStopsCacheEntry.payload.stopsGeoJson.features
+      : [];
+    const dedupedLoadedStopCount = loadedFeatures.length
+      ? new Set(
+          loadedFeatures
+            .map((feature) => {
+              const props = feature?.properties || {};
+              return String(
+                props.station_key ||
+                props.parent_stop_id ||
+                props.stop_id ||
+                props.station_name ||
+                props.stop_name ||
+                ""
+              )
+                .trim()
+                .toLowerCase();
+            })
+            .filter(Boolean)
+        ).size
+      : 0;
+    const routeStopsCount = Number(
+      dedupedLoadedStopCount ||
+      routeStopsCacheEntry?.payload?.matchingStats?.centralizedStops ||
+      routeStopsCacheEntry?.payload?.matchingStats?.lineDedupedStops ||
+      routeStopsCacheEntry?.payload?.lineSummaries?.[0]?.stopCount ||
+      line.stopCount ||
+      0
+    );
     const routeStopsLoading = state.inFlightLineStopKeys.has(routeStopCacheKey(line.lineKey));
 
     if (routeStopsLoaded) {

@@ -84,6 +84,485 @@ function dedupeStopFeatures(features) {
     : features;
 }
 
+function stopFeatureSortLabel(feature) {
+  const props = feature?.properties || {};
+  return String(props.station_name || props.stop_name || props.stop_id || props.source_sample_id || "").trim().toLowerCase();
+}
+
+function buildFeatureLookupMap(stopFeatures) {
+  const featureByLookupKey = new Map();
+
+  for (const feature of Array.isArray(stopFeatures) ? stopFeatures : []) {
+    for (const lookupKey of stopFeatureLookupKeys(feature)) {
+      const normalizedLookupKey = normalizeStopLookupKey(lookupKey);
+      if (!normalizedLookupKey || featureByLookupKey.has(normalizedLookupKey)) {
+        continue;
+      }
+
+      featureByLookupKey.set(normalizedLookupKey, feature);
+    }
+  }
+
+  return featureByLookupKey;
+}
+
+function stopNameTokens(value) {
+  return normalizeStopLookupKey(value)
+    .split(" ")
+    .filter(Boolean)
+    .filter((token) => !new Set(["station", "stn", "stop", "transit", "center", "ctr", "city"]).has(token));
+}
+
+function stopNameSimilarity(leftValue, rightValue) {
+  const left = new Set(stopNameTokens(leftValue));
+  const right = new Set(stopNameTokens(rightValue));
+
+  if (!left.size || !right.size) {
+    return 0;
+  }
+
+  let overlap = 0;
+  for (const token of left) {
+    if (right.has(token)) {
+      overlap += 1;
+    }
+  }
+
+  const denominator = Math.max(left.size, right.size);
+  return denominator > 0 ? overlap / denominator : 0;
+}
+
+function stopFeatureDisplayName(feature) {
+  const props = feature?.properties || {};
+  return String(props.station_name || props.stop_name || props.stop_id || "").trim();
+}
+
+function buildGeometryProgressMap(stopFeatures, lineKey) {
+  const ordered = sortStopsSequentially(stopFeatures, lineKey);
+  const progressMap = new Map();
+  const denominator = Math.max(ordered.length - 1, 1);
+
+  ordered.forEach((feature, index) => {
+    const progress = index / denominator;
+    const identity = stopIdentityKey(feature);
+    const stationKey = stopKeyForFeature(feature);
+
+    if (identity && !progressMap.has(identity)) {
+      progressMap.set(identity, progress);
+    }
+
+    if (stationKey && !progressMap.has(stationKey)) {
+      progressMap.set(stationKey, progress);
+    }
+  });
+
+  return progressMap;
+}
+
+function geometryProgressForFeature(progressMap, feature) {
+  const identity = stopIdentityKey(feature);
+  if (identity && progressMap.has(identity)) {
+    return Number(progressMap.get(identity));
+  }
+
+  const stationKey = stopKeyForFeature(feature);
+  if (stationKey && progressMap.has(stationKey)) {
+    return Number(progressMap.get(stationKey));
+  }
+
+  return null;
+}
+
+function lineTerminalHints(lineKey) {
+  const line = Array.isArray(state.lineSummaries)
+    ? state.lineSummaries.find((entry) => String(entry?.lineKey || "") === String(lineKey || ""))
+    : null;
+
+  const longName = String(line?.lineLongName || line?.lineName || "").trim();
+  if (!longName) {
+    return [];
+  }
+
+  const separators = [" - ", " to ", " – ", " — "];
+  for (const separator of separators) {
+    if (!longName.includes(separator)) {
+      continue;
+    }
+
+    const parts = longName.split(separator).map((part) => part.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      return [parts[0], parts[parts.length - 1]];
+    }
+  }
+
+  return [];
+}
+
+function matchSequenceFeature(entry, stopFeatures, featureByLookupKey, selectedFeatures) {
+  const candidateKeys = [entry?.id, entry?.stopId, entry?.name]
+    .map((value) => normalizeStopLookupKey(value))
+    .filter(Boolean);
+
+  for (const candidateKey of candidateKeys) {
+    const exact = featureByLookupKey.get(candidateKey);
+    if (!exact || selectedFeatures.has(exact)) {
+      continue;
+    }
+    return exact;
+  }
+
+  const entryName = String(entry?.name || entry?.stopId || entry?.id || "").trim();
+  if (!entryName) {
+    return null;
+  }
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const feature of stopFeatures) {
+    if (selectedFeatures.has(feature)) {
+      continue;
+    }
+
+    const score = stopNameSimilarity(entryName, stopFeatureDisplayName(feature));
+    if (score > bestScore) {
+      best = feature;
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 0.67 ? best : null;
+}
+
+function rankValueForFeature(rankMap, feature) {
+  if (!(rankMap instanceof Map)) {
+    return null;
+  }
+
+  const identity = stopIdentityKey(feature);
+  if (identity && rankMap.has(identity)) {
+    return Number(rankMap.get(identity));
+  }
+
+  const stationKey = String(stopKeyForFeature(feature) || "").trim();
+  if (stationKey && rankMap.has(stationKey)) {
+    return Number(rankMap.get(stationKey));
+  }
+
+  return null;
+}
+
+function compareRankValues(a, b) {
+  const aFinite = Number.isFinite(a);
+  const bFinite = Number.isFinite(b);
+
+  if (aFinite && bFinite) {
+    return a - b;
+  }
+
+  if (aFinite) {
+    return -1;
+  }
+
+  if (bFinite) {
+    return 1;
+  }
+
+  return 0;
+}
+
+function sortFeaturesByRanking(stopFeatures, ...rankMaps) {
+  return Array.from(Array.isArray(stopFeatures) ? stopFeatures : [])
+    .map((feature, index) => ({
+      feature,
+      index,
+      ranks: rankMaps
+        .map((rankMap) => rankValueForFeature(rankMap, feature))
+        .filter((value) => Number.isFinite(value)),
+      label: stopFeatureSortLabel(feature)
+    }))
+    .sort((a, b) => {
+      const scoreA = a.ranks.length ? a.ranks.reduce((sum, value) => sum + value, 0) / a.ranks.length : Number.POSITIVE_INFINITY;
+      const scoreB = b.ranks.length ? b.ranks.reduce((sum, value) => sum + value, 0) / b.ranks.length : Number.POSITIVE_INFINITY;
+
+      const medianA = a.ranks.length ? [...a.ranks].sort((left, right) => left - right)[Math.floor((a.ranks.length - 1) / 2)] : Number.POSITIVE_INFINITY;
+      const medianB = b.ranks.length ? [...b.ranks].sort((left, right) => left - right)[Math.floor((b.ranks.length - 1) / 2)] : Number.POSITIVE_INFINITY;
+
+      const medianDiff = compareRankValues(medianA, medianB);
+      if (medianDiff !== 0) {
+        return medianDiff;
+      }
+
+      const coverageDiff = b.ranks.length - a.ranks.length;
+      if (coverageDiff !== 0) {
+        return coverageDiff;
+      }
+
+      const meanDiff = compareRankValues(scoreA, scoreB);
+      if (meanDiff !== 0) {
+        return meanDiff;
+      }
+
+      const labelDiff = a.label.localeCompare(b.label);
+      if (labelDiff !== 0) {
+        return labelDiff;
+      }
+
+      return a.index - b.index;
+    })
+    .map((entry) => entry.feature);
+}
+
+function buildGeometryRankMap(stopFeatures, lineKey) {
+  const ordered = sortStopsSequentially(stopFeatures, lineKey);
+  const rankMap = new Map();
+
+  ordered.forEach((feature, index) => {
+    const identity = stopIdentityKey(feature);
+    const stationKey = stopKeyForFeature(feature);
+
+    if (identity && !rankMap.has(identity)) {
+      rankMap.set(identity, index);
+    }
+
+    if (stationKey && !rankMap.has(stationKey)) {
+      rankMap.set(stationKey, index);
+    }
+  });
+
+  return rankMap;
+}
+
+function buildPayloadRankMap(stopFeatures) {
+  const rankMap = new Map();
+
+  Array.from(Array.isArray(stopFeatures) ? stopFeatures : []).forEach((feature, index) => {
+    const identity = stopIdentityKey(feature);
+    const stationKey = stopKeyForFeature(feature);
+
+    if (identity && !rankMap.has(identity)) {
+      rankMap.set(identity, index);
+    }
+
+    if (stationKey && !rankMap.has(stationKey)) {
+      rankMap.set(stationKey, index);
+    }
+  });
+
+  return rankMap;
+}
+
+/**
+ * Build rank map from trip pattern sequences
+ * CRITICAL: Uses direction sequences directly from actual trip data
+ * Selects the longest/most complete pattern and handles branches
+ */
+function buildTripPatternRankMap(stopFeatures, directionSequences, lineKey = "") {
+  if (!directionSequences || typeof directionSequences !== 'object') {
+    return { rankMap: new Map(), matchedCount: 0, coverage: 0, usedDirection: null, matchedFeatures: [] };
+  }
+
+  const featureByLookupKey = buildFeatureLookupMap(stopFeatures);
+  const geometryProgressMap = buildGeometryProgressMap(stopFeatures, lineKey);
+  const terminalHints = lineTerminalHints(lineKey);
+  const patterns = [];
+
+  // Extract and evaluate both direction patterns
+  for (const directionKey of ["0", "1"]) {
+    const directionSequence = Array.isArray(directionSequences[directionKey]) ? directionSequences[directionKey] : [];
+    if (!directionSequence.length) {
+      continue;
+    }
+
+    const patternMatches = [];
+    const selectedFeatures = new Set();
+
+    // Try to match each entry in the trip sequence to a feature
+    for (const entry of directionSequence) {
+      const matchedFeature = matchSequenceFeature(entry, stopFeatures, featureByLookupKey, selectedFeatures);
+
+      if (matchedFeature) {
+        selectedFeatures.add(matchedFeature);
+        patternMatches.push(matchedFeature);
+      }
+    }
+
+    if (patternMatches.length >= 2) {
+      const coverage = stopFeatures.length ? patternMatches.length / stopFeatures.length : 0;
+      const firstProgress = geometryProgressForFeature(geometryProgressMap, patternMatches[0]);
+      const lastProgress = geometryProgressForFeature(geometryProgressMap, patternMatches[patternMatches.length - 1]);
+      const span = Number.isFinite(firstProgress) && Number.isFinite(lastProgress)
+        ? Math.abs(lastProgress - firstProgress)
+        : 0;
+
+      const firstName = stopFeatureDisplayName(patternMatches[0]);
+      const lastName = stopFeatureDisplayName(patternMatches[patternMatches.length - 1]);
+      const terminalBonus = terminalHints.length >= 2
+        ? Math.max(
+            stopNameSimilarity(terminalHints[0], firstName) + stopNameSimilarity(terminalHints[1], lastName),
+            stopNameSimilarity(terminalHints[0], lastName) + stopNameSimilarity(terminalHints[1], firstName)
+          )
+        : 0;
+
+      patterns.push({
+        directionKey,
+        matches: patternMatches,
+        matchedCount: patternMatches.length,
+        coverage,
+        span,
+        terminalBonus
+      });
+    }
+  }
+
+  // Select the best pattern (longest/highest coverage/best terminal span)
+  const bestPattern = patterns.sort((a, b) => {
+    if (a.matchedCount !== b.matchedCount) {
+      return b.matchedCount - a.matchedCount;
+    }
+    if (a.span !== b.span) {
+      return b.span - a.span;
+    }
+    if (a.terminalBonus !== b.terminalBonus) {
+      return b.terminalBonus - a.terminalBonus;
+    }
+    return b.coverage - a.coverage;
+  })[0];
+
+  if (!bestPattern) {
+    return { rankMap: new Map(), matchedCount: 0, coverage: 0, usedDirection: null, matchedFeatures: [] };
+  }
+
+  // Build rank map from the best matched sequence and blend unmatched stops by geometry progress.
+  const rankMap = new Map();
+  bestPattern.matches.forEach((feature, index) => {
+    const identity = stopIdentityKey(feature);
+    const stationKey = stopKeyForFeature(feature);
+
+    if (identity && !rankMap.has(identity)) {
+      rankMap.set(identity, index);
+    }
+
+    if (stationKey && !rankMap.has(stationKey)) {
+      rankMap.set(stationKey, index);
+    }
+  });
+
+  const firstProgress = geometryProgressForFeature(geometryProgressMap, bestPattern.matches[0]);
+  const lastProgress = geometryProgressForFeature(
+    geometryProgressMap,
+    bestPattern.matches[bestPattern.matches.length - 1]
+  );
+  const reverseGeometry = Number.isFinite(firstProgress) && Number.isFinite(lastProgress)
+    ? lastProgress < firstProgress
+    : false;
+
+  const sequenceScale = Math.max(bestPattern.matches.length - 1, 1);
+
+  for (const feature of stopFeatures) {
+    const identity = stopIdentityKey(feature);
+    const stationKey = stopKeyForFeature(feature);
+    const alreadyRanked = (identity && rankMap.has(identity)) || (stationKey && rankMap.has(stationKey));
+    if (alreadyRanked) {
+      continue;
+    }
+
+    const progress = geometryProgressForFeature(geometryProgressMap, feature);
+    if (!Number.isFinite(progress)) {
+      continue;
+    }
+
+    const oriented = reverseGeometry ? 1 - progress : progress;
+    const synthesizedRank = oriented * sequenceScale + 0.35;
+
+    if (identity && !rankMap.has(identity)) {
+      rankMap.set(identity, synthesizedRank);
+    }
+    if (stationKey && !rankMap.has(stationKey)) {
+      rankMap.set(stationKey, synthesizedRank);
+    }
+  }
+
+  return {
+    rankMap,
+    matchedCount: bestPattern.matchedCount,
+    coverage: bestPattern.coverage,
+    usedDirection: bestPattern.directionKey,
+    matchedFeatures: bestPattern.matches
+  };
+}
+
+function buildDirectionRankMap(stopFeatures, directionSequences) {
+  const result = buildTripPatternRankMap(stopFeatures, directionSequences);
+  return {
+    rankMap: result.rankMap,
+    matchedCount: result.matchedCount,
+    coverage: result.coverage
+  };
+}
+
+async function buildFractionRankMap(stopFeatures, lineKey, routeLookupKey) {
+  const input = dedupeStopFeatures(stopFeatures);
+  const rankMap = new Map();
+  const totalCount = Array.isArray(input) ? input.length : 0;
+
+  if (!Array.isArray(input) || input.length <= 1) {
+    return { rankMap, matchedCount: 0, coverage: 0 };
+  }
+
+  try {
+    const stopsPayload = input.map((feature) => ({
+      id: stopKeyForFeature(feature),
+      lat: feature?.geometry?.coordinates?.[1],
+      lon: feature?.geometry?.coordinates?.[0]
+    }));
+
+    const payload = await apiRequest('/api/transit/stop-fractions', {
+      method: 'POST',
+      body: JSON.stringify({
+        lineKey: String(routeLookupKey || lineKey || '').trim(),
+        stops: stopsPayload,
+        zoom: state.mapZoom || null
+      })
+    }).catch(() => null);
+
+    if (payload && Array.isArray(payload.results)) {
+      const fracById = new Map(payload.results.map((row) => [String(row.id || ''), row.fraction]));
+      let matchedCount = 0;
+
+      for (const feature of input) {
+        const stationKey = stopKeyForFeature(feature);
+        if (!stationKey) {
+          continue;
+        }
+
+        const fraction = fracById.get(stationKey);
+        if (!Number.isFinite(Number(fraction))) {
+          continue;
+        }
+
+        rankMap.set(stationKey, Number(fraction));
+        const identity = stopIdentityKey(feature);
+        if (identity && !rankMap.has(identity)) {
+          rankMap.set(identity, Number(fraction));
+        }
+
+        matchedCount += 1;
+      }
+
+      return {
+        rankMap,
+        matchedCount,
+        coverage: totalCount ? matchedCount / totalCount : 0
+      };
+    }
+  } catch (e) {
+    // Fall through to geometry ranking.
+  }
+
+  return { rankMap, matchedCount: 0, coverage: 0 };
+}
+
 /**
  * Sort stops sequentially along the route geometry using linear referencing
  */
@@ -310,119 +789,112 @@ async function orderStopsByFractions(stopFeatures, lineKey) {
 }
 
 /**
- * Order stops by projecting them onto the first principal component
- * of the stop coordinates. This gives a robust linear ordering for
- * routes that are approximately linear even when route geometry
- * is missing or noisy.
+ * Detect if a pattern has a loop (stop appears more than once)
  */
-function orderStopsByPCA(features) {
-  const pts = features
-    .map((f) => ({ f, c: (f?.geometry?.coordinates || []).slice(0, 2) }))
-    .filter((w) => Array.isArray(w.c) && Number.isFinite(w.c[0]) && Number.isFinite(w.c[1]));
-
-  if (!pts.length) return features;
-
-  // Compute mean
-  let meanX = 0, meanY = 0;
-  for (const p of pts) { meanX += p.c[0]; meanY += p.c[1]; }
-  meanX /= pts.length; meanY /= pts.length;
-
-  // Covariance matrix
-  let sxx = 0, sxy = 0, syy = 0;
-  for (const p of pts) {
-    const dx = p.c[0] - meanX;
-    const dy = p.c[1] - meanY;
-    sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
+function hasLoopInPattern(features) {
+  const seen = new Set();
+  for (const feature of features) {
+    const identity = stopIdentityKey(feature);
+    if (!identity) {
+      continue;
+    }
+    if (seen.has(identity)) {
+      return true;
+    }
+    seen.add(identity);
   }
+  return false;
+}
 
-  // Principal eigenvector (for 2x2 symmetric matrix) via analytic formula
-  const trace = sxx + syy;
-  const det = sxx * syy - sxy * sxy;
-  const temp = Math.sqrt(Math.max(0, trace * trace / 4 - det));
-  const lambda1 = trace / 2 + temp;
-
-  // Compute eigenvector for lambda1: (sxy, lambda1 - sxx) or (lambda1 - syy, sxy)
-  let vx = sxy;
-  let vy = lambda1 - sxx;
-  if (Math.abs(vx) < 1e-12 && Math.abs(vy) < 1e-12) {
-    vx = lambda1 - syy;
-    vy = sxy;
+/**
+ * Detect branches in a route (multiple valid orderings from trip patterns)
+ */
+function detectBranches(directionSequences) {
+  const branches = [];
+  for (const directionKey of ["0", "1"]) {
+    const directionSequence = Array.isArray(directionSequences?.[directionKey]) ? directionSequences[directionKey] : [];
+    if (directionSequence.length >= 2) {
+      branches.push({
+        direction: directionKey,
+        stopCount: directionSequence.length
+      });
+    }
   }
-  const norm = Math.sqrt(vx * vx + vy * vy) || 1;
-  vx /= norm; vy /= norm;
-
-  // Project and sort
-  const projected = pts.map((p) => ({
-    feature: p.f,
-    score: (p.c[0] - meanX) * vx + (p.c[1] - meanY) * vy
-  }));
-
-  projected.sort((a, b) => a.score - b.score);
-  return projected.map((p) => p.feature);
+  return branches;
 }
 
 /**
  * Order stops for line view rendering
- * Applies direction sequences first (if available), then linear referencing fractions
+ * Supports multiple ordering strategies with trip-pattern as primary (NEW)
+ * Modes: trip-pattern (NEW), direction, fractions, geometry, payload, auto
  */
-async function orderStopsForLineView(stopFeatures, lineKey, directionSequences = null, orderingMode = 'auto') {
+async function orderStopsForLineView(stopFeatures, lineKey, directionSequences = null, orderingMode = 'auto', routeLookupKey = null) {
   const uniqueStopFeatures = dedupeStopFeatures(stopFeatures);
-  
-  console.log(`[orderStopsForLineView] Starting with mode=${orderingMode}, lineKey=${lineKey}, stopCount=${uniqueStopFeatures.length}, hasDirectionSeqs=${!!directionSequences}`);
-  
-  // If ordering mode is explicitly set to geometry only, skip all other strategies
+
+  if (!Array.isArray(uniqueStopFeatures) || uniqueStopFeatures.length === 0) {
+    return uniqueStopFeatures;
+  }
+
+  // Build all available rank maps
+  const payloadRankMap = buildPayloadRankMap(uniqueStopFeatures);
+  const geometryRankMap = buildGeometryRankMap(uniqueStopFeatures, lineKey);
+
+  // Trip-pattern rank map (NEW PRIMARY METHOD - uses actual trip data)
+  const tripPatternRankInfo = directionSequences && typeof directionSequences === 'object'
+    ? buildTripPatternRankMap(uniqueStopFeatures, directionSequences, lineKey)
+    : { rankMap: new Map(), matchedCount: 0, coverage: 0 };
+
+  // Direction rank map (legacy - uses trip data but with consensus approach)
+  const directionRankInfo = directionSequences && typeof directionSequences === 'object'
+    ? buildDirectionRankMap(uniqueStopFeatures, directionSequences)
+    : { rankMap: new Map(), matchedCount: 0, coverage: 0 };
+
+  // Delay fraction requests so auto mode does not issue extra failing network calls.
+  const resolvedRouteLookupKey = String(routeLookupKey || lineKey || '').trim();
+
+  // Handle explicit mode selections
+  if (orderingMode === 'trip-pattern') {
+    if (tripPatternRankInfo.coverage > 0.2) {
+      return sortFeaturesByRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
+    }
+    return sortFeaturesByRanking(uniqueStopFeatures, geometryRankMap);
+  }
+
   if (orderingMode === 'geometry') {
-    console.log(`[orderStopsForLineView] Using GEOMETRY mode`);
-    return sortStopsSequentially(uniqueStopFeatures, lineKey);
+    return sortFeaturesByRanking(uniqueStopFeatures, geometryRankMap);
   }
-  
-  // If ordering mode is explicitly set to fractions only, skip direction sequences
+
+  if (orderingMode === 'direction') {
+    return sortFeaturesByRanking(uniqueStopFeatures, directionRankInfo.rankMap, geometryRankMap);
+  }
+
   if (orderingMode === 'fractions') {
-    console.log(`[orderStopsForLineView] Using FRACTIONS mode`);
-    return orderStopsByFractions(uniqueStopFeatures, lineKey);
-  }
-  
-  // Try direction sequences if available and in auto or direction mode
-  if (orderingMode !== 'fractions' && directionSequences && typeof directionSequences === 'object') {
-    console.log(`[orderStopsForLineView] Attempting DIRECTION mode (auto fallback)`);
-    // Try both directions and pick the one with the best match ratio
-    let bestResult = null;
-    let bestRatio = 0;
-    
-    for (const directionKey of ['0', '1']) {
-      const result = orderStopsByDirection(uniqueStopFeatures, directionSequences, directionKey);
-      console.log(`[orderStopsForLineView] Direction ${directionKey}: usedSequences=${result.usedSequences}, matchRatio=${result.matchRatio}`);
-      if (result.usedSequences && result.matchRatio > bestRatio) {
-        bestResult = result;
-        bestRatio = result.matchRatio;
-      }
+    const fractionRankInfo = await buildFractionRankMap(uniqueStopFeatures, lineKey, resolvedRouteLookupKey);
+    if (fractionRankInfo.coverage > 0.3) {
+      return sortFeaturesByRanking(uniqueStopFeatures, fractionRankInfo.rankMap, geometryRankMap);
     }
-    
-    if (bestResult && bestResult.usedSequences) {
-      console.log(`[orderStopsForLineView] Direction mode succeeded with ratio ${bestRatio}`);
-      return bestResult.features;
-    }
-    console.log(`[orderStopsForLineView] Direction mode failed, falling back to fractions`);
-  }
-  
-  // Fall back to fractions and then geometry
-  console.log(`[orderStopsForLineView] Falling back to FRACTIONS mode`);
-  const fracResult = await orderStopsByFractions(uniqueStopFeatures, lineKey);
-  if (Array.isArray(fracResult) && fracResult.length && fracResult.length === uniqueStopFeatures.length) {
-    return fracResult;
+    return sortFeaturesByRanking(uniqueStopFeatures, geometryRankMap);
   }
 
-  // If fractions didn't produce usable ordering, try geometry
-  try {
-    const geomResult = sortStopsSequentially(uniqueStopFeatures, lineKey);
-    if (Array.isArray(geomResult) && geomResult.length >= 2) {
-      return geomResult;
-    }
-  } catch (e) {
-    // continue to PCA fallback
+  if (orderingMode === 'payload') {
+    return sortFeaturesByRanking(uniqueStopFeatures, payloadRankMap, geometryRankMap);
   }
 
-  // Last resort: PCA projection ordering (robust when geometry or metadata is incomplete)
-  console.log(`[orderStopsForLineView] Falling back to PCA ordering`);
-  return orderStopsByPCA(uniqueStopFeatures);
+  // AUTO MODE: Select best available strategy
+  if (orderingMode === 'auto') {
+    // PRIMARY: Use trip-pattern if available and good coverage
+    if (tripPatternRankInfo.coverage >= 0.2) {
+      return sortFeaturesByRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
+    }
+
+    // FALLBACK: Try direction ranking if available
+    if (directionRankInfo.coverage >= 0.2) {
+      return sortFeaturesByRanking(uniqueStopFeatures, directionRankInfo.rankMap, geometryRankMap);
+    }
+
+    // FINAL: Use geometry-based ordering which should work for most routes
+    return sortFeaturesByRanking(uniqueStopFeatures, geometryRankMap);
+  }
+
+  return sortFeaturesByRanking(uniqueStopFeatures, geometryRankMap);
 }

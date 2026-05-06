@@ -220,6 +220,7 @@ const state = {
   transitlandVectorTileFailureCount: 0,
   transitlandRoutingApiRequestCount: 0,
   transitlandRoutingApiFailureCount: 0,
+  transitApiCooldownUntil: 0,
   loadEpoch: 0,
   lastLoadStats: {
     requested: 0,
@@ -1056,82 +1057,6 @@ function createLineConnector(lineColor) {
   if (existingSvg) {
     existingSvg.remove();
   }
-
-  // Get all stop rows
-  const stopRows = Array.from(els.lineViewStops.querySelectorAll(".line-view-stop-row"));
-  if (stopRows.length < 2) {
-    return;
-  }
-
-  // Calculate positions of each stop dot relative to the stop-list container
-  const containerRect = els.lineViewStops.getBoundingClientRect();
-  const scrollTop = els.lineViewStops.scrollTop;
-  const scrollLeft = els.lineViewStops.scrollLeft;
-  const dotPositions = stopRows.map((row) => {
-    const dot = row.querySelector(".line-view-stop-dot");
-    if (!dot) {
-      return null;
-    }
-
-    const dotRect = dot.getBoundingClientRect();
-
-    // Convert viewport coordinates back into the scrollable content space.
-    const relativeY = dotRect.top - containerRect.top + scrollTop + dotRect.height / 2;
-    const relativeX = dotRect.left - containerRect.left + scrollLeft + dotRect.width / 2;
-    
-    return {
-      y: relativeY,
-      x: relativeX
-    };
-  });
-
-  // Filter out null positions
-  const validPositions = dotPositions.filter((p) => p !== null);
-  if (validPositions.length < 2) {
-    return;
-  }
-
-  // Get the full height and width
-  const maxY = Math.max(...validPositions.map((p) => p.y));
-  const containerWidth = els.lineViewStops.offsetWidth;
-  const containerHeight = Math.max(els.lineViewStops.scrollHeight, maxY + 20);
-
-  // Create SVG element
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.id = "lineViewConnectorSvg";
-  
-  // Use actual pixel coordinates in viewBox, matching the container dimensions
-  svg.setAttribute("viewBox", `0 0 ${containerWidth} ${containerHeight}`);
-  svg.setAttribute("preserveAspectRatio", "none");
-  svg.style.position = "absolute";
-  svg.style.left = "0";
-  svg.style.top = "0";
-  svg.style.width = "100%";
-  svg.style.height = `${containerHeight}px`;
-  svg.style.pointerEvents = "none";
-  svg.style.zIndex = "0";
-
-  // Create path connecting all dots
-  const pathData = validPositions
-    .map((pos, idx) => {
-      if (idx === 0) {
-        return `M ${pos.x} ${pos.y}`;
-      }
-      return `L ${pos.x} ${pos.y}`;
-    })
-    .join(" ");
-
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", pathData);
-  path.setAttribute("stroke", lineColor);
-  path.setAttribute("stroke-width", "4");
-  path.setAttribute("fill", "none");
-  path.setAttribute("stroke-linecap", "butt");
-  path.setAttribute("stroke-linejoin", "round");
-  path.setAttribute("opacity", "0.85");
-
-  svg.append(path);
-  els.lineViewStops.insertBefore(svg, els.lineViewStops.firstChild);
 }
 
 async function renderLineViewStops(lineKey, lineColor, options = {}) {
@@ -1177,6 +1102,8 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
 
   // Get direction sequences from cache payload if available
   const cacheEntry = state.lineStopsCache.get(routeStopCacheKey(lineKey));
+  const line = state.lineSummaries.find((entry) => entry.lineKey === lineKey);
+  const routeLookupKey = String(line?.routeOnestopId || lineKey || "").trim();
   const directionSequences = cacheEntry?.payload?.directionStopSequences || null;
   const orderingMode = String(
     options?.orderingMode ||
@@ -1184,20 +1111,16 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     state.lineViewOrderingMode ||
     'auto'
   ).trim() || 'auto';
-  
-  // Debug logging for ordering mode
-  if (typeof console !== 'undefined' && console.log) {
-    console.log(`[renderLineViewStops] Ordering mode: ${orderingMode}, from options: ${options?.orderingMode}, from select: ${els.lineViewOrderingModeSelect?.value}, from state: ${state.lineViewOrderingMode}, has directionSequences: ${!!directionSequences}`);
-  }
 
   const featuresToRender = await orderStopsForLineView(
     stopFeatures,
     lineKey,
     directionSequences,
-    orderingMode
+    orderingMode,
+    routeLookupKey
   );
 
-  featuresToRender.forEach((feature) => {
+  featuresToRender.forEach((feature, index) => {
     const props = feature?.properties || {};
     const stationName = String(props.station_name || props.stop_name || "Unnamed Station");
     const stationKey = stopKeyForFeature(feature);
@@ -1207,6 +1130,12 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     const row = document.createElement("button");
     row.type = "button";
     row.className = "line-view-stop-row";
+    if (index === 0) {
+      row.classList.add("is-first");
+    }
+    if (index === featuresToRender.length - 1) {
+      row.classList.add("is-last");
+    }
     if (visited) {
       row.classList.add("is-visited");
     }
@@ -2267,7 +2196,7 @@ function setUserStatusFromLine(line) {
   if (!isPortraitMobileLayout()) {
     details.push({
       label: "Stops",
-      value: progress.total > 0 ? `${progress.total} route stations loaded` : "Stops not loaded yet"
+      value: progress.total > 0 ? `${progress.total} stations loaded` : "Stops not loaded yet"
     });
   }
 
@@ -2430,6 +2359,14 @@ function setToken(token, remember = true) {
 }
 
 async function apiRequest(path, options = {}) {
+  const requestPath = String(path || "");
+  const now = Date.now();
+  const isTransitRequest = requestPath.startsWith("/api/transit/");
+
+  if (isTransitRequest && Number(state.transitApiCooldownUntil || 0) > now) {
+    throw new Error("Transit API temporarily unavailable. Retrying shortly.");
+  }
+
   state.clientApiRequestCount += 1;
   renderApiCounter();
 
@@ -2442,10 +2379,19 @@ async function apiRequest(path, options = {}) {
     headers.Authorization = `Bearer ${state.token}`;
   }
 
-  const response = await fetch(path, {
-    ...options,
-    headers
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      ...options,
+      headers
+    });
+  } catch (error) {
+    if (isTransitRequest) {
+      state.transitApiCooldownUntil = Date.now() + 30000;
+      setBackendStatus("Transit backend connection failed. Pausing transit requests briefly before retrying.");
+    }
+    throw error;
+  }
 
   const payload = await response.json().catch(() => ({}));
 
@@ -2518,28 +2464,22 @@ function initializeDiagnostics() {
   if (els.lineViewOrderingModeSelect) {
     // Set initial value from state
     els.lineViewOrderingModeSelect.value = state.lineViewOrderingMode;
-    console.log(`[initializeDiagnostics] Set dropdown initial value to: ${state.lineViewOrderingMode}`);
     
     els.lineViewOrderingModeSelect.addEventListener('change', (event) => {
       const newMode = event.target.value;
-      console.log(`[dropdown change] Changed ordering mode from ${state.lineViewOrderingMode} to ${newMode}`);
       
       state.lineViewOrderingMode = newMode;
       localStorage.setItem("metromark_line_view_ordering_mode", state.lineViewOrderingMode);
-      console.log(`[dropdown change] Saved to localStorage and state`);
       
       // Trigger re-rendering of the current line view if open
       if (state.lineViewOpen && state.lineViewLineKey) {
         const lineKey = String(state.lineViewLineKey).trim();
-        console.log(`[dropdown change] Triggering rerender for line ${lineKey} with mode ${newMode}`);
         renderLineViewStops(
           lineKey,
           state.lineSummaries.find(l => l.lineKey === lineKey)?.color || '#177ca2',
           { forceRefresh: true, orderingMode: newMode }
         )
           .catch((error) => console.error('Error re-rendering line view stops:', error));
-      } else {
-        console.log(`[dropdown change] Line view not open: lineViewOpen=${state.lineViewOpen}, lineViewLineKey=${state.lineViewLineKey}`);
       }
     });
   }
