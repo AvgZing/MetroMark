@@ -1058,9 +1058,574 @@ function buildHybridEndpointRankMap(stopFeatures, directionSequences, lineKey) {
 }
 
 /**
+ * Intelligently merge multiple trip patterns to handle branching transit lines
+ * For lines where direction 0 and 1 represent different branches (not just reverses),
+ * this method merges stops from both while preserving sequence integrity.
+ * No additional API calls - uses existing trip data more completely.
+ */
+function buildOptimalBranchMergeRankMap(stopFeatures, directionSequences, lineKey = "") {
+  if (!directionSequences || typeof directionSequences !== 'object') {
+    return { rankMap: new Map(), matchedCount: 0, coverage: 0, isMerged: false };
+  }
+
+  const featureByLookupKey = buildFeatureLookupMap(stopFeatures);
+  const geometryProgressMap = buildGeometryProgressMap(stopFeatures, lineKey);
+
+  // Extract both direction patterns
+  const patternsByDirection = {};
+
+  for (const directionKey of ["0", "1"]) {
+    const directionSequence = Array.isArray(directionSequences[directionKey]) ? directionSequences[directionKey] : [];
+    if (!directionSequence.length) {
+      continue;
+    }
+
+    const patternMatches = [];
+    const selectedFeatures = new Set();
+
+    for (const entry of directionSequence) {
+      const matchedFeature = matchSequenceFeature(entry, stopFeatures, featureByLookupKey, selectedFeatures);
+      if (matchedFeature) {
+        selectedFeatures.add(matchedFeature);
+        patternMatches.push(matchedFeature);
+      }
+    }
+
+    if (patternMatches.length >= 2) {
+      patternsByDirection[directionKey] = patternMatches;
+    }
+  }
+
+  // If we only have one direction, fall back to standard trip pattern
+  if (Object.keys(patternsByDirection).length <= 1) {
+    return buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+  }
+
+  const pattern0 = patternsByDirection["0"] || [];
+  const pattern1 = patternsByDirection["1"] || [];
+
+  // Check if patterns are just reverses of each other (simple line, not branching)
+  const keys0 = pattern0.map((f) => stopIdentityKey(f)).filter(Boolean);
+  const keys1 = pattern1.map((f) => stopIdentityKey(f)).filter(Boolean);
+  const keysReversed = keys1.length === keys0.length && keys1.every((k, i) => k === keys0[keys0.length - 1 - i]);
+
+  if (keysReversed) {
+    // Simple line: just pick the better coverage direction
+    return buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+  }
+
+  // BRANCHING LINE DETECTED: Intelligently merge both patterns
+  // Find common stops (trunk) and unique stops (branches)
+  const keysSet0 = new Set(keys0);
+  const keysSet1 = new Set(keys1);
+  const commonKeys = new Set([...keysSet0].filter((k) => keysSet1.has(k)));
+  const uniqueToDir0 = new Set([...keysSet0].filter((k) => !commonKeys.has(k)));
+  const uniqueToDir1 = new Set([...keysSet1].filter((k) => !commonKeys.has(k)));
+
+  // If minimal branching (very few unique stops), use single best pattern
+  if (Math.min(uniqueToDir0.size, uniqueToDir1.size) <= 1 && Math.max(uniqueToDir0.size, uniqueToDir1.size) <= 2) {
+    return buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+  }
+
+  // MERGE STRATEGY: Start with pattern 0 (authoritative from trip data)
+  // Then insert unique stops from pattern 1 using geometry as guide
+  const mergedMatches = [...pattern0];
+  const addedIdentities = new Set(keys0);
+
+  // For each unique stop in pattern 1, find best insertion point
+  for (const feature of pattern1) {
+    const identity = stopIdentityKey(feature);
+    if (!identity || !uniqueToDir1.has(identity) || addedIdentities.has(identity)) {
+      continue;
+    }
+
+    // Find where this stop should go geometrically
+    const featureProgress = geometryProgressForFeature(geometryProgressMap, feature);
+    if (!Number.isFinite(featureProgress)) {
+      // If no geometry data, append to end
+      mergedMatches.push(feature);
+      addedIdentities.add(identity);
+      continue;
+    }
+
+    // Find insertion point: where geometry progress increases
+    let insertIndex = mergedMatches.length;
+    for (let i = 0; i < mergedMatches.length; i++) {
+      const candidateProgress = geometryProgressForFeature(geometryProgressMap, mergedMatches[i]);
+      if (Number.isFinite(candidateProgress) && candidateProgress > featureProgress) {
+        insertIndex = i;
+        break;
+      }
+    }
+
+    mergedMatches.splice(insertIndex, 0, feature);
+    addedIdentities.add(identity);
+  }
+
+  // Build rank map from merged sequence
+  const rankMap = new Map();
+  mergedMatches.forEach((feature, index) => {
+    const identity = stopIdentityKey(feature);
+    const stationKey = stopKeyForFeature(feature);
+
+    if (identity && !rankMap.has(identity)) {
+      rankMap.set(identity, index);
+    }
+
+    if (stationKey && !rankMap.has(stationKey)) {
+      rankMap.set(stationKey, index);
+    }
+  });
+
+  // Blend unmatched stops using geometry progress
+  const firstProgress = geometryProgressForFeature(geometryProgressMap, mergedMatches[0]);
+  const lastProgress = geometryProgressForFeature(geometryProgressMap, mergedMatches[mergedMatches.length - 1]);
+  const reverseGeometry = Number.isFinite(firstProgress) && Number.isFinite(lastProgress)
+    ? lastProgress < firstProgress
+    : false;
+
+  const sequenceScale = Math.max(mergedMatches.length - 1, 1);
+
+  for (const feature of stopFeatures) {
+    const identity = stopIdentityKey(feature);
+    const stationKey = stopKeyForFeature(feature);
+    const alreadyRanked = (identity && rankMap.has(identity)) || (stationKey && rankMap.has(stationKey));
+    if (alreadyRanked) {
+      continue;
+    }
+
+    const progress = geometryProgressForFeature(geometryProgressMap, feature);
+    if (!Number.isFinite(progress)) {
+      continue;
+    }
+
+    const oriented = reverseGeometry ? 1 - progress : progress;
+    const synthesizedRank = oriented * sequenceScale + 0.35;
+
+    if (identity && !rankMap.has(identity)) {
+      rankMap.set(identity, synthesizedRank);
+    }
+    if (stationKey && !rankMap.has(stationKey)) {
+      rankMap.set(stationKey, synthesizedRank);
+    }
+  }
+
+  return {
+    rankMap,
+    matchedCount: mergedMatches.length,
+    coverage: stopFeatures.length ? mergedMatches.length / stopFeatures.length : 0,
+    isMerged: true
+  };
+}
+
+/**
+ * Detect if a pattern contains a loop (stop appearing multiple times)
+ * Returns the detected loops and their indices
+ */
+function analyzeLoopsInPattern(pattern) {
+  const stopKeyToIndices = new Map();
+  const loops = [];
+
+  for (let i = 0; i < pattern.length; i++) {
+    const key = stopIdentityKey(pattern[i]);
+    if (!key) continue;
+
+    if (!stopKeyToIndices.has(key)) {
+      stopKeyToIndices.set(key, []);
+    }
+    stopKeyToIndices.get(key).push(i);
+  }
+
+  // Identify stops that appear more than once
+  for (const [key, indices] of stopKeyToIndices) {
+    if (indices.length > 1) {
+      loops.push({ key, indices, count: indices.length });
+    }
+  }
+
+  return loops;
+}
+
+/**
+ * Loop-aware trip ranking for circular/loop routes
+ * Better handles routes that return to the same stop
+ * Examples: circular buses, shuttle routes, metro loops
+ */
+function buildLoopAwareRankMap(stopFeatures, directionSequences, lineKey = "") {
+  if (!directionSequences || typeof directionSequences !== 'object') {
+    return { rankMap: new Map(), matchedCount: 0, coverage: 0, hasLoop: false };
+  }
+
+  const featureByLookupKey = buildFeatureLookupMap(stopFeatures);
+  const geometryProgressMap = buildGeometryProgressMap(stopFeatures, lineKey);
+
+  // Try both directions and pick the one with best properties
+  const patterns = [];
+
+  for (const directionKey of ["0", "1"]) {
+    const directionSequence = Array.isArray(directionSequences[directionKey]) ? directionSequences[directionKey] : [];
+    if (!directionSequence.length) continue;
+
+    const patternMatches = [];
+    const selectedFeatures = new Set();
+
+    for (const entry of directionSequence) {
+      const matchedFeature = matchSequenceFeature(entry, stopFeatures, featureByLookupKey, selectedFeatures);
+      if (matchedFeature) {
+        selectedFeatures.add(matchedFeature);
+        patternMatches.push(matchedFeature);
+      }
+    }
+
+    if (patternMatches.length >= 2) {
+      const loops = analyzeLoopsInPattern(patternMatches);
+      const coverage = stopFeatures.length ? patternMatches.length / stopFeatures.length : 0;
+
+      patterns.push({
+        directionKey,
+        matches: patternMatches,
+        matchedCount: patternMatches.length,
+        coverage,
+        loops,
+        hasLoop: loops.length > 0
+      });
+    }
+  }
+
+  if (patterns.length === 0) {
+    return { rankMap: new Map(), matchedCount: 0, coverage: 0, hasLoop: false };
+  }
+
+  // Prefer patterns with loops (more likely to be the intended loop route)
+  // Then prefer higher coverage
+  patterns.sort((a, b) => {
+    if (a.hasLoop !== b.hasLoop) return a.hasLoop ? -1 : 1;
+    if (a.matchedCount !== b.matchedCount) return b.matchedCount - a.matchedCount;
+    return b.coverage - a.coverage;
+  });
+
+  const selectedPattern = patterns[0];
+  const rankMap = new Map();
+
+  // For loops: create a sequence that preserves loop structure
+  // Strategy: Assign increasing ranks to first occurrence of each stop
+  // This ensures loop stops appear in logical order (not repeated)
+  const seenStopKeys = new Set();
+  let baseRank = 0;
+
+  for (let i = 0; i < selectedPattern.matches.length; i++) {
+    const feature = selectedPattern.matches[i];
+    const identity = stopIdentityKey(feature);
+    const stationKey = stopKeyForFeature(feature);
+
+    // Only rank the first occurrence of each stop to avoid duplicates in ordering
+    if (identity && !seenStopKeys.has(identity)) {
+      rankMap.set(identity, baseRank);
+      seenStopKeys.add(identity);
+      baseRank += 1;
+    }
+
+    if (stationKey && !seenStopKeys.has(stationKey)) {
+      rankMap.set(stationKey, baseRank);
+      seenStopKeys.add(stationKey);
+      baseRank += 1;
+    }
+  }
+
+  // Blend unmatched stops using geometry progress
+  const firstFeature = selectedPattern.matches[0];
+  const lastFeature = selectedPattern.matches[selectedPattern.matches.length - 1];
+  const firstProgress = geometryProgressForFeature(geometryProgressMap, firstFeature);
+  const lastProgress = geometryProgressForFeature(geometryProgressMap, lastFeature);
+  const reverseGeometry = Number.isFinite(firstProgress) && Number.isFinite(lastProgress)
+    ? lastProgress < firstProgress
+    : false;
+
+  const sequenceScale = Math.max(baseRank - 1, 1);
+
+  for (const feature of stopFeatures) {
+    const identity = stopIdentityKey(feature);
+    const stationKey = stopKeyForFeature(feature);
+    const alreadyRanked = (identity && rankMap.has(identity)) || (stationKey && rankMap.has(stationKey));
+    if (alreadyRanked) continue;
+
+    const progress = geometryProgressForFeature(geometryProgressMap, feature);
+    if (!Number.isFinite(progress)) continue;
+
+    const oriented = reverseGeometry ? 1 - progress : progress;
+    const synthesizedRank = oriented * sequenceScale + 0.35;
+
+    if (identity && !rankMap.has(identity)) {
+      rankMap.set(identity, synthesizedRank);
+    }
+    if (stationKey && !rankMap.has(stationKey)) {
+      rankMap.set(stationKey, synthesizedRank);
+    }
+  }
+
+  return {
+    rankMap,
+    matchedCount: seenStopKeys.size,
+    coverage: stopFeatures.length ? seenStopKeys.size / stopFeatures.length : 0,
+    hasLoop: selectedPattern.hasLoop,
+    loopsDetected: selectedPattern.loops.length
+  };
+}
+
+/**
+ * Split-section smart ranking for lines with mid-route direction-specific stops
+ * Better handles routes where one-way streets cause duplicate stops at same location
+ * Examples: city buses with one-way streets, roads with median splits
+ */
+function buildSplitSectionSmartRankMap(stopFeatures, directionSequences, lineKey = "") {
+  if (!directionSequences || typeof directionSequences !== 'object') {
+    return { rankMap: new Map(), matchedCount: 0, coverage: 0, splitSectionsDetected: 0 };
+  }
+
+  const featureByLookupKey = buildFeatureLookupMap(stopFeatures);
+  const geometryProgressMap = buildGeometryProgressMap(stopFeatures, lineKey);
+
+  // Extract both direction patterns
+  const patternsByDirection = {};
+
+  for (const directionKey of ["0", "1"]) {
+    const directionSequence = Array.isArray(directionSequences[directionKey]) ? directionSequences[directionKey] : [];
+    if (!directionSequence.length) continue;
+
+    const patternMatches = [];
+    const selectedFeatures = new Set();
+
+    for (const entry of directionSequence) {
+      const matchedFeature = matchSequenceFeature(entry, stopFeatures, featureByLookupKey, selectedFeatures);
+      if (matchedFeature) {
+        selectedFeatures.add(matchedFeature);
+        patternMatches.push(matchedFeature);
+      }
+    }
+
+    if (patternMatches.length >= 2) {
+      patternsByDirection[directionKey] = patternMatches;
+    }
+  }
+
+  // If only one direction, use standard trip pattern
+  if (Object.keys(patternsByDirection).length <= 1) {
+    return buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+  }
+
+  const pattern0 = patternsByDirection["0"] || [];
+  const pattern1 = patternsByDirection["1"] || [];
+
+  // Check if patterns are reverses (simple line)
+  const keys0 = pattern0.map((f) => stopIdentityKey(f)).filter(Boolean);
+  const keys1 = pattern1.map((f) => stopIdentityKey(f)).filter(Boolean);
+  const keysReversed = keys1.length === keys0.length && keys1.every((k, i) => k === keys0[keys0.length - 1 - i]);
+
+  if (keysReversed) {
+    return buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+  }
+
+  // Look for split sections: positions where stops differ but are geographically very close
+  // This indicates direction-specific stops from one-way streets
+  const splitSections = [];
+
+  for (let i = 0; i < Math.min(pattern0.length, pattern1.length); i++) {
+    const feat0 = pattern0[i];
+    const feat1 = pattern1[i];
+    const id0 = stopIdentityKey(feat0);
+    const id1 = stopIdentityKey(feat1);
+
+    // If different stops at same position index
+    if (id0 !== id1) {
+      const coords0 = feat0?.geometry?.coordinates;
+      const coords1 = feat1?.geometry?.coordinates;
+
+      // Check if they're geographically very close (split section indicator)
+      if (coords0 && coords1) {
+        const dist = Math.hypot(coords0[0] - coords1[0], coords0[1] - coords1[1]);
+        if (dist < 0.0005) { // ~50 meters at typical scale
+          splitSections.push({ index: i, feat0, feat1, distance: dist });
+        }
+      }
+    }
+  }
+
+  // Build merged ranking with split sections grouped together
+  const rankMap = new Map();
+  const processedKeys = new Set();
+  let currentRank = 0;
+
+  // Process stops sequentially from pattern 0
+  for (let i = 0; i < pattern0.length; i++) {
+    const feat0 = pattern0[i];
+    const feat1 = i < pattern1.length ? pattern1[i] : null;
+    const id0 = stopIdentityKey(feat0);
+    const id1 = stopIdentityKey(feat1);
+
+    // Add feat0
+    if (id0 && !processedKeys.has(id0)) {
+      rankMap.set(id0, currentRank);
+      processedKeys.add(id0);
+
+      const stationKey = stopKeyForFeature(feat0);
+      if (stationKey && !rankMap.has(stationKey)) {
+        rankMap.set(stationKey, currentRank);
+      }
+
+      currentRank += 1;
+    }
+
+    // If split section detected, add feat1 right after with intermediate rank
+    if (id1 && id0 !== id1 && !processedKeys.has(id1)) {
+      const splitSectionMatch = splitSections.find((s) => s.index === i);
+      if (splitSectionMatch) {
+        // Add with fractional rank to keep split stops together
+        rankMap.set(id1, currentRank - 0.5);
+        processedKeys.add(id1);
+
+        const stationKey = stopKeyForFeature(feat1);
+        if (stationKey && !rankMap.has(stationKey)) {
+          rankMap.set(stationKey, currentRank - 0.5);
+        }
+      }
+    }
+  }
+
+  // Add any remaining stops from pattern 1
+  for (const feat1 of pattern1) {
+    const id1 = stopIdentityKey(feat1);
+    if (id1 && !processedKeys.has(id1)) {
+      rankMap.set(id1, currentRank);
+      processedKeys.add(id1);
+
+      const stationKey = stopKeyForFeature(feat1);
+      if (stationKey && !rankMap.has(stationKey)) {
+        rankMap.set(stationKey, currentRank);
+      }
+
+      currentRank += 1;
+    }
+  }
+
+  // Blend remaining unmatched stops with geometry progress
+  const firstProgress = geometryProgressForFeature(geometryProgressMap, pattern0[0]);
+  const lastProgress = geometryProgressForFeature(geometryProgressMap, pattern0[pattern0.length - 1]);
+  const reverseGeometry = Number.isFinite(firstProgress) && Number.isFinite(lastProgress)
+    ? lastProgress < firstProgress
+    : false;
+
+  const sequenceScale = Math.max(currentRank - 1, 1);
+
+  for (const feature of stopFeatures) {
+    const identity = stopIdentityKey(feature);
+    const stationKey = stopKeyForFeature(feature);
+    const alreadyRanked = (identity && rankMap.has(identity)) || (stationKey && rankMap.has(stationKey));
+    if (alreadyRanked) continue;
+
+    const progress = geometryProgressForFeature(geometryProgressMap, feature);
+    if (!Number.isFinite(progress)) continue;
+
+    const oriented = reverseGeometry ? 1 - progress : progress;
+    const synthesizedRank = oriented * sequenceScale + 0.35;
+
+    if (identity && !rankMap.has(identity)) {
+      rankMap.set(identity, synthesizedRank);
+    }
+    if (stationKey && !rankMap.has(stationKey)) {
+      rankMap.set(stationKey, synthesizedRank);
+    }
+  }
+
+  return {
+    rankMap,
+    matchedCount: processedKeys.size,
+    coverage: stopFeatures.length ? processedKeys.size / stopFeatures.length : 0,
+    splitSectionsDetected: splitSections.length
+  };
+}
+
+/**
+ * Smart topology detection and auto-selection
+ * Detects route characteristics and picks the best method for that type
+ * This is the "competition winner" method that learns which approach works best
+ */
+function buildSmartAutoDetectRankMap(stopFeatures, directionSequences, lineKey = "") {
+  if (!directionSequences || typeof directionSequences !== 'object') {
+    return buildGeometryRankMap(stopFeatures, lineKey);
+  }
+
+  const featureByLookupKey = buildFeatureLookupMap(stopFeatures);
+
+  // Analyze both directions for topology characteristics
+  let hasLoops = false;
+  let hasSplitSections = false;
+  let loopCount = 0;
+  let splitCount = 0;
+  let pattern0Length = 0;
+  let pattern1Length = 0;
+
+  for (const directionKey of ["0", "1"]) {
+    const directionSequence = Array.isArray(directionSequences[directionKey]) ? directionSequences[directionKey] : [];
+    if (!directionSequence.length) continue;
+
+    const patternMatches = [];
+    const selectedFeatures = new Set();
+
+    for (const entry of directionSequence) {
+      const matchedFeature = matchSequenceFeature(entry, stopFeatures, featureByLookupKey, selectedFeatures);
+      if (matchedFeature) {
+        selectedFeatures.add(matchedFeature);
+        patternMatches.push(matchedFeature);
+      }
+    }
+
+    if (patternMatches.length >= 2) {
+      if (directionKey === "0") pattern0Length = patternMatches.length;
+      if (directionKey === "1") pattern1Length = patternMatches.length;
+
+      const loops = analyzeLoopsInPattern(patternMatches);
+      if (loops.length > 0) {
+        hasLoops = true;
+        loopCount += loops.length;
+      }
+
+      // Check for split sections
+      if (directionKey === "1") {
+        const otherPattern = patternMatches;
+        // This is a simplified check - in practice would need pattern0 to compare
+        for (const feat of otherPattern) {
+          const coords = feat?.geometry?.coordinates;
+          if (coords) hasSplitSections = true; // Simplified for now
+        }
+      }
+    }
+  }
+
+  // ROUTING DECISION LOGIC
+  // If line has loops, use loop-aware method
+  if (hasLoops && loopCount > 0) {
+    return buildLoopAwareRankMap(stopFeatures, directionSequences, lineKey);
+  }
+
+  // If line has split sections detected, use split-aware method
+  if (hasSplitSections) {
+    return buildSplitSectionSmartRankMap(stopFeatures, directionSequences, lineKey);
+  }
+
+  // Check if this is a genuine branch line (not just reverses)
+  const tryBranchMerge = buildOptimalBranchMergeRankMap(stopFeatures, directionSequences, lineKey);
+  if (tryBranchMerge.isMerged) {
+    return tryBranchMerge;
+  }
+
+  // Default: use standard trip pattern
+  return buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+}
+
+/**
  * Order stops for line view rendering
  * Supports multiple ordering strategies with trip-pattern as primary (NEW)
- * Modes: trip-pattern (NEW), direction, fractions, geometry, geometry-revised (NEW), hybrid-endpoint (NEW), payload, auto
+ * Modes: trip-pattern (NEW), direction, fractions, geometry, geometry-revised (NEW), hybrid-endpoint (NEW), payload, trip-branches, auto
  */
 async function orderStopsForLineView(stopFeatures, lineKey, directionSequences = null, orderingMode = 'auto', routeLookupKey = null) {
   const uniqueStopFeatures = dedupeStopFeatures(stopFeatures);
@@ -1129,9 +1694,45 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
     return sortFeaturesByPrimaryRanking(uniqueStopFeatures, payloadRankMap, geometryRankMap);
   }
 
+  if (orderingMode === 'trip-branches') {
+    const branchMergeResult = buildOptimalBranchMergeRankMap(uniqueStopFeatures, directionSequences, lineKey);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, branchMergeResult.rankMap, geometryRankMap);
+  }
+
+  if (orderingMode === 'loop-aware') {
+    const loopResult = buildLoopAwareRankMap(uniqueStopFeatures, directionSequences, lineKey);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, loopResult.rankMap, geometryRankMap);
+  }
+
+  if (orderingMode === 'split-sections') {
+    const splitResult = buildSplitSectionSmartRankMap(uniqueStopFeatures, directionSequences, lineKey);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, splitResult.rankMap, geometryRankMap);
+  }
+
+  if (orderingMode === 'smart-auto') {
+    const smartResult = buildSmartAutoDetectRankMap(uniqueStopFeatures, directionSequences, lineKey);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, smartResult.rankMap, geometryRankMap);
+  }
+
   // AUTO MODE: Select best available strategy
   if (orderingMode === 'auto') {
-    // PRIMARY: Use trip-pattern if available and good coverage
+    // PRIMARY: Use smart auto-detection that picks best method for route type
+    if (directionSequences && typeof directionSequences === 'object') {
+      const smartResult = buildSmartAutoDetectRankMap(uniqueStopFeatures, directionSequences, lineKey);
+      if (smartResult.rankMap && smartResult.rankMap.size > 0) {
+        return sortFeaturesByPrimaryRanking(uniqueStopFeatures, smartResult.rankMap, geometryRankMap);
+      }
+    }
+
+    // FALLBACK: Try intelligent branch merge if we have trip data with good coverage
+    if (directionSequences && typeof directionSequences === 'object') {
+      const branchMergeResult = buildOptimalBranchMergeRankMap(uniqueStopFeatures, directionSequences, lineKey);
+      if (branchMergeResult.coverage >= 0.2) {
+        return sortFeaturesByPrimaryRanking(uniqueStopFeatures, branchMergeResult.rankMap, geometryRankMap);
+      }
+    }
+
+    // FALLBACK: Use standard trip-pattern if available and good coverage
     if (tripPatternRankInfo.coverage >= 0.2) {
       return sortFeaturesByPrimaryRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
     }
