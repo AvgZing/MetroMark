@@ -1178,12 +1178,53 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     'auto'
   ).trim() || 'auto';
 
+  // Branch selection UI: build selectors if branching is detected
+  try {
+    const branchContainer = document.getElementById('lineViewBranchSelectors');
+    if (branchContainer) {
+      if (directionSequences && typeof directionSequences === 'object') {
+        const branchGroups = window.buildBranchGroups ? window.buildBranchGroups(stopFeatures, directionSequences, lineKey) : null;
+        if (branchGroups && branchGroups.isBranching) {
+          branchContainer.style.display = '';
+          branchContainer.innerHTML = '';
+          const allBtn = document.createElement('button');
+          allBtn.type = 'button';
+          allBtn.className = 'btn small';
+          allBtn.textContent = 'All';
+          allBtn.onclick = () => { state.lineViewSelectedBranch = null; renderLineViewStops(lineKey, lineColor, { forceRefresh: true }); };
+          branchContainer.append(allBtn);
+
+          branchGroups.branches.forEach((b) => {
+            const label = b.unique && b.unique.length ? stopFeatureDisplayName(b.unique[0]) : `Branch ${b.direction}`;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn small';
+            btn.textContent = label;
+            btn.onclick = () => { state.lineViewSelectedBranch = b.direction; renderLineViewStops(lineKey, lineColor, { forceRefresh: true }); };
+            branchContainer.append(btn);
+          });
+        } else if (branchContainer) {
+          branchContainer.style.display = 'none';
+          branchContainer.innerHTML = '';
+          state.lineViewSelectedBranch = null;
+        }
+      } else {
+        branchContainer.style.display = 'none';
+        branchContainer.innerHTML = '';
+        state.lineViewSelectedBranch = null;
+      }
+    }
+  } catch (e) {
+    // ignore UI errors
+  }
+
   const featuresToRender = await orderStopsForLineView(
     stopFeatures,
     lineKey,
     directionSequences,
     orderingMode,
-    routeLookupKey
+    routeLookupKey,
+    options?.branchSelection || state.lineViewSelectedBranch || null
   );
 
   featuresToRender.forEach((feature, index) => {

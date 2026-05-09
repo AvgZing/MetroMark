@@ -26,6 +26,46 @@ function stopFeatureLookupKeys(feature) {
   );
 }
 
+// Export functions for Node-based testing harness (file-level)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    orderStopsForLineView,
+    buildEndpointAnchoredGeometryOrder,
+    buildPolylineProjectedRankMap,
+    buildOptimalBranchMergeRankMap,
+    buildBranchGroups,
+    buildLoopAwareRankMap,
+    buildSplitSectionSmartRankMap,
+    buildSmartAutoDetectRankMap
+  };
+}
+
+// Also attach to global for test harness convenience
+try {
+  if (typeof global !== 'undefined') {
+    global._lineOrdering = global._lineOrdering || {};
+    Object.assign(global._lineOrdering, {
+      orderStopsForLineView,
+      buildEndpointAnchoredGeometryOrder,
+      buildPolylineProjectedRankMap,
+      buildOptimalBranchMergeRankMap,
+      buildBranchGroups,
+      buildLoopAwareRankMap,
+      buildSplitSectionSmartRankMap,
+      buildSmartAutoDetectRankMap
+    });
+  }
+} catch (e) {
+  // ignore
+}
+
+// Expose branch helper to window for UI to consume
+try {
+  if (typeof window !== 'undefined') {
+    window.buildBranchGroups = buildBranchGroups;
+  }
+} catch (e) {}
+
 /**
  * Normalize a stop lookup key for comparison (lowercase, trimmed)
  */
@@ -39,6 +79,9 @@ function normalizeStopLookupKey(value) {
     .replace(/\s+/g, " ")
     .trim();
 }
+
+// Cache for projected route computations keyed by lineKey to reduce repeated work
+const _polylineProjectionCache = new Map();
 
 function stopIdentityKey(feature) {
   const props = feature?.properties || {};
@@ -1002,12 +1045,185 @@ function buildEndpointAnchoredGeometryOrder(stopFeatures, lineKey) {
 }
 
 /**
+ * Build rank map by projecting stops onto the route polyline, preserving route direction
+ * This is a new, non-destructive mode that complements the existing endpoint-anchored method
+ * - Handles J-shaped routes by using the real route polyline
+ * - Detects looped geometries and falls back to sequential ordering for loops
+ */
+function buildPolylineProjectedRankMap(stopFeatures, lineKey) {
+  const features = Array.from(Array.isArray(stopFeatures) ? stopFeatures : []).filter((f) => stopCoordinate(f));
+  if (features.length <= 1) return { rankMap: new Map(), orderedFeatures: features };
+
+  const routeCoords = routeGeometryCoordinatesForLine(lineKey);
+  if (!Array.isArray(routeCoords) || routeCoords.length < 2) {
+    // No route geometry: fall back to endpoint-anchored ordering
+    return buildEndpointAnchoredGeometryOrder(features, lineKey);
+  }
+
+  // Detect loop: if route start and end are close treat as loop and use sequential ordering
+  try {
+    const start = routeCoords[0];
+    const end = routeCoords[routeCoords.length - 1];
+    if (haversineMeters(start, end) < 100) {
+      const ordered = sortStopsSequentially(features, lineKey);
+      const rankMap = new Map();
+      ordered.forEach((feature, i) => {
+        const id = stopIdentityKey(feature);
+        const sk = stopKeyForFeature(feature);
+        if (id && !rankMap.has(id)) rankMap.set(id, i);
+        if (sk && !rankMap.has(sk)) rankMap.set(sk, i);
+      });
+      return { rankMap, orderedFeatures: ordered };
+    }
+  } catch (e) {
+    // ignore and continue
+  }
+
+  // Reuse cached projection information if available
+  let segLengths, cumLengths, totalLen;
+  if (_polylineProjectionCache.has(lineKey)) {
+    ({ segLengths, cumLengths, totalLen } = _polylineProjectionCache.get(lineKey));
+  } else {
+    segLengths = [];
+    cumLengths = [0];
+    totalLen = 0;
+    for (let i = 0; i < routeCoords.length - 1; i += 1) {
+      const a = routeCoords[i];
+      const b = routeCoords[i + 1];
+      const d = haversineMeters(a, b);
+      segLengths.push(d);
+      totalLen += d;
+      cumLengths.push(totalLen);
+    }
+    _polylineProjectionCache.set(lineKey, { segLengths, cumLengths, totalLen });
+  }
+
+  function projectPointToRoute(point) {
+    let bestDist = Infinity;
+    let bestAlong = 0;
+    const coords = routeCoords;
+    for (let i = 0; i < coords.length - 1; i += 1) {
+      const a = coords[i];
+      const b = coords[i + 1];
+      const vx = b[0] - a[0];
+      const vy = b[1] - a[1];
+      const wx = point[0] - a[0];
+      const wy = point[1] - a[1];
+      const segLen2 = vx * vx + vy * vy || 1e-12;
+      const t = Math.max(0, Math.min(1, (wx * vx + wy * vy) / segLen2));
+      const proj = [a[0] + t * vx, a[1] + t * vy];
+      const d = haversineMeters(point, proj);
+      if (d < bestDist) {
+        bestDist = d;
+        const along = cumLengths[i] + (t * segLengths[i]);
+        bestAlong = along;
+      }
+    }
+    return totalLen > 0 ? bestAlong / totalLen : 0;
+  }
+
+  // Project stops and sort by projected fraction
+  const projected = features.map((f) => ({ feature: f, frac: projectPointToRoute(stopCoordinate(f)), label: stopFeatureSortLabel(f) }));
+
+  // Orientation: try to align with terminal hints if available
+  const terminalHints = lineTerminalHints(lineKey);
+  if (terminalHints.length) {
+    const startSample = projected.reduce((best, cur) => (cur.frac < best.frac ? cur : best), projected[0]);
+    const endSample = projected.reduce((best, cur) => (cur.frac > best.frac ? cur : best), projected[0]);
+    const sName = stopFeatureDisplayName(startSample.feature);
+    const eName = stopFeatureDisplayName(endSample.feature);
+    const forwardScore = stopNameSimilarity(terminalHints[0], sName) + (terminalHints[1] ? stopNameSimilarity(terminalHints[1], eName) : 0);
+    const reverseScore = stopNameSimilarity(terminalHints[0], eName) + (terminalHints[1] ? stopNameSimilarity(terminalHints[1], sName) : 0);
+    if (reverseScore > forwardScore) projected.forEach((p) => { p.frac = 1 - p.frac; });
+  }
+
+  const orderedFeatures = projected.sort((a, b) => (a.frac !== b.frac ? a.frac - b.frac : a.label.localeCompare(b.label))).map((p) => p.feature);
+  const rankMap = new Map();
+  orderedFeatures.forEach((feature, i) => {
+    const id = stopIdentityKey(feature);
+    const sk = stopKeyForFeature(feature);
+    if (id && !rankMap.has(id)) rankMap.set(id, i);
+    if (sk && !rankMap.has(sk)) rankMap.set(sk, i);
+  });
+
+  return { rankMap, orderedFeatures };
+}
+
+/**
  * Build rank map for geometry-revised mode
  * Uses the line's end point (determined by terminal names) as the starting point
  * Sorts all stops by cumulative distance along the geometry from that endpoint
  */
 function buildGeometryRevisedRankMap(stopFeatures, lineKey) {
   return buildEndpointAnchoredGeometryOrder(stopFeatures, lineKey).rankMap;
+}
+
+/**
+ * Detect J-shaped geometry: endpoint-anchored projection will be non-monotonic
+ * Returns true when distances to the chosen endpoint decrease then increase
+ */
+function detectJShape(stopFeatures, lineKey) {
+  try {
+    const result = buildEndpointAnchoredGeometryOrder(stopFeatures, lineKey);
+    const ordered = Array.isArray(result.orderedFeatures) ? result.orderedFeatures : [];
+    if (ordered.length <= 2) return false;
+
+    const endFeature = ordered[ordered.length - 1];
+    const endCoord = stopCoordinate(endFeature);
+    if (!endCoord) return false;
+
+    const dists = ordered.map((f) => {
+      const c = stopCoordinate(f);
+      return c ? haversineMeters(c, endCoord) : Number.POSITIVE_INFINITY;
+    });
+
+    // Allow small noise (meters)
+    const eps = 20;
+    // Detect a decrease after an increase (non-monotonic)
+    let sawIncrease = false;
+    for (let i = 1; i < dists.length; i += 1) {
+      if (dists[i] > dists[i - 1] + eps) {
+        sawIncrease = true;
+      }
+      if (sawIncrease && dists[i] < dists[i - 1] - eps) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Find contiguous non-monotonic segments in endpoint-anchored ordering
+ * Returns array of { start, end } indices in the orderedFeatures array
+ */
+function findNonMonotonicSegments(orderedFeatures, endCoord, eps = 20) {
+  const dists = orderedFeatures.map((f) => {
+    const c = stopCoordinate(f);
+    return c ? haversineMeters(c, endCoord) : Number.POSITIVE_INFINITY;
+  });
+
+  const segments = [];
+  let i = 1;
+  while (i < dists.length) {
+    // detect a drop after a rise
+    if (dists[i] < dists[i - 1] - eps) {
+      // start of non-monotonic region: go back to where it first rose
+      let start = i - 1;
+      while (start > 0 && dists[start] >= dists[start - 1] - eps) start -= 1;
+      let end = i;
+      while (end + 1 < dists.length && dists[end + 1] < dists[end] - eps) end += 1;
+      segments.push({ start, end });
+      i = end + 1;
+    } else {
+      i += 1;
+    }
+  }
+
+  return segments;
 }
 
 /**
@@ -1098,7 +1314,8 @@ function buildOptimalBranchMergeRankMap(stopFeatures, directionSequences, lineKe
 
   // If we only have one direction, fall back to standard trip pattern
   if (Object.keys(patternsByDirection).length <= 1) {
-    return buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+    const res = buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+    return Object.assign({}, res, { isMerged: false });
   }
 
   const pattern0 = patternsByDirection["0"] || [];
@@ -1111,7 +1328,8 @@ function buildOptimalBranchMergeRankMap(stopFeatures, directionSequences, lineKe
 
   if (keysReversed) {
     // Simple line: just pick the better coverage direction
-    return buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+    const res = buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+    return Object.assign({}, res, { isMerged: false });
   }
 
   // BRANCHING LINE DETECTED: Intelligently merge both patterns
@@ -1124,7 +1342,8 @@ function buildOptimalBranchMergeRankMap(stopFeatures, directionSequences, lineKe
 
   // If minimal branching (very few unique stops), use single best pattern
   if (Math.min(uniqueToDir0.size, uniqueToDir1.size) <= 1 && Math.max(uniqueToDir0.size, uniqueToDir1.size) <= 2) {
-    return buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+    const res = buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+    return Object.assign({}, res, { isMerged: false });
   }
 
   // MERGE STRATEGY: Start with pattern 0 (authoritative from trip data)
@@ -1216,6 +1435,46 @@ function buildOptimalBranchMergeRankMap(stopFeatures, directionSequences, lineKe
     coverage: stopFeatures.length ? mergedMatches.length / stopFeatures.length : 0,
     isMerged: true
   };
+}
+
+/**
+ * Build branch groups for UI: returns trunk keys and branches with matched features
+ */
+function buildBranchGroups(stopFeatures, directionSequences, lineKey = "") {
+  const result = { isBranching: false, trunkKeys: [], branches: [] };
+  if (!directionSequences || typeof directionSequences !== 'object') return result;
+
+  const featureByLookupKey = buildFeatureLookupMap(stopFeatures);
+  const patterns = {};
+  for (const directionKey of ['0','1']) {
+    const seq = Array.isArray(directionSequences[directionKey]) ? directionSequences[directionKey] : [];
+    if (!seq.length) continue;
+    const matches = [];
+    const selected = new Set();
+    for (const entry of seq) {
+      const f = matchSequenceFeature(entry, stopFeatures, featureByLookupKey, selected);
+      if (f) { selected.add(f); matches.push(f); }
+    }
+    if (matches.length >= 2) patterns[directionKey] = matches;
+  }
+
+  if (Object.keys(patterns).length <= 1) return result;
+
+  const p0 = patterns['0'] || [];
+  const p1 = patterns['1'] || [];
+  const keys0 = p0.map((f) => stopIdentityKey(f)).filter(Boolean);
+  const keys1 = p1.map((f) => stopIdentityKey(f)).filter(Boolean);
+  const common = new Set([...keys0].filter((k) => keys1.includes(k)));
+  if (common.size === 0) return result;
+
+  result.isBranching = true;
+  result.trunkKeys = Array.from(common);
+  // Build branches as unique sequences for each direction
+  const uniq0 = p0.filter((f) => !common.has(stopIdentityKey(f)));
+  const uniq1 = p1.filter((f) => !common.has(stopIdentityKey(f)));
+  result.branches.push({ direction: '0', matches: p0, unique: uniq0 });
+  result.branches.push({ direction: '1', matches: p1, unique: uniq1 });
+  return result;
 }
 
 /**
@@ -1627,59 +1886,280 @@ function buildSmartAutoDetectRankMap(stopFeatures, directionSequences, lineKey =
  * Supports multiple ordering strategies with trip-pattern as primary (NEW)
  * Modes: trip-pattern (NEW), direction, fractions, geometry, geometry-revised (NEW), hybrid-endpoint (NEW), payload, trip-branches, auto
  */
-async function orderStopsForLineView(stopFeatures, lineKey, directionSequences = null, orderingMode = 'auto', routeLookupKey = null) {
+async function orderStopsForLineView(stopFeatures, lineKey, directionSequences = null, orderingMode = 'auto', routeLookupKey = null, branchSelection = null) {
   const uniqueStopFeatures = dedupeStopFeatures(stopFeatures);
 
   if (!Array.isArray(uniqueStopFeatures) || uniqueStopFeatures.length === 0) {
     return uniqueStopFeatures;
   }
 
-  // Build all available rank maps
+  // Build cheap rank maps eagerly; expensive/trip-based maps are computed lazily to avoid lag
   const payloadRankMap = buildPayloadRankMap(uniqueStopFeatures);
   const geometryRankMap = buildGeometryRankMap(uniqueStopFeatures, lineKey);
   const geometryRevisedRankMap = buildGeometryRevisedRankMap(uniqueStopFeatures, lineKey);
 
-  // Trip-pattern rank map (NEW PRIMARY METHOD - uses actual trip data)
-  const tripPatternRankInfo = directionSequences && typeof directionSequences === 'object'
-    ? buildTripPatternRankMap(uniqueStopFeatures, directionSequences, lineKey)
-    : { rankMap: new Map(), matchedCount: 0, coverage: 0 };
+  let _tripPatternRankInfo = null;
+  let _directionRankInfo = null;
+  let _hybridEndpointRankMap = null;
 
-  // Direction rank map (legacy - uses trip data but with consensus approach)
-  const directionRankInfo = directionSequences && typeof directionSequences === 'object'
-    ? buildDirectionRankMap(uniqueStopFeatures, directionSequences)
-    : { rankMap: new Map(), matchedCount: 0, coverage: 0 };
+  function getTripPatternRankInfo() {
+    if (_tripPatternRankInfo !== null) return _tripPatternRankInfo;
+    _tripPatternRankInfo = (directionSequences && typeof directionSequences === 'object')
+      ? buildTripPatternRankMap(uniqueStopFeatures, directionSequences, lineKey)
+      : { rankMap: new Map(), matchedCount: 0, coverage: 0 };
+    return _tripPatternRankInfo;
+  }
 
-  // Hybrid-endpoint rank map (novel mode combining trip pattern and geometry endpoint anchoring)
-  const hybridEndpointRankMap = directionSequences && typeof directionSequences === 'object'
-    ? buildHybridEndpointRankMap(uniqueStopFeatures, directionSequences, lineKey)
-    : geometryRevisedRankMap;
+  function getDirectionRankInfo() {
+    if (_directionRankInfo !== null) return _directionRankInfo;
+    _directionRankInfo = (directionSequences && typeof directionSequences === 'object')
+      ? buildDirectionRankMap(uniqueStopFeatures, directionSequences)
+      : { rankMap: new Map(), matchedCount: 0, coverage: 0 };
+    return _directionRankInfo;
+  }
+
+  function getHybridEndpointRankMap() {
+    if (_hybridEndpointRankMap !== null) return _hybridEndpointRankMap;
+    _hybridEndpointRankMap = (directionSequences && typeof directionSequences === 'object')
+      ? buildHybridEndpointRankMap(uniqueStopFeatures, directionSequences, lineKey)
+      : geometryRevisedRankMap;
+    return _hybridEndpointRankMap;
+  }
 
   // Delay fraction requests so auto mode does not issue extra failing network calls.
   const resolvedRouteLookupKey = String(routeLookupKey || lineKey || '').trim();
 
+  // If caller requested a specific branch segment, construct a baseline geometry-revised
+  // ordering and then substitute the selected branch's unique stops using trip-pattern
+  // matched ordering. This swaps only branch segments, preserving baseline elsewhere.
+  if (branchSelection) {
+    try {
+      const branchGroups = buildBranchGroups(uniqueStopFeatures, directionSequences, lineKey);
+      const branch = branchGroups && Array.isArray(branchGroups.branches)
+        ? branchGroups.branches.find((b) => String(b.direction) === String(branchSelection))
+        : null;
+      if (branch && branch.unique && branch.unique.length) {
+        // base ordering is geometry-revised
+        const baseOrdered = sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap).map((r) => r.feature || r);
+
+        // map identities
+        const trunkSet = new Set((branchGroups.trunkKeys || []).filter(Boolean));
+
+        // determine insertion point: find first unique in baseOrdered and previous trunk index
+        const uniqueIds = branch.unique.map((f) => stopIdentityKey(f) || stopKeyForFeature(f)).filter(Boolean);
+        let firstUniqueIdx = -1;
+        for (let i = 0; i < baseOrdered.length; i += 1) {
+          const k = stopIdentityKey(baseOrdered[i]) || stopKeyForFeature(baseOrdered[i]);
+          if (k && uniqueIds.includes(k)) { firstUniqueIdx = i; break; }
+        }
+
+        let insertAfter = -1;
+        if (firstUniqueIdx > 0) {
+          for (let j = firstUniqueIdx - 1; j >= 0; j -= 1) {
+            const k = stopIdentityKey(baseOrdered[j]) || stopKeyForFeature(baseOrdered[j]);
+            if (trunkSet.has(k)) { insertAfter = j; break; }
+          }
+        }
+        if (insertAfter === -1) insertAfter = baseOrdered.length - 1;
+
+        // Determine replacement sequence using matched order where possible
+        const matchedOrder = (branch.matches || []).map((f) => stopIdentityKey(f) || stopKeyForFeature(f)).filter(Boolean);
+        const selectedUnique = branch.unique.slice().sort((a, b) => matchedOrder.indexOf(stopIdentityKey(a) || stopKeyForFeature(a)) - matchedOrder.indexOf(stopIdentityKey(b) || stopKeyForFeature(b)));
+
+        // Determine other branches' unique stops to move out of the trunk area
+        const otherUniqueKeys = new Set();
+        for (const b of (branchGroups.branches || [])) {
+          if (String(b.direction) === String(branchSelection)) continue;
+          for (const u of (b.unique || [])) {
+            const k = stopIdentityKey(u) || stopKeyForFeature(u);
+            if (k) otherUniqueKeys.add(k);
+          }
+        }
+
+        // Remove selectedUnique and other branch uniques from baseOrdered, then insert selectedUnique after insertAfter and append other uniques at end
+        const removedKeys = new Set([...selectedUnique.map((f) => stopIdentityKey(f) || stopKeyForFeature(f)).filter(Boolean), ...Array.from(otherUniqueKeys)]);
+        const cleaned = baseOrdered.filter((f) => !removedKeys.has(stopIdentityKey(f) || stopKeyForFeature(f)));
+        const head = cleaned.slice(0, insertAfter + 1);
+        const tail = cleaned.slice(insertAfter + 1);
+
+        // Append selectedUnique next, then append other unique stops (in their matched order if possible)
+        const otherUniquesOrdered = [];
+        for (const b of (branchGroups.branches || [])) {
+          if (String(b.direction) === String(branchSelection)) continue;
+          const matched = (b.matches || []).map((f) => stopIdentityKey(f) || stopKeyForFeature(f)).filter(Boolean);
+          for (const u of (b.unique || [])) {
+            const k = stopIdentityKey(u) || stopKeyForFeature(u);
+            if (k && otherUniqueKeys.has(k)) {
+              // try to order by matched sequence
+              const idx = matched.indexOf(k);
+              otherUniquesOrdered.push({ idx: idx < 0 ? 9999 : idx, feature: u });
+            }
+          }
+        }
+        otherUniquesOrdered.sort((a, b) => a.idx - b.idx);
+        const otherFeatures = otherUniquesOrdered.map((e) => e.feature);
+
+        const finalOrdered = head.concat(selectedUnique, tail, otherFeatures);
+        return finalOrdered;
+      }
+    } catch (e) {
+      // ignore and continue with normal processing
+    }
+  }
+
   // Handle explicit mode selections
   if (orderingMode === 'trip-pattern') {
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getTripPatternRankInfo().rankMap, geometryRankMap);
   }
 
   if (orderingMode === 'branch-aware') {
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getTripPatternRankInfo().rankMap, geometryRankMap);
   }
 
   if (orderingMode === 'geometry') {
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getTripPatternRankInfo().rankMap, geometryRankMap);
   }
 
   if (orderingMode === 'geometry-revised') {
     return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
   }
 
+  if (orderingMode === 'geometry-projected') {
+    const projected = buildPolylineProjectedRankMap(uniqueStopFeatures, lineKey);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, projected.rankMap, geometryRankMap);
+  }
+
+  if (orderingMode === 'geometry-smart') {
+    // Default: geometry-revised (preserve baseline behavior for branching and common cases)
+    const geom = geometryRevisedRankMap;
+
+    // If we have direction/trip data, check for branching first. If branching is present,
+    // KEEP the baseline geometry-revised behavior because it handles branching and split streets well.
+    if (directionSequences && typeof directionSequences === 'object') {
+      try {
+        const branchCheck = buildOptimalBranchMergeRankMap(uniqueStopFeatures, directionSequences, lineKey);
+        if (typeof global !== 'undefined' && global.__ORDERING_DEBUG) {
+          try { console.log('DEBUG branchCheck:', branchCheck && { isMerged: branchCheck.isMerged, coverage: branchCheck.coverage }); } catch (e) {}
+        }
+        if (branchCheck && branchCheck.isMerged) {
+          return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geom, geometryRankMap);
+        }
+      } catch (e) {
+        // ignore and continue
+      }
+    }
+
+    // Loop detection via route geometry: if the drawn route is a loop (start/end close), prefer hybrid-endpoint
+    const routeCoords = routeGeometryCoordinatesForLine(lineKey);
+    if (Array.isArray(routeCoords) && routeCoords.length >= 2) {
+      try {
+        const routeStart = routeCoords[0];
+        const routeEnd = routeCoords[routeCoords.length - 1];
+        if (haversineMeters(routeStart, routeEnd) < 100) {
+          // Hybrid endpoint anchor handles loops better
+          return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getHybridEndpointRankMap(), geometryRankMap);
+        }
+      } catch (e) {
+        // ignore geometry errors
+      }
+    }
+
+    // J-shaped detection and localized correction: detect non-monotonic segments in
+    // endpoint-anchored ordering and *only* reorder those segments using trip-pattern,
+    // direction, or projected geometry as fallbacks. This preserves baseline behavior
+    // for branching and split-street routes and avoids global replacements that regress.
+    try {
+      const endpointResult = buildEndpointAnchoredGeometryOrder(uniqueStopFeatures, lineKey);
+      const ordered = Array.isArray(endpointResult?.orderedFeatures) ? endpointResult.orderedFeatures : [];
+      if (ordered.length > 1) {
+        const endCoord = stopCoordinate(ordered[ordered.length - 1]) || stopCoordinate(ordered[0]);
+        const segments = findNonMonotonicSegments(ordered, endCoord, 20);
+        if (typeof global !== 'undefined' && global.__ORDERING_DEBUG) {
+          try { console.log('DEBUG non-monotonic segments:', segments); } catch (e) {}
+        }
+        if (segments.length === 0) {
+          // No J-shaped non-monotonic regions detected — keep baseline geometry-revised
+          return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geom, geometryRankMap);
+        }
+
+        // Build a mutable copy and replace each non-monotonic segment with a safer ordering
+        const replaced = ordered.slice();
+        for (const seg of segments) {
+          const slice = ordered.slice(seg.start, seg.end + 1);
+
+          // Attempt to order slice by trip-pattern if coverage is good
+          let replacement = null;
+          const _tpi = getTripPatternRankInfo();
+          if (_tpi && _tpi.coverage >= 0.2 && Array.isArray(_tpi.matchedFeatures) && _tpi.matchedFeatures.length) {
+            // Prefer the actual matched trip pattern ordering (stable) for stops that appear in the matched pattern
+            const matchedOrder = _tpi.matchedFeatures.map((f) => stopIdentityKey(f) || stopKeyForFeature(f)).filter(Boolean);
+            const inPattern = [];
+            const notInPattern = [];
+            for (const s of slice) {
+              const k = stopIdentityKey(s) || stopKeyForFeature(s);
+              if (k && matchedOrder.includes(k)) inPattern.push(s);
+              else notInPattern.push(s);
+            }
+            // Order inPattern by their index in matchedOrder
+            inPattern.sort((a, b) => matchedOrder.indexOf(stopIdentityKey(a) || stopKeyForFeature(a)) - matchedOrder.indexOf(stopIdentityKey(b) || stopKeyForFeature(b)));
+            // Order remaining by geometry projection as a stable fallback
+            const projFallback = buildPolylineProjectedRankMap(notInPattern, lineKey).orderedFeatures || notInPattern;
+            replacement = [...inPattern, ...projFallback];
+          }
+
+          // Otherwise try direction sequences
+          const _dri = getDirectionRankInfo();
+          if (!replacement && _dri && _dri.coverage >= 0.2 && _dri.rankMap) {
+            replacement = slice.slice().sort((a, b) => {
+              const aKey = stopIdentityKey(a) || stopKeyForFeature(a);
+              const bKey = stopIdentityKey(b) || stopKeyForFeature(b);
+              const aRank = _dri.rankMap.has(aKey) ? _dri.rankMap.get(aKey) : Number.POSITIVE_INFINITY;
+              const bRank = _dri.rankMap.has(bKey) ? _dri.rankMap.get(bKey) : Number.POSITIVE_INFINITY;
+              return aRank - bRank || stopFeatureSortLabel(a).localeCompare(stopFeatureSortLabel(b));
+            });
+          }
+
+          // Otherwise fallback to projected polyline ordering for this slice only
+          if (!replacement) {
+            try {
+              const projected = buildPolylineProjectedRankMap(slice, lineKey);
+              replacement = Array.isArray(projected.orderedFeatures) && projected.orderedFeatures.length ? projected.orderedFeatures : slice;
+            } catch (e) {
+              replacement = slice;
+            }
+          }
+
+          // Replace in the mutable array
+          for (let k = 0; k < replacement.length; k += 1) {
+            replaced[seg.start + k] = replacement[k];
+          }
+        }
+
+        // Build rank map from the replaced ordering and return
+        const newRankMap = new Map();
+        replaced.forEach((feature, i) => {
+          const id = stopIdentityKey(feature);
+          const sk = stopKeyForFeature(feature);
+          if (id && !newRankMap.has(id)) newRankMap.set(id, i);
+          if (sk && !newRankMap.has(sk)) newRankMap.set(sk, i);
+        });
+        return sortFeaturesByPrimaryRanking(uniqueStopFeatures, newRankMap, geometryRankMap);
+      }
+    } catch (e) {
+      // If anything goes wrong, fall back to baseline
+      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geom, geometryRankMap);
+    }
+
+    // Default: use geometry-revised baseline
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geom, geometryRankMap);
+  }
+
   if (orderingMode === 'hybrid-endpoint') {
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, hybridEndpointRankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getHybridEndpointRankMap(), geometryRankMap);
   }
 
   if (orderingMode === 'direction') {
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, directionRankInfo.rankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getDirectionRankInfo().rankMap, geometryRankMap);
   }
 
   if (orderingMode === 'fractions') {
@@ -1687,7 +2167,7 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
     if (fractionRankInfo.coverage > 0.3) {
       return sortFeaturesByPrimaryRanking(uniqueStopFeatures, fractionRankInfo.rankMap, geometryRankMap);
     }
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getTripPatternRankInfo().rankMap, geometryRankMap);
   }
 
   if (orderingMode === 'payload') {
@@ -1714,6 +2194,8 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
     return sortFeaturesByPrimaryRanking(uniqueStopFeatures, smartResult.rankMap, geometryRankMap);
   }
 
+  
+
   // AUTO MODE: Select best available strategy
   if (orderingMode === 'auto') {
     // PRIMARY: Use smart auto-detection that picks best method for route type
@@ -1733,18 +2215,19 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
     }
 
     // FALLBACK: Use standard trip-pattern if available and good coverage
-    if (tripPatternRankInfo.coverage >= 0.2) {
-      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, tripPatternRankInfo.rankMap, geometryRankMap);
+    if (getTripPatternRankInfo().coverage >= 0.2) {
+      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getTripPatternRankInfo().rankMap, geometryRankMap);
     }
 
     // FALLBACK: Try hybrid-endpoint (trip + geometry anchoring)
-    if (hybridEndpointRankMap.size > 0 && hybridEndpointRankMap.size >= geometryRankMap.size * 0.3) {
-      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, hybridEndpointRankMap, geometryRankMap);
+    const _hy = getHybridEndpointRankMap();
+    if (_hy && _hy.size > 0 && _hy.size >= geometryRankMap.size * 0.3) {
+      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, _hy, geometryRankMap);
     }
 
     // FALLBACK: Try direction ranking if available
-    if (directionRankInfo.coverage >= 0.2) {
-      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, directionRankInfo.rankMap, geometryRankMap);
+    if (getDirectionRankInfo().coverage >= 0.2) {
+      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getDirectionRankInfo().rankMap, geometryRankMap);
     }
 
     // FINAL: Use geometry-revised which should work for most routes
