@@ -2128,6 +2128,7 @@ async function buildDirectionStopSequencesForRoute(routeKey, options = {}) {
   }
 
   const bestByDirection = new Map();
+  const patternsByDirection = new Map([[0, []], [1, []]]);
   for (const representative of representativeTrips.values()) {
     const detail = await fetchTripDetailById(routeKey, representative.tripId, options);
     const stopTimes = extractTripStopTimes(detail);
@@ -2150,14 +2151,20 @@ async function buildDirectionStopSequencesForRoute(routeKey, options = {}) {
       continue;
     }
 
+    const payload = {
+      tripId: representative.tripId,
+      patternId: extractTripPatternId(detail) ?? extractTripPatternId(representative.trip),
+      stopEntries
+    };
+
     const existing = bestByDirection.get(representative.directionId);
     if (!existing || stopEntries.length > existing.stopEntries.length) {
-      bestByDirection.set(representative.directionId, {
-        tripId: representative.tripId,
-        patternId: extractTripPatternId(detail) ?? extractTripPatternId(representative.trip),
-        stopEntries
-      });
+      bestByDirection.set(representative.directionId, payload);
     }
+
+    const list = patternsByDirection.get(representative.directionId) || [];
+    list.push(payload);
+    patternsByDirection.set(representative.directionId, list);
   }
 
   if (!bestByDirection.size) {
@@ -2166,7 +2173,11 @@ async function buildDirectionStopSequencesForRoute(routeKey, options = {}) {
 
   return {
     0: bestByDirection.get(0)?.stopEntries || [],
-    1: bestByDirection.get(1)?.stopEntries || []
+    1: bestByDirection.get(1)?.stopEntries || [],
+    patterns: {
+      0: patternsByDirection.get(0) || [],
+      1: patternsByDirection.get(1) || []
+    }
   };
 }
 
@@ -2358,6 +2369,9 @@ async function getRouteStopsTransit(lineKey, options = {}) {
 
   if (directionStopSequences) {
     payload.directionStopSequences = directionStopSequences;
+    if (directionStopSequences.patterns) {
+      payload.directionStopPatterns = directionStopSequences.patterns;
+    }
   }
 
   await db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600, {

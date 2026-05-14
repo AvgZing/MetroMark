@@ -1776,6 +1776,7 @@ body[data-theme="dark"] .line-view-card {
   align-items: center;
   gap: 8px;
   font-size: 11px;
+  flex-wrap: wrap;
 }
 
 .diagnostic-label {
@@ -1803,6 +1804,60 @@ body[data-theme="dark"] .line-view-card {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(23, 124, 162, 0.1);
+}
+
+.diagnostic-resolved {
+  width: 100%;
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.diagnostic-branches {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-direction: column;
+}
+
+.branch-segment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.branch-segment-label {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.branch-segment-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.branch-select-btn {
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  background: var(--shell);
+  color: var(--ink);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.branch-select-btn:hover {
+  border-color: var(--accent);
+}
+
+.branch-select-btn.is-active {
+  background: var(--accent);
+  border-color: transparent;
+  color: #ffffff;
 }
 
 .line-view-stop-list {

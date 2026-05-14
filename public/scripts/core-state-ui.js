@@ -1171,19 +1171,95 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
   const line = state.lineSummaries.find((entry) => entry.lineKey === lineKey);
   const routeLookupKey = String(line?.routeOnestopId || lineKey || "").trim();
   const directionSequences = cacheEntry?.payload?.directionStopSequences || null;
+  const directionPatterns = cacheEntry?.payload?.directionStopPatterns || directionSequences?.patterns || null;
   const orderingMode = String(
-    options?.orderingMode ||
     els.lineViewOrderingModeSelect?.value ||
+    options?.orderingMode ||
     state.lineViewOrderingMode ||
     'auto'
   ).trim() || 'auto';
 
+  // Per-segment branch selector UI
+  try {
+    const branchContainer = document.getElementById('lineViewBranchSelectors');
+    if (branchContainer) {
+      branchContainer.innerHTML = '';
+      branchContainer.style.display = 'none';
+
+      if (!state.lineViewBranchSelections) {
+        state.lineViewBranchSelections = new Map();
+      }
+      if (!state.lineViewBranchSelections.has(lineKey)) {
+        state.lineViewBranchSelections.set(lineKey, {});
+      }
+      const lineSelections = state.lineViewBranchSelections.get(lineKey);
+
+      if (directionSequences && typeof directionSequences === 'object' && window.buildBranchGroups) {
+        const branchGroups = window.buildBranchGroups(stopFeatures, directionSequences, directionPatterns);
+        if (branchGroups && branchGroups.isBranching && Array.isArray(branchGroups.segments) && branchGroups.segments.length) {
+          branchContainer.style.display = 'flex';
+
+          branchGroups.segments.forEach((segment, index) => {
+            const segmentEl = document.createElement('div');
+            segmentEl.className = 'branch-segment';
+
+            const label = document.createElement('span');
+            label.className = 'branch-segment-label';
+            label.textContent = `Segment ${index + 1}`;
+            segmentEl.append(label);
+
+            const opts = document.createElement('div');
+            opts.className = 'branch-segment-options';
+
+            const autoBtn = document.createElement('button');
+            autoBtn.type = 'button';
+            autoBtn.className = 'branch-select-btn';
+            autoBtn.textContent = 'Auto';
+            if (!lineSelections[segment.id]) autoBtn.classList.add('is-active');
+            autoBtn.addEventListener('click', () => {
+              lineSelections[segment.id] = null;
+              renderLineViewStops(lineKey, lineColor, { forceRefresh: true });
+            });
+            opts.append(autoBtn);
+
+            ['0', '1'].forEach((key) => {
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'branch-select-btn';
+              btn.textContent = segment.labels?.[key] || `Option ${key}`;
+              if (String(lineSelections[segment.id]) === String(key)) {
+                btn.classList.add('is-active');
+              }
+              btn.addEventListener('click', () => {
+                lineSelections[segment.id] = key;
+                renderLineViewStops(lineKey, lineColor, { forceRefresh: true });
+              });
+              opts.append(btn);
+            });
+
+            segmentEl.append(opts);
+            branchContainer.append(segmentEl);
+          });
+        } else {
+          state.lineViewBranchSelections.set(lineKey, {});
+        }
+      } else {
+        state.lineViewBranchSelections.set(lineKey, {});
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  const selections = state.lineViewBranchSelections?.get(lineKey) || null;
   const featuresToRender = await orderStopsForLineView(
     stopFeatures,
     lineKey,
     directionSequences,
     orderingMode,
-    routeLookupKey
+    routeLookupKey,
+    selections,
+    directionPatterns
   );
 
   featuresToRender.forEach((feature, index) => {
