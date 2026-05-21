@@ -1799,6 +1799,11 @@ body[data-theme="dark"] .line-view-card {
 
 .line-view-ordering-btn,
 .line-view-reverse-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  white-space: nowrap;
   padding: 4px 10px;
   border: 1px solid var(--panel-border);
   border-radius: 999px;
@@ -1814,6 +1819,12 @@ body[data-theme="dark"] .line-view-card {
   border-color: var(--accent);
 }
 
+.line-view-reverse-btn {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+}
+
 .line-view-ordering-btn:focus,
 .line-view-reverse-btn:focus {
   outline: none;
@@ -1826,6 +1837,12 @@ body[data-theme="dark"] .line-view-card {
   background: var(--accent);
   border-color: transparent;
   color: #ffffff;
+}
+
+.line-view-reverse-btn.is-active {
+  background: rgba(23, 124, 162, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .line-view-ordering-btn.is-active:hover,

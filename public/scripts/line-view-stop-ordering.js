@@ -2040,12 +2040,16 @@ function buildSmartAutoDetectRankMap(stopFeatures, directionSequences, lineKey =
 function normalizeLineViewOrderingMode(orderingMode) {
   const mode = String(orderingMode || 'geometry-revised').trim();
 
-  if (mode === 'auto' || mode === 'geometry-revised' || mode === 'geometry' || mode === 'fractions') {
+  if (mode === 'auto' || mode === 'geometry-revised' || mode === 'legacy-geometry' || mode === 'fractions') {
     return mode;
   }
 
   if (mode === 'geometry-only') {
-    return 'geometry';
+    return 'legacy-geometry';
+  }
+
+  if (mode === 'geometry') {
+    return 'legacy-geometry';
   }
 
   if (mode === 'fractions-only') {
@@ -2091,34 +2095,8 @@ function detectAutoLineViewOrderingMode(stopFeatures, lineKey, directionSequence
     if (startCoord && endCoord && pathLen > 0) {
       const direct = haversineMeters(startCoord, endCoord);
       const ratio = direct > 0 ? direct / pathLen : 1;
-      if (pathLen > 3000 && direct < 2000 && ratio < 0.25) {
+      if (pathLen > 5000 && direct < 1200 && ratio < 0.12) {
         return 'fractions';
-      }
-    }
-
-    const endpointResult = buildEndpointAnchoredGeometryOrder(stopFeatures, lineKey);
-    const ordered = Array.isArray(endpointResult?.orderedFeatures) ? endpointResult.orderedFeatures : [];
-    if (ordered.length >= 3) {
-      const endAnchor = ordered.length ? (stopCoordinate(ordered[ordered.length - 1]) || stopCoordinate(ordered[0])) : null;
-      const nonMonotonic = hasNonMonotonicEndpointDistance(ordered, endAnchor, 20);
-      const geometryOrderForMismatch = sortStopsSequentially(stopFeatures, lineKey);
-
-      let endpointPathLen = 0;
-      for (let index = 0; index < ordered.length - 1; index += 1) {
-        const start = stopCoordinate(ordered[index]);
-        const end = stopCoordinate(ordered[index + 1]);
-        if (start && end) {
-          endpointPathLen += haversineMeters(start, end);
-        }
-      }
-
-      const mismatchScore = orderMismatchScore(ordered, geometryOrderForMismatch);
-      const endDistance = endAnchor && stopCoordinate(ordered[0])
-        ? haversineMeters(stopCoordinate(ordered[0]), endAnchor)
-        : 0;
-      const pathRatio = endDistance > 0 ? endpointPathLen / endDistance : 1;
-      if (nonMonotonic || mismatchScore > 0.08 || pathRatio > 1.7) {
-        return 'geometry';
       }
     }
   }
@@ -2128,7 +2106,7 @@ function detectAutoLineViewOrderingMode(stopFeatures, lineKey, directionSequence
 
 /**
  * Order stops for line view rendering
- * Supported modes: auto, geometry-revised, geometry, fractions
+ * Supported modes: auto, geometry-revised, legacy-geometry, fractions
  */
 async function orderStopsForLineView(stopFeatures, lineKey, directionSequences = null, orderingMode = 'geometry-revised', routeLookupKey = null, branchSelections = null, directionPatterns = null) {
   const uniqueStopFeatures = dedupeStopFeatures(stopFeatures);
@@ -2151,12 +2129,15 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
 
   const geometryRankMap = buildGeometryRankMap(uniqueStopFeatures, lineKey);
   const geometryRevisedRankMap = buildGeometryRevisedRankMap(uniqueStopFeatures, lineKey);
+  const legacyGeometryRankMap = directionSequences && typeof directionSequences === 'object'
+    ? buildTripPatternRankMap(uniqueStopFeatures, directionSequences, lineKey).rankMap
+    : new Map();
 
   const resolvedRouteLookupKey = String(routeLookupKey || lineKey || '').trim();
 
-  if (mode === 'geometry') {
-    setResolved('geometry');
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRankMap, geometryRevisedRankMap);
+  if (mode === 'legacy-geometry') {
+    setResolved('legacy-geometry');
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, legacyGeometryRankMap, geometryRevisedRankMap);
   }
 
   if (mode === 'geometry-revised') {
@@ -2185,11 +2166,6 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
 
       setResolved('geometry-revised');
       return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
-    }
-
-    if (autoMode === 'geometry') {
-      setResolved('geometry');
-      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRankMap, geometryRevisedRankMap);
     }
 
     setResolved('geometry-revised');

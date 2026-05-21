@@ -147,12 +147,16 @@ function persistVisibilityOverridesToStorage(storageKey, visibilityMap) {
 function normalizeLineViewOrderingMode(orderingMode) {
   const mode = String(orderingMode || "geometry-revised").trim();
 
-  if (mode === "auto" || mode === "geometry-revised" || mode === "geometry" || mode === "fractions") {
+  if (mode === "auto" || mode === "geometry-revised" || mode === "legacy-geometry" || mode === "fractions") {
     return mode;
   }
 
   if (mode === "geometry-only") {
-    return "geometry";
+    return "legacy-geometry";
+  }
+
+  if (mode === "geometry") {
+    return "legacy-geometry";
   }
 
   if (mode === "fractions-only") {
@@ -1159,8 +1163,8 @@ function lineViewOrderingModeLabel(mode) {
     return "Auto";
   }
 
-  if (normalizedMode === "geometry") {
-    return "Geometry Only";
+  if (normalizedMode === "legacy-geometry") {
+    return "Legacy Geometry";
   }
 
   if (normalizedMode === "fractions") {
@@ -1184,7 +1188,7 @@ function syncLineViewOrderingControls() {
   const buttonByMode = {
     auto: els.lineViewOrderingAutoBtn,
     "geometry-revised": els.lineViewOrderingGeometryRevisedBtn,
-    geometry: els.lineViewOrderingGeometryBtn,
+    "legacy-geometry": els.lineViewOrderingGeometryBtn,
     fractions: els.lineViewOrderingFractionsBtn
   };
 
@@ -2644,7 +2648,7 @@ function initializeDiagnostics() {
   }
 
   if (els.lineViewOrderingGeometryBtn) {
-    els.lineViewOrderingGeometryBtn.addEventListener('click', () => setOrderingMode('geometry'));
+    els.lineViewOrderingGeometryBtn.addEventListener('click', () => setOrderingMode('legacy-geometry'));
   }
 
   if (els.lineViewOrderingFractionsBtn) {
