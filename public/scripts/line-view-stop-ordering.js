@@ -2081,6 +2081,10 @@ function detectAutoLineViewOrderingMode(stopFeatures, lineKey, directionSequence
 
   const geometryOrder = sortStopsSequentially(stopFeatures, lineKey);
   if (Array.isArray(geometryOrder) && geometryOrder.length >= 4 && geometryOrder.length <= 160) {
+    const coords = geometryOrder
+      .map((feature) => stopCoordinate(feature))
+      .filter(Boolean);
+
     let pathLen = 0;
     for (let index = 0; index < geometryOrder.length - 1; index += 1) {
       const start = stopCoordinate(geometryOrder[index]);
@@ -2095,8 +2099,36 @@ function detectAutoLineViewOrderingMode(stopFeatures, lineKey, directionSequence
     if (startCoord && endCoord && pathLen > 0) {
       const direct = haversineMeters(startCoord, endCoord);
       const ratio = direct > 0 ? direct / pathLen : 1;
-      if (pathLen > 5000 && direct < 1200 && ratio < 0.12) {
-        return 'fractions';
+      if (coords.length >= 4) {
+        let minLng = Infinity;
+        let maxLng = -Infinity;
+        let minLat = Infinity;
+        let maxLat = -Infinity;
+
+        for (const coord of coords) {
+          const lng = Number(coord?.[0]);
+          const lat = Number(coord?.[1]);
+          if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
+            continue;
+          }
+          if (lng < minLng) minLng = lng;
+          if (lng > maxLng) maxLng = lng;
+          if (lat < minLat) minLat = lat;
+          if (lat > maxLat) maxLat = lat;
+        }
+
+        if (Number.isFinite(minLng) && Number.isFinite(maxLng) && Number.isFinite(minLat) && Number.isFinite(maxLat)) {
+          const centerLat = (minLat + maxLat) / 2;
+          const centerLng = (minLng + maxLng) / 2;
+          const widthMeters = haversineMeters([minLng, centerLat], [maxLng, centerLat]);
+          const heightMeters = haversineMeters([centerLng, minLat], [centerLng, maxLat]);
+          const minSpanMeters = Math.min(widthMeters, heightMeters);
+          const breadthScore = minSpanMeters / Math.max(pathLen, 1);
+
+          if (pathLen > 6500 && direct < 1000 && ratio < 0.1 && minSpanMeters >= 1800 && breadthScore >= 0.18) {
+            return 'fractions';
+          }
+        }
       }
     }
   }
