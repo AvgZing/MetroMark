@@ -1773,9 +1773,15 @@ body[data-theme="dark"] .line-view-card {
   padding-top: 8px;
   border-top: 1px dashed rgba(20, 53, 71, 0.2);
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.line-view-ordering-row {
+  display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
   flex-wrap: wrap;
 }
 
@@ -1785,79 +1791,53 @@ body[data-theme="dark"] .line-view-card {
   font-weight: 500;
 }
 
-.diagnostic-select {
-  flex: 1;
-  padding: 4px 6px;
+.line-view-ordering-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.line-view-ordering-btn,
+.line-view-reverse-btn {
+  padding: 4px 10px;
   border: 1px solid var(--panel-border);
-  border-radius: 3px;
+  border-radius: 999px;
   background: var(--shell);
   color: var(--ink);
   font-size: 11px;
   cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
-.diagnostic-select:hover {
+.line-view-ordering-btn:hover,
+.line-view-reverse-btn:hover {
   border-color: var(--accent);
 }
 
-.diagnostic-select:focus {
+.line-view-ordering-btn:focus,
+.line-view-reverse-btn:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(23, 124, 162, 0.1);
+  box-shadow: 0 0 0 2px rgba(23, 124, 162, 0.12);
+}
+
+.line-view-ordering-btn.is-active,
+.line-view-reverse-btn.is-active {
+  background: var(--accent);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+.line-view-ordering-btn.is-active:hover,
+.line-view-reverse-btn.is-active:hover {
+  transform: translateY(-1px);
 }
 
 .diagnostic-resolved {
   width: 100%;
-  margin: 4px 0 0;
+  margin: 0;
   font-size: 11px;
   color: var(--muted);
-}
-
-.diagnostic-branches {
-  width: 100%;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  flex-direction: column;
-}
-
-.branch-segment {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.branch-segment-label {
-  font-size: 11px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.branch-segment-options {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.branch-select-btn {
-  border: 1px solid var(--panel-border);
-  border-radius: 3px;
-  background: var(--shell);
-  color: var(--ink);
-  font-size: 11px;
-  padding: 3px 8px;
-  cursor: pointer;
-}
-
-.branch-select-btn:hover {
-  border-color: var(--accent);
-}
-
-.branch-select-btn.is-active {
-  background: var(--accent);
-  border-color: transparent;
-  color: #ffffff;
 }
 
 .line-view-stop-list {

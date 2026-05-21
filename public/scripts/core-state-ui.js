@@ -144,6 +144,28 @@ function persistVisibilityOverridesToStorage(storageKey, visibilityMap) {
   localStorage.setItem(storageKey, JSON.stringify(payload));
 }
 
+function normalizeLineViewOrderingMode(orderingMode) {
+  const mode = String(orderingMode || "geometry-revised").trim();
+
+  if (mode === "auto" || mode === "geometry-revised" || mode === "geometry" || mode === "fractions") {
+    return mode;
+  }
+
+  if (mode === "geometry-only") {
+    return "geometry";
+  }
+
+  if (mode === "fractions-only") {
+    return "fractions";
+  }
+
+  if (mode === "geometry-revised-endpoint-anchored") {
+    return "geometry-revised";
+  }
+
+  return "geometry-revised";
+}
+
 const state = {
   map: null,
   mapReady: false,
@@ -190,7 +212,8 @@ const state = {
   lineViewOpen: false,
   lineViewLineKey: "",
   lineViewReturn: null,
-  lineViewOrderingMode: localStorage.getItem("metromark_line_view_ordering_mode") || "auto",
+  lineViewOrderingMode: normalizeLineViewOrderingMode(localStorage.getItem("metromark_line_view_ordering_mode") || "geometry-revised"),
+  lineViewOrderingReversed: localStorage.getItem("metromark_line_view_ordering_reversed") === "true",
   lineViewAutoOpenEnabled: localStorage.getItem("metromark_line_view_auto_open") !== "false", // Default to true
   userStatusPinnedKind: "",
   clearRouteProgressConfirmLineKey: "",
@@ -268,8 +291,12 @@ const els = {
   lineViewProgressText: document.getElementById("lineViewProgressText"),
   lineViewProgressFill: document.getElementById("lineViewProgressFill"),
   lineViewStops: document.getElementById("lineViewStops"),
-  lineViewDiagnostics: document.getElementById("lineViewDiagnostics"),
-  lineViewOrderingModeSelect: document.getElementById("lineViewOrderingMode"),
+  lineViewOrderingAutoBtn: document.getElementById("lineViewOrderingAutoBtn"),
+  lineViewOrderingGeometryRevisedBtn: document.getElementById("lineViewOrderingGeometryRevisedBtn"),
+  lineViewOrderingGeometryBtn: document.getElementById("lineViewOrderingGeometryBtn"),
+  lineViewOrderingFractionsBtn: document.getElementById("lineViewOrderingFractionsBtn"),
+  lineViewOrderingReverseBtn: document.getElementById("lineViewOrderingReverseBtn"),
+  lineViewOrderingResolved: document.getElementById("lineViewOrderingResolved"),
   userStatusTitle: document.getElementById("userStatusTitle"),
   userStatusSubtitle: document.getElementById("userStatusSubtitle"),
   userStatusFeedback: document.getElementById("userStatusFeedback"),
@@ -1125,6 +1152,63 @@ function createLineConnector(lineColor) {
   els.lineViewStops.insertBefore(svg, els.lineViewStops.firstChild);
 }
 
+function lineViewOrderingModeLabel(mode) {
+  const normalizedMode = normalizeLineViewOrderingMode(mode);
+
+  if (normalizedMode === "auto") {
+    return "Auto";
+  }
+
+  if (normalizedMode === "geometry") {
+    return "Geometry Only";
+  }
+
+  if (normalizedMode === "fractions") {
+    return "Fractions Only";
+  }
+
+  return "Geometry Revised Endpoint Anchored";
+}
+
+function lineViewOrderingStatusLabel() {
+  const mode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
+  const resolvedMode = normalizeLineViewOrderingMode(state.lineViewOrderingResolved || mode);
+  const label = mode === "auto" ? `Auto · ${lineViewOrderingModeLabel(resolvedMode)}` : lineViewOrderingModeLabel(mode);
+  return state.lineViewOrderingReversed ? `${label} · Reversed` : label;
+}
+
+function syncLineViewOrderingControls() {
+  const mode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
+  state.lineViewOrderingMode = mode;
+
+  const buttonByMode = {
+    auto: els.lineViewOrderingAutoBtn,
+    "geometry-revised": els.lineViewOrderingGeometryRevisedBtn,
+    geometry: els.lineViewOrderingGeometryBtn,
+    fractions: els.lineViewOrderingFractionsBtn
+  };
+
+  for (const [buttonMode, button] of Object.entries(buttonByMode)) {
+    if (!button) {
+      continue;
+    }
+
+    const isActive = buttonMode === mode;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  }
+
+  if (els.lineViewOrderingReverseBtn) {
+    const isActive = Boolean(state.lineViewOrderingReversed);
+    els.lineViewOrderingReverseBtn.classList.toggle("is-active", isActive);
+    els.lineViewOrderingReverseBtn.setAttribute("aria-pressed", isActive ? "true" : "false");
+  }
+
+  if (els.lineViewOrderingResolved) {
+    els.lineViewOrderingResolved.textContent = lineViewOrderingStatusLabel();
+  }
+}
+
 async function renderLineViewStops(lineKey, lineColor, options = {}) {
   if (!els.lineViewStops) {
     return;
@@ -1138,6 +1222,8 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
   const stopFeatures = uniqueStopFeaturesForLine(lineKey);
   const hasRenderedStopRows = !!els.lineViewStops.querySelector('.line-view-stop-row');
   const forceRefresh = Boolean(options?.forceRefresh);
+
+  syncLineViewOrderingControls();
 
   if (!stopFeatures.length) {
     if (isLoading && sameLine && hasRenderedStopRows) {
@@ -1173,94 +1259,28 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
   const directionSequences = cacheEntry?.payload?.directionStopSequences || null;
   const directionPatterns = cacheEntry?.payload?.directionStopPatterns || directionSequences?.patterns || null;
   const orderingMode = String(
-    els.lineViewOrderingModeSelect?.value ||
     options?.orderingMode ||
     state.lineViewOrderingMode ||
-    'auto'
-  ).trim() || 'auto';
+    'geometry-revised'
+  ).trim() || 'geometry-revised';
 
-  // Per-segment branch selector UI
-  try {
-    const branchContainer = document.getElementById('lineViewBranchSelectors');
-    if (branchContainer) {
-      branchContainer.innerHTML = '';
-      branchContainer.style.display = 'none';
+  syncLineViewOrderingControls();
 
-      if (!state.lineViewBranchSelections) {
-        state.lineViewBranchSelections = new Map();
-      }
-      if (!state.lineViewBranchSelections.has(lineKey)) {
-        state.lineViewBranchSelections.set(lineKey, {});
-      }
-      const lineSelections = state.lineViewBranchSelections.get(lineKey);
-
-      if (directionSequences && typeof directionSequences === 'object' && window.buildBranchGroups) {
-        const branchGroups = window.buildBranchGroups(stopFeatures, directionSequences, directionPatterns);
-        if (branchGroups && branchGroups.isBranching && Array.isArray(branchGroups.segments) && branchGroups.segments.length) {
-          branchContainer.style.display = 'flex';
-
-          branchGroups.segments.forEach((segment, index) => {
-            const segmentEl = document.createElement('div');
-            segmentEl.className = 'branch-segment';
-
-            const label = document.createElement('span');
-            label.className = 'branch-segment-label';
-            label.textContent = `Segment ${index + 1}`;
-            segmentEl.append(label);
-
-            const opts = document.createElement('div');
-            opts.className = 'branch-segment-options';
-
-            const autoBtn = document.createElement('button');
-            autoBtn.type = 'button';
-            autoBtn.className = 'branch-select-btn';
-            autoBtn.textContent = 'Auto';
-            if (!lineSelections[segment.id]) autoBtn.classList.add('is-active');
-            autoBtn.addEventListener('click', () => {
-              lineSelections[segment.id] = null;
-              renderLineViewStops(lineKey, lineColor, { forceRefresh: true });
-            });
-            opts.append(autoBtn);
-
-            ['0', '1'].forEach((key) => {
-              const btn = document.createElement('button');
-              btn.type = 'button';
-              btn.className = 'branch-select-btn';
-              btn.textContent = segment.labels?.[key] || `Option ${key}`;
-              if (String(lineSelections[segment.id]) === String(key)) {
-                btn.classList.add('is-active');
-              }
-              btn.addEventListener('click', () => {
-                lineSelections[segment.id] = key;
-                renderLineViewStops(lineKey, lineColor, { forceRefresh: true });
-              });
-              opts.append(btn);
-            });
-
-            segmentEl.append(opts);
-            branchContainer.append(segmentEl);
-          });
-        } else {
-          state.lineViewBranchSelections.set(lineKey, {});
-        }
-      } else {
-        state.lineViewBranchSelections.set(lineKey, {});
-      }
-    }
-  } catch (e) {
-    // ignore
-  }
-
-  const selections = state.lineViewBranchSelections?.get(lineKey) || null;
   const featuresToRender = await orderStopsForLineView(
     stopFeatures,
     lineKey,
     directionSequences,
     orderingMode,
     routeLookupKey,
-    selections,
+    null,
     directionPatterns
   );
+
+  if (state.lineViewOrderingReversed) {
+    featuresToRender.reverse();
+  }
+
+  syncLineViewOrderingControls();
 
   featuresToRender.forEach((feature, index) => {
     const props = feature?.properties || {};
@@ -2581,51 +2601,63 @@ async function apiRequest(path, options = {}) {
   return payload;
 }
 
-// Initialize diagnostic switcher
+// Initialize line view ordering controls
 function initializeDiagnostics() {
-  // Check if diagnostics should be visible (URL param or feature flag)
-  const urlParams = new URLSearchParams(window.location.search);
-  const showDiagnostics = urlParams.has('diagnostics') || localStorage.getItem('metromark_diagnostics') === 'true';
-  
-  if (els.lineViewDiagnostics) {
-    els.lineViewDiagnostics.hidden = !showDiagnostics;
-  }
-  
-  // Keyboard shortcut to toggle diagnostics: Ctrl+Shift+D
-  document.addEventListener('keydown', (event) => {
-    if (event.ctrlKey && event.shiftKey && event.key === 'D') {
-      event.preventDefault();
-      const isHidden = els.lineViewDiagnostics?.hidden ?? true;
-      if (els.lineViewDiagnostics) {
-        els.lineViewDiagnostics.hidden = !isHidden;
-        localStorage.setItem('metromark_diagnostics', !isHidden ? 'true' : 'false');
-      }
+  const rerenderCurrentLineView = () => {
+    if (!state.lineViewOpen || !state.lineViewLineKey) {
+      syncLineViewOrderingControls();
+      return;
     }
-  });
-  
-  // Wire up the ordering mode select
-  if (els.lineViewOrderingModeSelect) {
-    // Set initial value from state
-    els.lineViewOrderingModeSelect.value = state.lineViewOrderingMode;
-    
-    els.lineViewOrderingModeSelect.addEventListener('change', (event) => {
-      const newMode = event.target.value;
-      
-      state.lineViewOrderingMode = newMode;
-      localStorage.setItem("metromark_line_view_ordering_mode", state.lineViewOrderingMode);
-      
-      // Trigger re-rendering of the current line view if open
-      if (state.lineViewOpen && state.lineViewLineKey) {
-        const lineKey = String(state.lineViewLineKey).trim();
-        renderLineViewStops(
-          lineKey,
-          state.lineSummaries.find(l => l.lineKey === lineKey)?.color || '#177ca2',
-          { forceRefresh: true, orderingMode: newMode }
-        )
-          .catch((error) => console.error('Error re-rendering line view stops:', error));
-      }
-    });
+
+    const lineKey = String(state.lineViewLineKey).trim();
+    renderLineViewStops(
+      lineKey,
+      state.lineSummaries.find((entry) => entry.lineKey === lineKey)?.color || '#177ca2',
+      { forceRefresh: true, orderingMode: state.lineViewOrderingMode }
+    ).catch((error) => console.error('Error re-rendering line view stops:', error));
+  };
+
+  const setOrderingMode = (newMode) => {
+    const normalizedMode = normalizeLineViewOrderingMode(newMode);
+    if (state.lineViewOrderingMode === normalizedMode) {
+      syncLineViewOrderingControls();
+      return;
+    }
+
+    state.lineViewOrderingMode = normalizedMode;
+    localStorage.setItem('metromark_line_view_ordering_mode', state.lineViewOrderingMode);
+    rerenderCurrentLineView();
+  };
+
+  const toggleReverse = () => {
+    state.lineViewOrderingReversed = !state.lineViewOrderingReversed;
+    localStorage.setItem('metromark_line_view_ordering_reversed', state.lineViewOrderingReversed ? 'true' : 'false');
+    rerenderCurrentLineView();
+  };
+
+  if (els.lineViewOrderingAutoBtn) {
+    els.lineViewOrderingAutoBtn.addEventListener('click', () => setOrderingMode('auto'));
   }
+
+  if (els.lineViewOrderingGeometryRevisedBtn) {
+    els.lineViewOrderingGeometryRevisedBtn.addEventListener('click', () => setOrderingMode('geometry-revised'));
+  }
+
+  if (els.lineViewOrderingGeometryBtn) {
+    els.lineViewOrderingGeometryBtn.addEventListener('click', () => setOrderingMode('geometry'));
+  }
+
+  if (els.lineViewOrderingFractionsBtn) {
+    els.lineViewOrderingFractionsBtn.addEventListener('click', () => setOrderingMode('fractions'));
+  }
+
+  if (els.lineViewOrderingReverseBtn) {
+    els.lineViewOrderingReverseBtn.addEventListener('click', toggleReverse);
+  }
+
+  localStorage.setItem('metromark_line_view_ordering_mode', state.lineViewOrderingMode);
+  localStorage.setItem('metromark_line_view_ordering_reversed', state.lineViewOrderingReversed ? 'true' : 'false');
+  syncLineViewOrderingControls();
 }
 
 // Initialize when DOM is ready

@@ -571,9 +571,16 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
 
   const cacheKey = routeStopCacheKey(normalizedLineKey);
   const existing = state.lineStopsCache.get(cacheKey);
-  if (existing && !options.forceRefresh) {
-    existing.lastUsedAt = Date.now();
-    return true;
+  const requestOptions = { ...options };
+  if (existing && !requestOptions.forceRefresh) {
+    const needsPatternRefresh = !existing.payload?.directionStopPatterns && !existing.patternsRefreshAttempted;
+    if (!needsPatternRefresh) {
+      existing.lastUsedAt = Date.now();
+      return true;
+    }
+    existing.patternsRefreshAttempted = true;
+    requestOptions.forceRefresh = true;
+    requestOptions.silent = true;
   }
 
   if (state.inFlightLineStopKeys.has(cacheKey)) {
@@ -587,7 +594,7 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
   state.inFlightLineStopKeys.add(cacheKey);
   updateLoadingStatus();
 
-  if (!options.silent) {
+  if (!requestOptions.silent) {
     setStatus(`Loading stops for ${lineLabel}...`, "ok", "Using route membership from Transitland.");
   }
 
@@ -597,7 +604,7 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
       stopTypes: ROUTE_STOP_TYPES_QUERY
     });
 
-    if (options.forceRefresh) {
+    if (requestOptions.forceRefresh) {
       params.set("refresh", "1");
     }
 
@@ -623,14 +630,14 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
       `Route stops ready for ${lineLabel} (${payload.cacheStatus || "miss"} cache, ${stationCount} stops).`
     );
 
-    if (!options.silent) {
+    if (!requestOptions.silent) {
       setStatus(`Loaded ${stationCount} route-linked stops for ${lineLabel}.`, "ok");
     }
 
     return true;
   } catch (error) {
     setBackendStatus(`Route stop fetch failed for ${lineLabel}: ${error.message}`);
-    if (!options.silent) {
+    if (!requestOptions.silent) {
       setStatus(`Could not load stops for ${lineLabel}.`, "error", error.message);
     }
     return false;

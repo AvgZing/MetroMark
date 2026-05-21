@@ -128,6 +128,24 @@ function routeGeometryCoordinatesForLine(lineKey) {
   return null;
 }
 
+function routeGeometryHasMultipleParts(lineKey) {
+  const features = Array.isArray(state.transit?.routesGeoJson?.features)
+    ? state.transit.routesGeoJson.features
+    : [];
+
+  const routeFeature = features.find((feature) => String(feature?.properties?.line_key || "") === String(lineKey || ""));
+  const geometry = routeFeature?.geometry;
+  if (!geometry || geometry.type !== "MultiLineString") {
+    return false;
+  }
+
+  const parts = Array.isArray(geometry.coordinates)
+    ? geometry.coordinates.filter((part) => Array.isArray(part) && part.length >= 2)
+    : [];
+
+  return parts.length > 1;
+}
+
 function stopNameTokens(value) {
   return normalizeStopLookupKey(value)
     .split(" ")
@@ -964,8 +982,64 @@ function orderMismatchScore(primaryOrder, secondaryOrder) {
   return (sumDiff / counted) / Math.max(total - 1, 1);
 }
 
-function detectSplitSections(stopFeatures, directionSequences) {
+function detectSplitSectionsFromStops(stopFeatures) {
+  const features = Array.isArray(stopFeatures) ? stopFeatures.filter((f) => stopCoordinate(f)) : [];
+  if (features.length < 6) {
+    return false;
+  }
+
+  const inferredLineKey = String(features[0]?.properties?.line_key || "").trim();
+  const ordered = sortStopsSequentially(features, inferredLineKey);
+  const indexByFeature = new Map();
+  ordered.forEach((feature, index) => indexByFeature.set(feature, index));
+
+  const minPairs = Math.max(4, Math.floor(features.length * 0.2));
+  const minIndexGap = Math.max(4, Math.floor(ordered.length * 0.12));
+  let closePairs = 0;
+
+  for (let i = 0; i < features.length; i += 1) {
+    const left = features[i];
+    const leftCoord = stopCoordinate(left);
+    if (!leftCoord) continue;
+    for (let j = i + 1; j < features.length; j += 1) {
+      const right = features[j];
+      const rightCoord = stopCoordinate(right);
+      if (!rightCoord) continue;
+
+      const distMeters = haversineMeters(leftCoord, rightCoord);
+      if (distMeters > 220) {
+        continue;
+      }
+
+      const nameSimilarity = stopNameSimilarity(stopFeatureDisplayName(left), stopFeatureDisplayName(right));
+      if (nameSimilarity < 0.5) {
+        continue;
+      }
+
+      const leftIndex = indexByFeature.get(left);
+      const rightIndex = indexByFeature.get(right);
+      if (Number.isFinite(leftIndex) && Number.isFinite(rightIndex)) {
+        if (Math.abs(leftIndex - rightIndex) < minIndexGap) {
+          continue;
+        }
+      }
+
+      closePairs += 1;
+      if (closePairs >= minPairs) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function detectSplitSections(stopFeatures, directionSequences, directionPatterns = null) {
   if (!directionSequences || typeof directionSequences !== 'object') return false;
+
+  if (detectSplitSectionsFromStops(stopFeatures)) {
+    return true;
+  }
 
   const featureByLookupKey = buildFeatureLookupMap(stopFeatures);
   const patterns = [];
@@ -975,7 +1049,7 @@ function detectSplitSections(stopFeatures, directionSequences) {
     const matches = [];
     const selected = new Set();
     for (const entry of seq) {
-      const f = matchSequenceFeature(entry, stopFeatures, featureByLookupKey, selected);
+      const f = matchSequenceFeatureWithThreshold(entry, stopFeatures, featureByLookupKey, selected, 0.55);
       if (f) { selected.add(f); matches.push(f); }
     }
     if (matches.length >= 2) patterns.push(matches);
@@ -993,17 +1067,18 @@ function detectSplitSections(stopFeatures, directionSequences) {
     const id0 = stopIdentityKey(feat0);
     const id1 = stopIdentityKey(feat1);
     if (id0 === id1) continue;
-    const coords0 = feat0?.geometry?.coordinates;
-    const coords1 = feat1?.geometry?.coordinates;
+    const coords0 = stopCoordinate(feat0);
+    const coords1 = stopCoordinate(feat1);
     if (coords0 && coords1) {
-      const dist = Math.hypot(coords0[0] - coords1[0], coords0[1] - coords1[1]);
-      if (dist < 0.0005) {
+      const distMeters = haversineMeters(coords0, coords1);
+      const nameSimilarity = stopNameSimilarity(stopFeatureDisplayName(feat0), stopFeatureDisplayName(feat1));
+      if (distMeters < 180 && nameSimilarity >= 0.35) {
         closeMismatches += 1;
       }
     }
   }
 
-  return closeMismatches >= 4 && closeMismatches / Math.max(count, 1) >= 0.2;
+  return closeMismatches >= 3 && closeMismatches / Math.max(count, 1) >= 0.15;
 }
 
 function buildLcsSequence(leftKeys, rightKeys) {
@@ -1042,10 +1117,12 @@ function buildLcsSequence(leftKeys, rightKeys) {
 function buildBranchGroups(stopFeatures, directionSequences, directionPatterns = null) {
   const result = { isBranching: false, isSplitSections: false, trunkKeys: [], segments: [], patterns: {}, keyToName: new Map() };
 
-  const sequences = [];
-  const addSequenceFromEntries = (entries) => {
-    const seq = normalizeSequenceKeys(entries);
-    if (seq.length < 2) return;
+  const sequencesByDirection = new Map([
+    ['0', []],
+    ['1', []]
+  ]);
+
+  const addNamesFromEntries = (entries) => {
     for (const entry of entries || []) {
       const key = normalizeStopLookupKey(entry?.id || entry?.stopId || entry?.name);
       const name = String(entry?.name || entry?.stopId || entry?.id || '').trim();
@@ -1053,7 +1130,15 @@ function buildBranchGroups(stopFeatures, directionSequences, directionPatterns =
         result.keyToName.set(key, name);
       }
     }
-    sequences.push(seq);
+  };
+
+  const addSequenceFromEntries = (entries, directionKey) => {
+    const seq = normalizeSequenceKeys(entries);
+    if (seq.length < 2) return;
+    addNamesFromEntries(entries);
+    const list = sequencesByDirection.get(directionKey) || [];
+    list.push(seq);
+    sequencesByDirection.set(directionKey, list);
   };
 
   if (directionPatterns && typeof directionPatterns === 'object') {
@@ -1061,57 +1146,83 @@ function buildBranchGroups(stopFeatures, directionSequences, directionPatterns =
       const patterns = Array.isArray(directionPatterns[directionKey]) ? directionPatterns[directionKey] : [];
       for (const pattern of patterns) {
         if (pattern && Array.isArray(pattern.stopEntries)) {
-          addSequenceFromEntries(pattern.stopEntries);
+          addSequenceFromEntries(pattern.stopEntries, directionKey);
         }
       }
     }
   }
 
-  if (!sequences.length && directionSequences && typeof directionSequences === 'object') {
+  const splitCandidate = directionSequences && typeof directionSequences === 'object'
+    ? detectSplitSections(stopFeatures, directionSequences, directionPatterns)
+    : false;
+
+  if (directionSequences && typeof directionSequences === 'object') {
+    addNamesFromEntries(Array.isArray(directionSequences?.['0']) ? directionSequences['0'] : []);
+    addNamesFromEntries(Array.isArray(directionSequences?.['1']) ? directionSequences['1'] : []);
+  }
+
+  if (directionSequences && typeof directionSequences === 'object' && !directionPatterns) {
     const seq0 = normalizeSequenceKeys(directionSequences?.['0']);
     const seq1 = normalizeSequenceKeys(directionSequences?.['1']);
     if (seq0.length >= 2 && seq1.length >= 2) {
       if (sequencesAreReverse(directionSequences)) {
         return result;
       }
-      addSequenceFromEntries(directionSequences?.['0'] || []);
-      addSequenceFromEntries(directionSequences?.['1'] || []);
+      addSequenceFromEntries(directionSequences?.['0'] || [], '0');
+      addSequenceFromEntries(directionSequences?.['1'] || [], '1');
     }
   }
 
-  if (directionSequences && typeof directionSequences === 'object' && detectSplitSections(stopFeatures, directionSequences)) {
-    result.isSplitSections = true;
+  const findBestPair = (sequences) => {
+    let bestPair = null;
+    let bestSimilarity = 1;
+    let bestLcs = [];
+
+    for (let i = 0; i < sequences.length; i += 1) {
+      for (let j = i + 1; j < sequences.length; j += 1) {
+        const left = sequences[i];
+        const right = sequences[j];
+        const lcs = buildLcsSequence(left, right);
+        if (lcs.length < 2) {
+          continue;
+        }
+        const similarity = lcs.length / Math.min(left.length, right.length);
+        if (similarity < 0.35) {
+          continue;
+        }
+        if (similarity < bestSimilarity) {
+          bestSimilarity = similarity;
+          bestPair = [left, right];
+          bestLcs = lcs;
+        }
+      }
+    }
+
+    return { bestPair, bestSimilarity, bestLcs };
+  };
+
+  let chosen = null;
+  for (const directionKey of ['0', '1']) {
+    const sequences = sequencesByDirection.get(directionKey) || [];
+    if (sequences.length < 2) {
+      continue;
+    }
+    const candidate = findBestPair(sequences);
+    if (candidate.bestPair && (!chosen || candidate.bestSimilarity < chosen.bestSimilarity)) {
+      chosen = candidate;
+    }
+  }
+
+  if (!chosen || !chosen.bestPair) {
+    if (splitCandidate) {
+      result.isSplitSections = true;
+    }
     return result;
   }
 
-  if (sequences.length < 2) return result;
-
-  let bestPair = null;
-  let bestSimilarity = 1;
-  let bestLcs = [];
-
-  for (let i = 0; i < sequences.length; i += 1) {
-    for (let j = i + 1; j < sequences.length; j += 1) {
-      const left = sequences[i];
-      const right = sequences[j];
-      const lcs = buildLcsSequence(left, right);
-      if (lcs.length < 2) {
-        continue;
-      }
-      const similarity = lcs.length / Math.min(left.length, right.length);
-      if (similarity < bestSimilarity) {
-        bestSimilarity = similarity;
-        bestPair = [left, right];
-        bestLcs = lcs;
-      }
-    }
-  }
-
-  if (!bestPair || bestSimilarity >= 0.9) return result;
-
-  const seq0 = bestPair[0];
-  const seq1 = bestPair[1];
-  const lcs = bestLcs;
+  const seq0 = chosen.bestPair[0];
+  const seq1 = chosen.bestPair[1];
+  const lcs = chosen.bestLcs;
 
   const segments = [];
   let idx0 = 0;
@@ -1135,8 +1246,15 @@ function buildBranchGroups(stopFeatures, directionSequences, directionPatterns =
     segments.push({ startKey: prevKey, endKey: null, choices: { '0': tail0, '1': tail1 } });
   }
 
+  const trunkSet = new Set(lcs);
   const filtered = segments
-    .filter((seg) => seg.choices['0'].length >= 1 && seg.choices['1'].length >= 1)
+    .filter((seg) => {
+      const left = seg.choices['0'] || [];
+      const right = seg.choices['1'] || [];
+      const leftUnique = left.filter((key) => !trunkSet.has(key));
+      const rightUnique = right.filter((key) => !trunkSet.has(key));
+      return leftUnique.length >= 3 && rightUnique.length >= 3;
+    })
     .map((seg, index) => {
       const labelForChoice = (choiceKeys) => {
         const firstKey = choiceKeys[0];
@@ -1158,10 +1276,20 @@ function buildBranchGroups(stopFeatures, directionSequences, directionPatterns =
       };
     });
 
-  if (!filtered.length) return result;
+  if (!filtered.length) {
+    if (splitCandidate) {
+      result.isSplitSections = true;
+    }
+    return result;
+  }
 
   const divergenceCount = filtered.reduce((sum, seg) => sum + Math.max(seg.choices['0'].length, seg.choices['1'].length), 0);
-  if (divergenceCount < 3) return result;
+  if (divergenceCount < 2) {
+    if (splitCandidate) {
+      result.isSplitSections = true;
+    }
+    return result;
+  }
 
   result.isBranching = true;
   result.trunkKeys = lcs;
@@ -1909,152 +2037,131 @@ function buildSmartAutoDetectRankMap(stopFeatures, directionSequences, lineKey =
   return buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
 }
 
+function normalizeLineViewOrderingMode(orderingMode) {
+  const mode = String(orderingMode || 'geometry-revised').trim();
+
+  if (mode === 'auto' || mode === 'geometry-revised' || mode === 'geometry' || mode === 'fractions') {
+    return mode;
+  }
+
+  if (mode === 'geometry-only') {
+    return 'geometry';
+  }
+
+  if (mode === 'fractions-only') {
+    return 'fractions';
+  }
+
+  if (mode === 'geometry-revised-endpoint-anchored') {
+    return 'geometry-revised';
+  }
+
+  return 'geometry-revised';
+}
+
+function detectAutoLineViewOrderingMode(stopFeatures, lineKey, directionSequences, directionPatterns) {
+  if (directionSequences && typeof directionSequences === 'object') {
+    try {
+      const branchGroups = buildBranchGroups(stopFeatures, directionSequences, directionPatterns);
+      if (branchGroups?.isSplitSections) {
+        return 'geometry-revised';
+      }
+
+      if (branchGroups?.isBranching && Array.isArray(branchGroups.segments) && branchGroups.segments.length) {
+        return 'geometry-revised';
+      }
+    } catch (e) {
+      // Ignore branch detection failures and continue with geometry-based heuristics.
+    }
+  }
+
+  const geometryOrder = sortStopsSequentially(stopFeatures, lineKey);
+  if (Array.isArray(geometryOrder) && geometryOrder.length >= 4 && geometryOrder.length <= 160) {
+    let pathLen = 0;
+    for (let index = 0; index < geometryOrder.length - 1; index += 1) {
+      const start = stopCoordinate(geometryOrder[index]);
+      const end = stopCoordinate(geometryOrder[index + 1]);
+      if (start && end) {
+        pathLen += haversineMeters(start, end);
+      }
+    }
+
+    const startCoord = stopCoordinate(geometryOrder[0]);
+    const endCoord = stopCoordinate(geometryOrder[geometryOrder.length - 1]);
+    if (startCoord && endCoord && pathLen > 0) {
+      const direct = haversineMeters(startCoord, endCoord);
+      const ratio = direct > 0 ? direct / pathLen : 1;
+      if (pathLen > 3000 && direct < 2000 && ratio < 0.25) {
+        return 'fractions';
+      }
+    }
+
+    const endpointResult = buildEndpointAnchoredGeometryOrder(stopFeatures, lineKey);
+    const ordered = Array.isArray(endpointResult?.orderedFeatures) ? endpointResult.orderedFeatures : [];
+    if (ordered.length >= 3) {
+      const endAnchor = ordered.length ? (stopCoordinate(ordered[ordered.length - 1]) || stopCoordinate(ordered[0])) : null;
+      const nonMonotonic = hasNonMonotonicEndpointDistance(ordered, endAnchor, 20);
+      const geometryOrderForMismatch = sortStopsSequentially(stopFeatures, lineKey);
+
+      let endpointPathLen = 0;
+      for (let index = 0; index < ordered.length - 1; index += 1) {
+        const start = stopCoordinate(ordered[index]);
+        const end = stopCoordinate(ordered[index + 1]);
+        if (start && end) {
+          endpointPathLen += haversineMeters(start, end);
+        }
+      }
+
+      const mismatchScore = orderMismatchScore(ordered, geometryOrderForMismatch);
+      const endDistance = endAnchor && stopCoordinate(ordered[0])
+        ? haversineMeters(stopCoordinate(ordered[0]), endAnchor)
+        : 0;
+      const pathRatio = endDistance > 0 ? endpointPathLen / endDistance : 1;
+      if (nonMonotonic || mismatchScore > 0.08 || pathRatio > 1.7) {
+        return 'geometry';
+      }
+    }
+  }
+
+  return 'geometry-revised';
+}
+
 /**
  * Order stops for line view rendering
- * Supports multiple ordering strategies with trip-pattern as primary (NEW)
- * Modes: trip-pattern (NEW), direction, fractions, geometry, geometry-revised (NEW), hybrid-endpoint (NEW), payload, trip-branches, auto
+ * Supported modes: auto, geometry-revised, geometry, fractions
  */
-async function orderStopsForLineView(stopFeatures, lineKey, directionSequences = null, orderingMode = 'auto', routeLookupKey = null, branchSelections = null, directionPatterns = null) {
+async function orderStopsForLineView(stopFeatures, lineKey, directionSequences = null, orderingMode = 'geometry-revised', routeLookupKey = null, branchSelections = null, directionPatterns = null) {
   const uniqueStopFeatures = dedupeStopFeatures(stopFeatures);
 
   if (!Array.isArray(uniqueStopFeatures) || uniqueStopFeatures.length === 0) {
     return uniqueStopFeatures;
   }
 
-  const mode = String(orderingMode || 'auto').trim() || 'auto';
+  const mode = normalizeLineViewOrderingMode(orderingMode);
 
   function setResolved(resolved) {
     try {
       if (typeof state === 'object') {
         state.lineViewOrderingResolved = resolved;
       }
-      const el = typeof document !== 'undefined' ? document.getElementById('lineViewOrderingResolved') : null;
-      if (el) {
-        el.textContent = `Resolved: ${resolved}`;
-      }
     } catch (e) {
       // ignore
     }
   }
 
-  // Build base rank maps eagerly
-  const payloadRankMap = buildPayloadRankMap(uniqueStopFeatures);
   const geometryRankMap = buildGeometryRankMap(uniqueStopFeatures, lineKey);
   const geometryRevisedRankMap = buildGeometryRevisedRankMap(uniqueStopFeatures, lineKey);
 
-  let _tripPatternRankInfo = null;
-  let _directionRankInfo = null;
-  let _hybridEndpointRankMap = null;
-
-  function getTripPatternRankInfo() {
-    if (_tripPatternRankInfo !== null) return _tripPatternRankInfo;
-    _tripPatternRankInfo = directionSequences && typeof directionSequences === 'object'
-      ? buildTripPatternRankMap(uniqueStopFeatures, directionSequences, lineKey)
-      : { rankMap: new Map(), matchedCount: 0, coverage: 0, matchedFeatures: [] };
-    return _tripPatternRankInfo;
-  }
-
-  function getDirectionRankInfo() {
-    if (_directionRankInfo !== null) return _directionRankInfo;
-    _directionRankInfo = directionSequences && typeof directionSequences === 'object'
-      ? buildDirectionRankMap(uniqueStopFeatures, directionSequences)
-      : { rankMap: new Map(), matchedCount: 0, coverage: 0 };
-    return _directionRankInfo;
-  }
-
-  function getHybridEndpointRankMap() {
-    if (_hybridEndpointRankMap !== null) return _hybridEndpointRankMap;
-    _hybridEndpointRankMap = directionSequences && typeof directionSequences === 'object'
-      ? buildHybridEndpointRankMap(uniqueStopFeatures, directionSequences, lineKey)
-      : geometryRevisedRankMap;
-    return _hybridEndpointRankMap;
-  }
-
   const resolvedRouteLookupKey = String(routeLookupKey || lineKey || '').trim();
-
-  // Only allow fractions in auto for tight loop geometries
-  const allowFractionsInAuto = true;
-
-  // Per-segment branch selection: swap branch segments atop geometry-revised
-  if (branchSelections && typeof branchSelections === 'object') {
-    const selectionValues = Object.values(branchSelections).filter(Boolean);
-    if (selectionValues.length) {
-      try {
-        const branchGroups = buildBranchGroups(uniqueStopFeatures, directionSequences, directionPatterns);
-        if (branchGroups && branchGroups.isBranching && Array.isArray(branchGroups.segments)) {
-          const featureByLookupKey = buildFeatureLookupMap(uniqueStopFeatures);
-          const featureLookupKeys = (feature) => stopFeatureLookupKeys(feature).map(normalizeStopLookupKey).filter(Boolean);
-
-          let ordered = sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap).slice();
-
-          for (const segment of branchGroups.segments) {
-            const choice = branchSelections[segment.id];
-            if (choice !== '0' && choice !== '1') continue;
-
-            const choiceKeys = segment.choices[choice] || [];
-            const allKeys = new Set([...(segment.choices['0'] || []), ...(segment.choices['1'] || [])]);
-            ordered = ordered.filter((feature) => {
-              const keys = featureLookupKeys(feature);
-              return !keys.some((k) => allKeys.has(k));
-            });
-
-            let insertIndex = ordered.length;
-            if (segment.startKey) {
-              const anchorFeature = featureByLookupKey.get(segment.startKey);
-              if (anchorFeature) {
-                const idx = ordered.indexOf(anchorFeature);
-                if (idx >= 0) insertIndex = idx + 1;
-              }
-            } else if (segment.endKey) {
-              const anchorFeature = featureByLookupKey.get(segment.endKey);
-              if (anchorFeature) {
-                const idx = ordered.indexOf(anchorFeature);
-                if (idx >= 0) insertIndex = idx;
-              }
-            }
-
-            const insertFeatures = choiceKeys
-              .map((k) => featureByLookupKey.get(k))
-              .filter(Boolean);
-            ordered.splice(insertIndex, 0, ...insertFeatures);
-          }
-
-          return ordered;
-        }
-      } catch (e) {
-        // ignore and fall back to regular ordering
-      }
-    }
-  }
-
-  if (mode === 'trip-pattern') {
-    setResolved('trip-pattern');
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getTripPatternRankInfo().rankMap, geometryRankMap);
-  }
-
-  if (mode === 'branch-aware') {
-    setResolved('branch-aware');
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getTripPatternRankInfo().rankMap, geometryRankMap);
-  }
 
   if (mode === 'geometry') {
     setResolved('geometry');
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getTripPatternRankInfo().rankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRankMap, geometryRevisedRankMap);
   }
 
   if (mode === 'geometry-revised') {
     setResolved('geometry-revised');
     return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
-  }
-
-  if (mode === 'hybrid-endpoint') {
-    setResolved('hybrid-endpoint');
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getHybridEndpointRankMap(), geometryRankMap);
-  }
-
-  if (mode === 'direction') {
-    setResolved('direction');
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getDirectionRankInfo().rankMap, geometryRankMap);
   }
 
   if (mode === 'fractions') {
@@ -2063,103 +2170,29 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
     if (fractionRankInfo.coverage > 0.3) {
       return sortFeaturesByPrimaryRanking(uniqueStopFeatures, fractionRankInfo.rankMap, geometryRankMap);
     }
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getTripPatternRankInfo().rankMap, geometryRankMap);
-  }
-
-  if (mode === 'payload') {
-    setResolved('payload');
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, payloadRankMap, geometryRankMap);
-  }
-
-  if (mode === 'trip-branches') {
-    setResolved('trip-branches');
-    const branchMergeResult = buildOptimalBranchMergeRankMap(uniqueStopFeatures, directionSequences, lineKey);
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, branchMergeResult.rankMap, geometryRankMap);
-  }
-
-  if (mode === 'loop-aware') {
-    setResolved('loop-aware');
-    const loopResult = buildLoopAwareRankMap(uniqueStopFeatures, directionSequences, lineKey);
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, loopResult.rankMap, geometryRankMap);
-  }
-
-  if (mode === 'split-sections') {
-    setResolved('split-sections');
-    const splitResult = buildSplitSectionSmartRankMap(uniqueStopFeatures, directionSequences, lineKey);
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, splitResult.rankMap, geometryRankMap);
-  }
-
-  if (mode === 'smart-auto') {
-    setResolved('smart-auto');
-    const smartResult = buildSmartAutoDetectRankMap(uniqueStopFeatures, directionSequences, lineKey);
-    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, smartResult.rankMap, geometryRankMap);
+    return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRankMap, geometryRevisedRankMap);
   }
 
   if (mode === 'auto') {
-    // Preserve geometry-revised for likely-branching or split-section lines
-    if (directionSequences && typeof directionSequences === 'object') {
-      const branchGroups = buildBranchGroups(uniqueStopFeatures, directionSequences, directionPatterns);
-      if (branchGroups.isSplitSections) {
-        setResolved('auto → geometry-revised (split)');
-        return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
+    const autoMode = detectAutoLineViewOrderingMode(uniqueStopFeatures, lineKey, directionSequences, directionPatterns);
+
+    if (autoMode === 'fractions') {
+      const fractionRankInfo = await buildFractionRankMap(uniqueStopFeatures, lineKey, resolvedRouteLookupKey);
+      if (fractionRankInfo.coverage > 0.3) {
+        setResolved('fractions');
+        return sortFeaturesByPrimaryRanking(uniqueStopFeatures, fractionRankInfo.rankMap, geometryRankMap);
       }
-      if (branchGroups.isBranching && Array.isArray(branchGroups.segments) && branchGroups.segments.length) {
-        setResolved('auto → geometry-revised (branch)');
-        return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
-      }
+
+      setResolved('geometry-revised');
+      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
     }
 
-    // Loop detection: stop-based geometry order with short direct distance vs path length
-    const geometryOrder = sortStopsSequentially(uniqueStopFeatures, lineKey);
-    if (Array.isArray(geometryOrder) && geometryOrder.length >= 4 && geometryOrder.length <= 160) {
-      let pathLen = 0;
-      for (let i = 0; i < geometryOrder.length - 1; i += 1) {
-        const a = stopCoordinate(geometryOrder[i]);
-        const b = stopCoordinate(geometryOrder[i + 1]);
-        if (a && b) pathLen += haversineMeters(a, b);
-      }
-      const startCoord = stopCoordinate(geometryOrder[0]);
-      const endCoord = stopCoordinate(geometryOrder[geometryOrder.length - 1]);
-      if (startCoord && endCoord) {
-        const direct = haversineMeters(startCoord, endCoord);
-        const ratio = direct > 0 ? direct / pathLen : 1;
-        if (pathLen > 3000 && direct < 2000 && ratio < 0.25) {
-          if (allowFractionsInAuto) {
-            const fractionRankInfo = await buildFractionRankMap(uniqueStopFeatures, lineKey, resolvedRouteLookupKey);
-            if (fractionRankInfo.coverage > 0.3) {
-              setResolved('auto → fractions (loop)');
-              return sortFeaturesByPrimaryRanking(uniqueStopFeatures, fractionRankInfo.rankMap, geometryRankMap);
-            }
-          }
-          setResolved('auto → geometry (loop)');
-          return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRankMap, geometryRevisedRankMap);
-        }
-      }
+    if (autoMode === 'geometry') {
+      setResolved('geometry');
+      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRankMap, geometryRevisedRankMap);
     }
 
-    // J-shape detection: endpoint-anchored ordering with non-monotonic endpoint distance
-    const endpointResult = buildEndpointAnchoredGeometryOrder(uniqueStopFeatures, lineKey);
-    const ordered = Array.isArray(endpointResult?.orderedFeatures) ? endpointResult.orderedFeatures : [];
-    const endCoord = ordered.length ? (stopCoordinate(ordered[ordered.length - 1]) || stopCoordinate(ordered[0])) : null;
-    const nonMonotonic = hasNonMonotonicEndpointDistance(ordered, endCoord, 20);
-    const geometryOrderForMismatch = sortStopsSequentially(uniqueStopFeatures, lineKey);
-    let pathLen = 0;
-    for (let i = 0; i < ordered.length - 1; i += 1) {
-      const a = stopCoordinate(ordered[i]);
-      const b = stopCoordinate(ordered[i + 1]);
-      if (a && b) pathLen += haversineMeters(a, b);
-    }
-    const mismatchScore = orderMismatchScore(ordered, geometryOrderForMismatch);
-    const endDistance = endCoord && stopCoordinate(ordered[0])
-      ? haversineMeters(stopCoordinate(ordered[0]), endCoord)
-      : 0;
-    const pathRatio = endDistance > 0 ? pathLen / endDistance : 1;
-    if (nonMonotonic || mismatchScore > 0.05 || pathRatio > 1.4) {
-      setResolved('auto → geometry (J)');
-      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, getTripPatternRankInfo().rankMap, geometryRankMap);
-    }
-
-    setResolved('auto → geometry-revised');
+    setResolved('geometry-revised');
     return sortFeaturesByPrimaryRanking(uniqueStopFeatures, geometryRevisedRankMap, geometryRankMap);
   }
 
