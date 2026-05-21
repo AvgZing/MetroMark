@@ -1163,8 +1163,34 @@ function lineViewOrderingModeLabel(mode) {
     return "Auto";
   }
 
+  if (normalizedMode === "geometry-revised") {
+    return "Main";
+  }
+
   if (normalizedMode === "legacy-geometry") {
-    return "Legacy Geometry";
+    return "U-Shape";
+  }
+
+  if (normalizedMode === "fractions") {
+    return "Loop";
+  }
+
+  return "Main";
+}
+
+function lineViewOrderingTechnicalLabel(mode) {
+  const normalizedMode = normalizeLineViewOrderingMode(mode);
+
+  if (normalizedMode === "auto") {
+    return "Automatic route-shape detection";
+  }
+
+  if (normalizedMode === "geometry-revised") {
+    return "Geometry Revised Endpoint Anchored";
+  }
+
+  if (normalizedMode === "legacy-geometry") {
+    return "Trip Pattern Geometry";
   }
 
   if (normalizedMode === "fractions") {
@@ -1177,8 +1203,11 @@ function lineViewOrderingModeLabel(mode) {
 function lineViewOrderingStatusLabel() {
   const mode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
   const resolvedMode = normalizeLineViewOrderingMode(state.lineViewOrderingResolved || mode);
-  const label = mode === "auto" ? `Auto · ${lineViewOrderingModeLabel(resolvedMode)}` : lineViewOrderingModeLabel(mode);
-  return state.lineViewOrderingReversed ? `${label} · Reversed` : label;
+  const activeMode = mode === "auto" ? resolvedMode : mode;
+  const label = mode === "auto"
+    ? `Auto - ${lineViewOrderingModeLabel(activeMode)} (${lineViewOrderingTechnicalLabel(activeMode)})`
+    : `${lineViewOrderingModeLabel(activeMode)} (${lineViewOrderingTechnicalLabel(activeMode)})`;
+  return state.lineViewOrderingReversed ? `${label} · Reversed Route` : label;
 }
 
 function syncLineViewOrderingControls() {
@@ -1192,18 +1221,36 @@ function syncLineViewOrderingControls() {
     fractions: els.lineViewOrderingFractionsBtn
   };
 
+  const buttonLabelByMode = {
+    auto: "Auto",
+    "geometry-revised": "Main",
+    "legacy-geometry": "U-Shape",
+    fractions: "Loop"
+  };
+
+  const buttonTitleByMode = {
+    auto: "Automatic route-shape detection",
+    "geometry-revised": "Geometry Revised Endpoint Anchored",
+    "legacy-geometry": "Trip Pattern Geometry",
+    fractions: "Fractions Only"
+  };
+
   for (const [buttonMode, button] of Object.entries(buttonByMode)) {
     if (!button) {
       continue;
     }
 
     const isActive = buttonMode === mode;
+    button.textContent = buttonLabelByMode[buttonMode] || button.textContent;
+    button.title = buttonTitleByMode[buttonMode] || button.title || "";
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-pressed", isActive ? "true" : "false");
   }
 
   if (els.lineViewOrderingReverseBtn) {
     const isActive = Boolean(state.lineViewOrderingReversed);
+    els.lineViewOrderingReverseBtn.textContent = "Reverse Route";
+    els.lineViewOrderingReverseBtn.title = "Reverse the current stop order";
     els.lineViewOrderingReverseBtn.classList.toggle("is-active", isActive);
     els.lineViewOrderingReverseBtn.setAttribute("aria-pressed", isActive ? "true" : "false");
   }

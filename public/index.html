@@ -272,25 +272,23 @@
                 </div>
               </div>
               <div id="lineViewDiagnostics" class="line-view-diagnostics">
-                <div class="line-view-ordering-row">
-                  <span class="diagnostic-label">Sort stops (WIP):</span>
-                  <div class="line-view-ordering-group" role="group" aria-label="Line view stop ordering">
-                    <button id="lineViewOrderingAutoBtn" class="line-view-ordering-btn" type="button">Auto</button>
-                    <button id="lineViewOrderingGeometryRevisedBtn" class="line-view-ordering-btn" type="button">
-                      Geometry Revised
-                    </button>
-                    <button id="lineViewOrderingGeometryBtn" class="line-view-ordering-btn" type="button">
-                      Legacy Geometry
-                    </button>
-                    <button id="lineViewOrderingFractionsBtn" class="line-view-ordering-btn" type="button">
-                      Fractions Only
-                    </button>
-                  </div>
-                  <button id="lineViewOrderingReverseBtn" class="line-view-reverse-btn" type="button" aria-pressed="false">
-                    Reverse
+                <span class="diagnostic-label">Sort stops (WIP):</span>
+                <p id="lineViewOrderingResolved" class="diagnostic-resolved">Auto - Main (Geometry Revised Endpoint Anchored)</p>
+                <div class="line-view-ordering-group" role="group" aria-label="Line view stop ordering">
+                  <button id="lineViewOrderingAutoBtn" class="line-view-ordering-btn" type="button">Auto</button>
+                  <button id="lineViewOrderingGeometryRevisedBtn" class="line-view-ordering-btn" type="button">
+                    Main
+                  </button>
+                  <button id="lineViewOrderingGeometryBtn" class="line-view-ordering-btn" type="button">
+                    U-Shape
+                  </button>
+                  <button id="lineViewOrderingFractionsBtn" class="line-view-ordering-btn" type="button">
+                    Loop
                   </button>
                 </div>
-                <p id="lineViewOrderingResolved" class="diagnostic-resolved">Geometry Revised Endpoint Anchored</p>
+                <button id="lineViewOrderingReverseBtn" class="line-view-reverse-btn" type="button" aria-pressed="false">
+                  Reverse Route
+                </button>
               </div>
             </div>
             <div id="lineViewStops" class="line-view-stop-list"></div>
