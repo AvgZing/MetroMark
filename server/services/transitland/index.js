@@ -54,6 +54,15 @@ function sanitizeText(value) {
   return String(value || "").trim();
 }
 
+function isCacheExpiredRow(cached) {
+  const expiresAt = Number(cached?.expiresAt || 0);
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) {
+    return false;
+  }
+
+  return expiresAt <= Math.floor(Date.now() / 1000);
+}
+
 function firstTruthy(values) {
   for (const value of values) {
     if (value) {
@@ -539,7 +548,7 @@ function routeLookupKeysFromObject(route) {
 async function fetchRoutesVectorTile(z, x, y, options = {}) {
   const cacheKey = `${TRANSIT_CACHE_PREFIX}routes-tile:${z}:${x}:${y}`;
   if (!options.forceRefresh) {
-    const cached = await db.getCache(cacheKey);
+    const cached = await db.getCacheAny(cacheKey);
     if (cached?.payload) {
       return cached.payload;
     }
@@ -1179,7 +1188,7 @@ async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
 
   const cacheKey = `${TRANSIT_CACHE_PREFIX}headway:${key}`;
   if (!options.forceRefresh) {
-    const cached = await db.getCache(cacheKey);
+    const cached = await db.getCacheAny(cacheKey);
     if (cached && cached.payload) {
       return cached.payload;
     }
@@ -2342,11 +2351,12 @@ async function getRouteStopsTransit(lineKey, options = {}) {
   const cacheKey = `${TRANSIT_CACHE_PREFIX}route:${normalizedLineKey}:types:${stopTypeKey}`;
 
   if (!forceRefresh) {
-    const cached = await db.getCache(cacheKey);
+    const cached = await db.getCacheAny(cacheKey);
     if (cached) {
+      const cacheStatus = isCacheExpiredRow(cached) ? "stale-hit" : "hit";
       return {
         payload: cached.payload,
-        cacheStatus: "hit",
+        cacheStatus,
         cacheKey: `route:${normalizedLineKey}:types:${stopTypeKey}`,
         cacheExpiresAt: cached.expiresAt,
         stopLocationTypes
@@ -2550,13 +2560,14 @@ async function getTransitForArea(area, options = {}) {
   const routeTypes = normalizeRouteTypes(options.routeTypes || area.routeTypes);
 
   if (!forceRefresh) {
-    const cached = await db.getCache(cacheKey);
+    const cached = await db.getCacheAny(cacheKey);
     if (cached) {
+      const cacheStatus = isCacheExpiredRow(cached) ? "stale-hit" : "hit";
       await queueCityReverifyIfStale(area, cached);
 
       return {
         payload: cached.payload,
-        cacheStatus: "hit",
+        cacheStatus,
         cacheKey: area.key,
         cacheExpiresAt: cached.expiresAt,
         cacheVerifiedAt: cached.verifiedAt,
@@ -2570,7 +2581,7 @@ async function getTransitForArea(area, options = {}) {
       // Query Postgres for any cached data that spatially overlaps this bbox
       const [minLon, minLat, maxLon, maxLat] = area.bbox;
       const overlappingCaches = await db.getCacheByBbox(minLon, minLat, maxLon, maxLat, {
-        includeExpired: false
+        includeExpired: true
       });
 
       // If we found overlapping data, aggregate and return it

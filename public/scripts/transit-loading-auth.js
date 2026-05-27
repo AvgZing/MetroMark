@@ -222,7 +222,7 @@ async function fetchTile(job) {
     // an empty miss (which can happen when requesting cache-only).
     const hasRoutes = Array.isArray(payload?.lineSummaries) && payload.lineSummaries.length > 0;
     const cacheStatus = String(payload?.cacheStatus || "").trim().toLowerCase();
-    const isHit = cacheStatus === "hit" || cacheStatus === "partial-hit";
+    const isHit = cacheStatus === "hit" || cacheStatus === "partial-hit" || cacheStatus === "stale-hit";
     if (hasRoutes || isHit) {
       cacheAreaPayload(job.cacheKey, payload, payload.cacheStatus || "miss");
     }
@@ -231,7 +231,7 @@ async function fetchTile(job) {
     // Update viewport source counters so the advanced panel can prove whether
     // data came from Postgres or from an actual Transitland fetch.
     state.viewportRequestCount += 1;
-    if (cacheStatus === "hit" || cacheStatus === "partial-hit") {
+    if (cacheStatus === "hit" || cacheStatus === "partial-hit" || cacheStatus === "stale-hit") {
       state.postgresViewportHitCount += 1;
     } else if (cacheStatus === "miss" && job.cacheOnly) {
       state.postgresViewportMissCount += 1;
@@ -256,6 +256,8 @@ async function fetchTile(job) {
       sourceDesc = "Postgres cache (exact match)";
     } else if (cacheStatus === "partial-hit") {
       sourceDesc = "Postgres cache (spatial overlap)";
+    } else if (cacheStatus === "stale-hit") {
+      sourceDesc = "Postgres cache (stale)";
     } else if (cacheStatus === "miss" && job.cacheOnly) {
       sourceDesc = "Postgres cache miss (no overlap)";
     } else {
