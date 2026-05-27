@@ -105,19 +105,19 @@
             <details class="filter-dropdown-wrapper" id="filtersDropdown" open>
               <summary class="filter-section-summary">
                 <p class="filter-section-title">Filters</p>
-                <button
-                  id="filterPresetsBtn"
-                  class="btn btn-icon filter-presets-btn"
-                  type="button"
-                  aria-haspopup="true"
-                  aria-expanded="false"
-                  title="Saved filter presets"
-                >
-                  <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M5 5h14v2H5V5Zm2 6h10v2H7v-2Zm2 6h6v2H9v-2Z" />
-                  </svg>
-                </button>
               </summary>
+              <button
+                id="filterPresetsBtn"
+                class="btn btn-icon filter-presets-btn"
+                type="button"
+                aria-haspopup="true"
+                aria-expanded="false"
+                title="Saved filter presets"
+              >
+                <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 5h14v2H5V5Zm2 6h10v2H7v-2Zm2 6h6v2H9v-2Z" />
+                </svg>
+              </button>
 
               <div class="filter-sections routes-top-controls" aria-label="Route filters">
                 <div id="filterPresetsPanel" class="filter-presets-panel" hidden>
@@ -137,6 +137,8 @@
                   <details class="filter-section-dropdown" id="modeFilterSection" open>
                     <summary class="filter-section-summary">
                       <p class="filter-section-title">Modes</p>
+                    </summary>
+                    <div class="filter-section-header">
                       <button
                         id="showAllStopsBtn"
                         class="btn show-stops-btn"
@@ -145,7 +147,7 @@
                       >
                         Show All Stops
                       </button>
-                    </summary>
+                    </div>
                     <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
                   </details>
                 </div>
@@ -325,15 +327,15 @@
           <form id="registerForm" class="stack-form">
             <label>
               Display Name
-              <input id="registerDisplayName" name="displayName" type="text" placeholder="Optional" />
+              <input id="registerDisplayName" name="displayName" type="text" autocomplete="name" placeholder="Optional" />
             </label>
             <label>
               Email
-              <input id="registerEmail" name="email" type="email" required />
+              <input id="registerEmail" name="email" type="email" autocomplete="email" required />
             </label>
             <label>
               Password
-              <input id="registerPassword" name="password" type="password" minlength="6" required />
+              <input id="registerPassword" name="password" type="password" autocomplete="new-password" minlength="6" required />
             </label>
             <button class="btn" type="submit">Create Account</button>
           </form>

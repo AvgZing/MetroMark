@@ -442,6 +442,7 @@ label {
 }
 
 .filter-dropdown-wrapper {
+  position: relative;
   list-style: none;
   margin-top: 6px;
   border: 1px solid var(--panel-border);
@@ -507,6 +508,7 @@ label {
 }
 
 .filter-section-dropdown {
+  position: relative;
   list-style: none;
 }
 
@@ -540,6 +542,15 @@ label {
   gap: 4px;
 }
 
+.filter-dropdown-wrapper > summary .filter-section-title {
+  color: var(--ink);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .filter-section-summary::before {
   content: "▾";
   display: inline-block;
@@ -554,11 +565,15 @@ label {
 }
 
 .filter-section-header {
+  position: absolute;
+  top: 1px;
+  right: 6px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 4px;
+  justify-content: flex-end;
+  margin: 0;
+  padding: 0;
+  z-index: 1;
 }
 
 .filter-section-header .filter-section-title {
@@ -568,7 +583,7 @@ label {
 .show-stops-btn {
   width: auto;
   min-width: 0;
-  margin-left: auto;
+  margin-top: 0;
   padding: 3px 8px;
   border-radius: 999px;
   font-size: 10px;
@@ -606,18 +621,19 @@ body[data-theme="dark"] .show-stops-btn {
 
 .filter-presets-btn {
   position: absolute;
-  top: 50%;
-  right: 2px;
-  transform: translateY(-50%);
+  top: 2px;
+  right: 6px;
+  transform: none;
   width: 30px;
   min-width: 30px;
   height: 30px;
   padding: 0;
   margin-top: 0;
+  z-index: 1;
 }
 
 .filter-presets-btn:hover {
-  transform: translateY(-50%) scale(1.05);
+  transform: scale(1.05);
   box-shadow: 0 6px 16px rgba(10, 28, 40, 0.18);
 }
 
@@ -2033,9 +2049,22 @@ body[data-theme="dark"] .line-view-card {
   }
 
   .filter-presets-btn {
-    top: 50%;
-    right: 0;
-    transform: translateY(-50%);
+    top: 2px;
+    right: 4px;
+    transform: none;
+  }
+
+  #modeFilterSection > .filter-section-summary {
+    padding-right: 98px;
+  }
+
+  .filter-section-header {
+    top: 2px;
+    right: 4px;
+  }
+
+  .show-stops-btn {
+    margin-top: 0;
   }
 
   .line-item {
