@@ -235,7 +235,9 @@ const state = {
   areaCache: new Map(),
   lineStopsCache: new Map(),
   routeStopsAutoLoadAttempts: new Map(),
+  routeStopCountLoadAttempts: new Set(),
   inFlightLineStopKeys: new Set(),
+  inFlightRouteStopCountKeys: new Set(),
   inFlightHeadwayLineKeys: new Set(),
   requestedAreaKeys: new Set(),
   currentViewportBbox: null,
@@ -1684,7 +1686,9 @@ function renderLineView() {
   }
 
   const progress = line ? lineProgressMetrics(lineKey, Number(line.stopCount || 0)) : null;
-  const stopsLoaded = state.lineStopsCache.has(routeStopCacheKey(lineKey));
+  const fullStopsLoaded = state.lineStopsCache.has(routeStopCacheKey(lineKey));
+  const hasStopTotals = Number(line?.stopCount || 0) > 0;
+  const stopsLoaded = fullStopsLoaded || hasStopTotals;
   const stopsLoading = state.inFlightLineStopKeys.has(routeStopCacheKey(lineKey));
 
   if (els.lineViewStatus) {
@@ -1692,6 +1696,8 @@ function renderLineView() {
       els.lineViewStatus.textContent = "Loading stops...";
     } else if (!stopsLoaded) {
       els.lineViewStatus.textContent = "Stops not loaded yet.";
+    } else if (!fullStopsLoaded) {
+      els.lineViewStatus.textContent = "Stop totals loaded. Tap to load full stops.";
     } else if (!state.user) {
       els.lineViewStatus.textContent = "Sign in to track visited stops.";
     } else if (progress && progress.total > 0) {

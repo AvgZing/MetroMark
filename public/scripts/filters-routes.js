@@ -25,20 +25,25 @@
       }
     }
 
+    const stopCountKnownA = lineHasCachedStopCount(a) ? 1 : 0;
+    const stopCountKnownB = lineHasCachedStopCount(b) ? 1 : 0;
+    if (stopCountKnownA !== stopCountKnownB) {
+      return stopCountKnownB - stopCountKnownA;
+    }
+
     // Fall back to tier sorting
     const tierDiff = lineSortWeight(a) - lineSortWeight(b);
     if (tierDiff !== 0) {
       return tierDiff;
     }
-
-    const stopDiff = Number(b.stopCount || 0) - Number(a.stopCount || 0);
-    if (stopDiff !== 0) {
-      return stopDiff;
-    }
     return lineDisplayName(a).localeCompare(lineDisplayName(b));
   });
 
   return filtered;
+}
+
+function lineHasCachedStopCount(line) {
+  return Number(line?.stopCount || 0) > 0;
 }
 
 function getLoadedLines() {
@@ -85,15 +90,16 @@ function getRouteListLines() {
       }
     }
 
+    const stopCountKnownA = lineHasCachedStopCount(a) ? 1 : 0;
+    const stopCountKnownB = lineHasCachedStopCount(b) ? 1 : 0;
+    if (stopCountKnownA !== stopCountKnownB) {
+      return stopCountKnownB - stopCountKnownA;
+    }
+
     // Fall back to tier sorting
     const tierDiff = lineSortWeight(a) - lineSortWeight(b);
     if (tierDiff !== 0) {
       return tierDiff;
-    }
-
-    const stopDiff = Number(b.stopCount || 0) - Number(a.stopCount || 0);
-    if (stopDiff !== 0) {
-      return stopDiff;
     }
 
     return lineDisplayName(a).localeCompare(lineDisplayName(b));
@@ -784,6 +790,216 @@ function applyHeadwayUpdateToCachedTransit(lineKey, headwayUpdate) {
   return updated;
 }
 
+function applyRouteStopCountSummaryToCachedTransit(lineKey, stopCount) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  const normalizedStopCount = Number(stopCount || 0);
+  if (!normalizedLineKey || !Number.isFinite(normalizedStopCount) || normalizedStopCount <= 0) {
+    return false;
+  }
+
+  let updated = false;
+
+  const updateLine = (line) => {
+    if (!line || line.lineKey !== normalizedLineKey) {
+      return line;
+    }
+
+    updated = true;
+    return {
+      ...line,
+      stopCount: normalizedStopCount
+    };
+  };
+
+  state.lineSummaries = state.lineSummaries.map(updateLine);
+
+  if (Array.isArray(state.loadedLineSummaries) && state.loadedLineSummaries.length > 0) {
+    state.loadedLineSummaries = state.loadedLineSummaries.map(updateLine);
+  }
+
+  if (state.transit?.routesGeoJson?.features) {
+    state.transit.routesGeoJson.features = state.transit.routesGeoJson.features.map((feature) => {
+      const featureLineKey = String(feature?.properties?.line_key || "").trim();
+      if (featureLineKey !== normalizedLineKey) {
+        return feature;
+      }
+
+      return {
+        ...feature,
+        properties: {
+          ...feature.properties,
+          stop_count: normalizedStopCount,
+          stopCount: normalizedStopCount
+        }
+      };
+    });
+  }
+
+  for (const cacheEntry of state.areaCache.values()) {
+    const payload = cacheEntry?.payload;
+    if (!payload) {
+      continue;
+    }
+
+    if (Array.isArray(payload.lineSummaries)) {
+      let didUpdateLineSummary = false;
+      payload.lineSummaries = payload.lineSummaries.map((line) => {
+        if (line?.lineKey !== normalizedLineKey) {
+          return line;
+        }
+
+        didUpdateLineSummary = true;
+        return {
+          ...line,
+          stopCount: normalizedStopCount
+        };
+      });
+
+      if (didUpdateLineSummary) {
+        updated = true;
+      }
+    }
+
+    const routeFeatures = payload?.routesGeoJson?.features;
+    if (Array.isArray(routeFeatures)) {
+      for (const feature of routeFeatures) {
+        const featureLineKey = String(feature?.properties?.line_key || "").trim();
+        if (featureLineKey !== normalizedLineKey) {
+          continue;
+        }
+
+        feature.properties = {
+          ...feature.properties,
+          stop_count: normalizedStopCount,
+          stopCount: normalizedStopCount
+        };
+      }
+    }
+  }
+
+  return updated;
+}
+
+async function loadRouteStopCountSummary(lineKey, options = {}) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return false;
+  }
+
+  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  if (!line) {
+    return false;
+  }
+
+  if (Number(line.stopCount || 0) > 0) {
+    return true;
+  }
+
+  if (state.routeStopCountLoadAttempts.has(normalizedLineKey) || state.inFlightRouteStopCountKeys.has(normalizedLineKey)) {
+    return false;
+  }
+
+  state.routeStopCountLoadAttempts.add(normalizedLineKey);
+  state.inFlightRouteStopCountKeys.add(normalizedLineKey);
+
+  try {
+    const routeLookupKey = String(line.routeOnestopId || normalizedLineKey).trim();
+    const params = new URLSearchParams({
+      lineKey: routeLookupKey,
+      stopTypes: ROUTE_STOP_TYPES_QUERY,
+      cacheOnly: "1",
+      summaryOnly: "1"
+    });
+
+    const payload = await apiRequest(`/api/transit/route-stops?${params.toString()}`, {
+      method: "GET"
+    });
+
+    const summaryCount = Number(payload?.lineSummaries?.[0]?.stopCount || payload?.lineSummaries?.[0]?.stop_count || 0);
+    if (Number.isFinite(summaryCount) && summaryCount > 0) {
+      applyRouteStopCountSummaryToCachedTransit(normalizedLineKey, summaryCount);
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    if (!options.silent) {
+      setStatus(`Could not load stop totals for ${lineDisplayName(line)}.`, "error", error.message);
+    }
+    return false;
+  } finally {
+    state.inFlightRouteStopCountKeys.delete(normalizedLineKey);
+  }
+}
+
+async function loadVisibleRouteStopCounts() {
+  if (!state.lineSummaries.length) {
+    return false;
+  }
+
+  if (state.inFlightAreaKeys.size > 0 || state.fetchQueue.length > 0) {
+    return false;
+  }
+
+  const candidateMap = new Map();
+  for (const line of getShownLines()) {
+    candidateMap.set(line.lineKey, line);
+  }
+  for (const line of getRouteListLines()) {
+    candidateMap.set(line.lineKey, line);
+  }
+
+  const candidates = Array.from(candidateMap.values()).filter((line) => {
+    if (!line || !line.lineKey) {
+      return false;
+    }
+
+    if (Number(line.stopCount || 0) > 0) {
+      return false;
+    }
+
+    if (state.routeStopCountLoadAttempts.has(line.lineKey)) {
+      return false;
+    }
+
+    if (state.inFlightRouteStopCountKeys.has(line.lineKey)) {
+      return false;
+    }
+
+    if (state.focusedLineKey === line.lineKey) {
+      return false;
+    }
+
+    if (state.lineViewOpen && state.lineViewLineKey === line.lineKey) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (!candidates.length) {
+    return false;
+  }
+
+  const maxCandidates = Math.min(candidates.length, 24);
+  const results = await Promise.all(
+    candidates.slice(0, maxCandidates).map((line) => loadRouteStopCountSummary(line.lineKey, { silent: true }).catch(() => false))
+  );
+
+  if (results.some(Boolean)) {
+    renderLineList();
+    renderProgress();
+    if (typeof renderLineView === "function" && state.lineViewOpen) {
+      renderLineView();
+    }
+    if (typeof updateLoadingStatus === "function") {
+      updateLoadingStatus();
+    }
+  }
+
+  return true;
+}
+
 async function ensureLineHeadwayLoaded(lineKey, options = {}) {
   const normalizedLineKey = String(lineKey || "").trim();
   if (!normalizedLineKey) {
@@ -1113,7 +1329,8 @@ function renderLineList() {
 
     const routeStopsCacheKeyValue = routeStopCacheKey(line.lineKey);
     const routeStopsCacheEntry = state.lineStopsCache.get(routeStopsCacheKeyValue);
-    const routeStopsLoaded = Boolean(routeStopsCacheEntry);
+    const routeStopsFullyLoaded = Boolean(routeStopsCacheEntry?.payload?.stopsGeoJson?.features?.length);
+    const routeStopsLoaded = routeStopsFullyLoaded || Number(line.stopCount || 0) > 0;
     const loadedFeatures = Array.isArray(routeStopsCacheEntry?.payload?.stopsGeoJson?.features)
       ? routeStopsCacheEntry.payload.stopsGeoJson.features
       : [];
@@ -1138,10 +1355,10 @@ function renderLineList() {
       : 0;
     const routeStopsCount = Number(
       dedupedLoadedStopCount ||
+      line.stopCount ||
       routeStopsCacheEntry?.payload?.matchingStats?.centralizedStops ||
       routeStopsCacheEntry?.payload?.matchingStats?.lineDedupedStops ||
       routeStopsCacheEntry?.payload?.lineSummaries?.[0]?.stopCount ||
-      line.stopCount ||
       0
     );
     const routeStopsLoading = state.inFlightLineStopKeys.has(routeStopsCacheKeyValue);
@@ -1150,7 +1367,7 @@ function renderLineList() {
       state.focusedLineKey === line.lineKey ||
       (state.lineViewOpen && state.lineViewLineKey === line.lineKey);
 
-    if (isFocusedRoute && !routeStopsLoaded && !routeStopsLoading && !routeStopsAutoAttempted) {
+    if (isFocusedRoute && !routeStopsFullyLoaded && !routeStopsLoading && !routeStopsAutoAttempted) {
       if (!state.routeStopsAutoLoadAttempts) {
         state.routeStopsAutoLoadAttempts = new Map();
       }
@@ -1272,6 +1489,9 @@ function refreshUiFromState() {
   }
   if (typeof renderLineView === "function") {
     renderLineView();
+  }
+  if (typeof loadVisibleRouteStopCounts === "function") {
+    loadVisibleRouteStopCounts().catch(() => {});
   }
 }
 

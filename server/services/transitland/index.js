@@ -2347,6 +2347,7 @@ async function getRouteStopsTransit(lineKey, options = {}) {
 
   const forceRefresh = Boolean(options.forceRefresh);
   const cacheOnly = Boolean(options.cacheOnly);
+  const summaryOnly = Boolean(options.summaryOnly);
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
   const stopTypeKey = stopLocationTypes.join("-");
   const cacheKey = `${TRANSIT_CACHE_PREFIX}route:${normalizedLineKey}:types:${stopTypeKey}`;
@@ -2355,6 +2356,22 @@ async function getRouteStopsTransit(lineKey, options = {}) {
     const cached = await db.getCacheAny(cacheKey);
     if (cached) {
       const cacheStatus = isCacheExpiredRow(cached) ? "stale-hit" : "hit";
+      const cachedLineSummary = Array.isArray(cached.payload?.lineSummaries) ? cached.payload.lineSummaries[0] || null : null;
+      if (summaryOnly) {
+        return {
+          payload: {
+            lineSummaries: [{
+              lineKey: normalizedLineKey,
+              stopCount: Number(cachedLineSummary?.stopCount || 0)
+            }]
+          },
+          cacheStatus,
+          cacheKey: `route:${normalizedLineKey}:types:${stopTypeKey}`,
+          cacheExpiresAt: cached.expiresAt,
+          stopLocationTypes
+        };
+      }
+
       return {
         payload: cached.payload,
         cacheStatus,

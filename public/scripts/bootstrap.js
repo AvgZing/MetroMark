@@ -209,7 +209,13 @@ function bindEvents() {
     if (state.routeStopsAutoLoadAttempts) {
       state.routeStopsAutoLoadAttempts.clear();
     }
+    if (state.routeStopCountLoadAttempts) {
+      state.routeStopCountLoadAttempts.clear();
+    }
     state.inFlightLineStopKeys.clear();
+    if (state.inFlightRouteStopCountKeys) {
+      state.inFlightRouteStopCountKeys.clear();
+    }
     resetViewAggregation();
 
     rebuildCombinedTransit();

@@ -109,6 +109,7 @@ router.get("/transit/route-stops", async (req, res) => {
     const data = await getRouteStopsTransit(lineKey, {
       forceRefresh: asBoolean(req.query.refresh),
       cacheOnly: asBoolean(req.query.cacheOnly),
+      summaryOnly: asBoolean(req.query.summaryOnly),
       stopLocationTypes: stopTypes,
       requestSource: "user"
     });
