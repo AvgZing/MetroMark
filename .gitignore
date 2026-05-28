@@ -31,3 +31,4 @@ data/postgres/
 .DS_Store
 Thumbs.db
 .vscode/
+scripts/
