@@ -364,6 +364,10 @@ async function loadVisibleTransit(options = {}) {
   const zoom = state.map.getZoom();
   const rawBbox = mapBoundsToBbox();
   state.currentViewportBbox = rawBbox ? [...rawBbox] : null;
+  if (rawBbox) {
+    state.lastViewportFetchBbox = [...rawBbox];
+    state.lastViewportFetchZoom = Number(zoom || 0);
+  }
   if (!rawBbox) {
     const allCachedKeys = new Set(state.areaCache.keys());
     if (allCachedKeys.size === 0) {
@@ -456,9 +460,8 @@ async function loadVisibleTransit(options = {}) {
   });
   state.lastLoadStats.queued = queuedCacheOnly;
 
-  // Schedule non-cache-only fetches shortly after (only when zoomed in enough)
-  // to allow cache-only responses to populate the session cache first; this
-  // prevents wiping existing data and avoids unnecessary Transitland calls.
+  // Start non-cache-only fetches immediately after the cache-only batch so
+  // geometry can begin filling without waiting on an artificial delay.
   if (Number(zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM) {
     setTimeout(() => {
       const stillMissing = missing.filter((r) => !state.areaCache.has(r.areaKey));
@@ -469,7 +472,7 @@ async function loadVisibleTransit(options = {}) {
         forceRefresh: Boolean(options.forceRefresh)
       });
       state.lastLoadStats.queued += queuedFull;
-    }, 250);
+    }, 0);
   }
 
   if (!nextBatch.length) {
@@ -516,6 +519,35 @@ async function loadVisibleTransit(options = {}) {
 function onMapMoveEnd() {
   if (!state.mapReady) {
     return;
+  }
+
+  const rawBbox = mapBoundsToBbox();
+  const zoom = state.map ? Number(state.map.getZoom()) : 0;
+  const lastViewportBbox = normalizeBboxArray(state.lastViewportFetchBbox);
+  const lastViewportZoom = Number(state.lastViewportFetchZoom);
+
+  if (
+    rawBbox &&
+    lastViewportBbox &&
+    Number.isFinite(lastViewportZoom) &&
+    Math.abs(zoom - lastViewportZoom) < 0.01
+  ) {
+    const bufferedViewport = expandBbox(lastViewportBbox, 0.18);
+    const withinBufferedViewport =
+      rawBbox[0] >= bufferedViewport[0] &&
+      rawBbox[1] >= bufferedViewport[1] &&
+      rawBbox[2] <= bufferedViewport[2] &&
+      rawBbox[3] <= bufferedViewport[3];
+
+    if (withinBufferedViewport) {
+      state.currentViewportBbox = [...rawBbox];
+      syncActiveAreaKeys({
+        fallbackToAllCached: false
+      });
+      rebuildCombinedTransit();
+      refreshUiFromState();
+      return;
+    }
   }
 
   const now = Date.now();

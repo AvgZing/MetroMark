@@ -859,8 +859,8 @@ function clearFocusedLine(statusMessage = "Route focus cleared.", statusMeta = "
   resetClearRouteProgressConfirmation();
 
   state.focusedLineKey = "";
-  renderLineList();
   renderMapData();
+  renderLineList();
   renderProgress();
   if (typeof renderLineView === "function") {
     renderLineView();
@@ -916,8 +916,8 @@ async function setFocusedLine(lineKey, options = {}) {
   }
   
   setUserStatusFromLine(line);
-  renderLineList();
   renderMapData();
+  renderLineList();
   renderProgress();
 
   setStatus(
@@ -1146,8 +1146,11 @@ function renderLineList() {
     );
     const routeStopsLoading = state.inFlightLineStopKeys.has(routeStopsCacheKeyValue);
     const routeStopsAutoAttempted = Boolean(state.routeStopsAutoLoadAttempts?.has(routeStopsCacheKeyValue));
+    const isFocusedRoute =
+      state.focusedLineKey === line.lineKey ||
+      (state.lineViewOpen && state.lineViewLineKey === line.lineKey);
 
-    if (!routeStopsLoaded && !routeStopsLoading && !routeStopsAutoAttempted) {
+    if (isFocusedRoute && !routeStopsLoaded && !routeStopsLoading && !routeStopsAutoAttempted) {
       if (!state.routeStopsAutoLoadAttempts) {
         state.routeStopsAutoLoadAttempts = new Map();
       }
@@ -1159,7 +1162,7 @@ function renderLineList() {
       }).catch(() => {});
     }
 
-    const shouldShowLoadingStops = !routeStopsLoaded && (routeStopsLoading || !routeStopsAutoAttempted);
+    const shouldShowLoadingStops = !routeStopsLoaded && (routeStopsLoading || (isFocusedRoute && !routeStopsAutoAttempted));
 
     if (routeStopsLoaded) {
       const stopCount = document.createElement("span");
@@ -1261,8 +1264,8 @@ function renderLineList() {
 function refreshUiFromState() {
   renderModeFilterBar();
   renderFrequencyFilterBar();
-  renderLineList();
   renderMapData();
+  renderLineList();
   renderProgress();
   if (typeof updateLoadingStatus === "function") {
     updateLoadingStatus();

@@ -239,6 +239,8 @@ const state = {
   inFlightHeadwayLineKeys: new Set(),
   requestedAreaKeys: new Set(),
   currentViewportBbox: null,
+  lastViewportFetchBbox: null,
+  lastViewportFetchZoom: null,
   visibleAreaKeys: new Set(),
   activeAreaKeys: new Set(),
   fetchQueue: [],
