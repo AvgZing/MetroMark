@@ -471,6 +471,7 @@ function rebuildCombinedTransit() {
   if (state.activeAreaKeys.size === 0) {
     state.transit = null;
     state.lineSummaries = [];
+    state.loadedLineSummaries = [];
     state.focusedLineKey = "";
     return;
   }
@@ -649,7 +650,41 @@ function rebuildCombinedTransit() {
     })
     .filter(Boolean);
 
+  const loadedLineSummaries = Array.from(lineByKeyAll.entries())
+    .map(([lineKey, line]) => {
+      if (!line) {
+        return null;
+      }
+
+      return {
+        ...line,
+        lineKey,
+        routeOnestopId: line.routeOnestopId || "",
+        stopCount: stopCountsByLine.get(lineKey) || Number(line.stopCount || 0) || 0,
+        mode: line.mode || modeLabelFromRouteType(line.routeType),
+        serviceTier: line.serviceTier || lineServiceTier(line),
+        frequencyBucket: line.frequencyBucket || lineFrequencyBucket(line),
+        headwayBestMinutes: lineHeadwayBestMinutes(line),
+        headwaySource: String(line.headwaySource || ""),
+        headwayChecked: Number(line.headwayChecked || 0) === 1 ? 1 : 0
+      };
+    })
+    .filter(Boolean);
+
   lineSummaries.sort((a, b) => {
+    const tierDiff = lineSortWeight(a) - lineSortWeight(b);
+    if (tierDiff !== 0) {
+      return tierDiff;
+    }
+
+    const stopDiff = Number(b.stopCount || 0) - Number(a.stopCount || 0);
+    if (stopDiff !== 0) {
+      return stopDiff;
+    }
+    return lineDisplayName(a).localeCompare(lineDisplayName(b));
+  });
+
+  loadedLineSummaries.sort((a, b) => {
     const tierDiff = lineSortWeight(a) - lineSortWeight(b);
     if (tierDiff !== 0) {
       return tierDiff;
@@ -673,5 +708,6 @@ function rebuildCombinedTransit() {
     }
   };
   state.lineSummaries = lineSummaries;
+  state.loadedLineSummaries = loadedLineSummaries;
 }
 

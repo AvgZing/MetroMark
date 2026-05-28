@@ -203,6 +203,12 @@ function bindEvents() {
 
     state.areaCache.clear();
     state.lineStopsCache.clear();
+    if (state.loadedLineSummaries) {
+      state.loadedLineSummaries = [];
+    }
+    if (state.routeStopsAutoLoadAttempts) {
+      state.routeStopsAutoLoadAttempts.clear();
+    }
     state.inFlightLineStopKeys.clear();
     resetViewAggregation();
 

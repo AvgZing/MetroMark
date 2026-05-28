@@ -180,8 +180,10 @@ const state = {
   cities: [],
   transit: null,
   lineSummaries: [],
+  loadedLineSummaries: [],
   areaCache: new Map(),
   lineStopsCache: new Map(),
+  routeStopsAutoLoadAttempts: new Map(),
   inFlightLineStopKeys: new Set(),
   inFlightHeadwayLineKeys: new Set(),
   requestedAreaKeys: new Set(),
@@ -1516,11 +1518,12 @@ async function openLineView(lineKey) {
   renderLineView();
   renderUserStatus();
 
-  ensureLineStopsLoaded(normalizedLineKey, { silent: true })
-    .then(() => {
-      renderLineView();
-    })
-    .catch(() => {});
+  await Promise.all([
+    ensureLineStopsLoaded(normalizedLineKey, { silent: true }),
+    ensureLineHeadwayLoaded(normalizedLineKey, { forceRefresh: false, silent: true })
+  ]).catch(() => {});
+
+  renderLineView();
 }
 
 function restoreLineViewReturnState() {
@@ -1584,7 +1587,6 @@ async function openLineViewMap() {
   }
 
   await setFocusedLine(lineKey, { forceRefresh: false });
-  await ensureLineStopsLoaded(lineKey, { silent: true });
   fitMapToLine(lineKey);
 }
 
@@ -2004,6 +2006,13 @@ function canFetchViewportRoutes() {
 
 function areFilterCountsUncertain() {
   if (!canFetchViewportRoutes()) {
+    return false;
+  }
+
+  if (
+    (Array.isArray(state.loadedLineSummaries) && state.loadedLineSummaries.length > 0) ||
+    (Array.isArray(state.lineSummaries) && state.lineSummaries.length > 0)
+  ) {
     return false;
   }
 

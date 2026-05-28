@@ -2346,6 +2346,7 @@ async function getRouteStopsTransit(lineKey, options = {}) {
   }
 
   const forceRefresh = Boolean(options.forceRefresh);
+  const cacheOnly = Boolean(options.cacheOnly);
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
   const stopTypeKey = stopLocationTypes.join("-");
   const cacheKey = `${TRANSIT_CACHE_PREFIX}route:${normalizedLineKey}:types:${stopTypeKey}`;
@@ -2362,6 +2363,15 @@ async function getRouteStopsTransit(lineKey, options = {}) {
         stopLocationTypes
       };
     }
+  }
+
+  if (cacheOnly) {
+    return {
+      payload: null,
+      cacheStatus: "miss",
+      cacheKey: `route:${normalizedLineKey}:types:${stopTypeKey}`,
+      stopLocationTypes
+    };
   }
 
   const line = await fetchRouteByLineKey(normalizedLineKey, options);

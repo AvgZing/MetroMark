@@ -127,8 +127,8 @@ function initializeMap() {
   state.map = new maplibregl.Map({
     container: "map",
     style: createMapStyle(),
-    center: [-30, 25],
-    zoom: 1.7,
+    center: [-122.335, 47.608],
+    zoom: 9.5,
     maxPitch: 80,
     antialias: true
   });

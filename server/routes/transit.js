@@ -107,6 +107,7 @@ router.get("/transit/route-stops", async (req, res) => {
   try {
     const data = await getRouteStopsTransit(lineKey, {
       forceRefresh: asBoolean(req.query.refresh),
+      cacheOnly: asBoolean(req.query.cacheOnly),
       stopLocationTypes: stopTypes,
       requestSource: "user"
     });
@@ -116,7 +117,7 @@ router.get("/transit/route-stops", async (req, res) => {
       cacheKey: data.cacheKey,
       cacheExpiresAt: data.cacheExpiresAt || null,
       stopLocationTypes: data.stopLocationTypes || [0, 1],
-      ...data.payload
+      ...(data.payload || {})
     }));
   } catch (error) {
     return res.status(400).json({
