@@ -937,10 +937,6 @@ async function loadVisibleRouteStopCounts() {
     return false;
   }
 
-  if (state.inFlightAreaKeys.size > 0 || state.fetchQueue.length > 0) {
-    return false;
-  }
-
   const candidateMap = new Map();
   for (const line of getShownLines()) {
     candidateMap.set(line.lineKey, line);
