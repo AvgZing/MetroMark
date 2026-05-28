@@ -4,57 +4,17 @@
     return;
   }
 
+  if (Number(feature?.properties?.is_interactive || 0) !== 1) {
+    return;
+  }
+
   closeRouteSelectionPopup();
   onRouteHoverLeave();
 
   state.lastStopClickAt = Date.now();
   resetClearRouteProgressConfirmation();
 
-  if (!state.user) {
-    setUserStatusFromStation(feature.properties || {}, "Sign in to mark this station as visited.");
-    setStatus("Sign in first to mark stations.", "error");
-    return;
-  }
-
-  const lineKey = feature.properties.line_key;
-  const stationKey = feature.properties.station_key;
-  const stationName = feature.properties.station_name;
-  const [lon, lat] = feature.geometry.coordinates;
-
-  const visitedSet = getVisitedSetForLine(lineKey);
-  const nextVisited = !visitedSet.has(stationKey);
-
-  try {
-    await apiRequest("/api/progress/toggle", {
-      method: "POST",
-      body: JSON.stringify({
-        lineKey,
-        stationKey,
-        stationName,
-        lon,
-        lat,
-        visited: nextVisited
-      })
-    });
-
-    if (nextVisited) {
-      visitedSet.add(stationKey);
-    } else {
-      visitedSet.delete(stationKey);
-    }
-
-    renderMapData();
-    renderProgress();
-
-    setUserStatusFromStation(
-      feature.properties || {},
-      nextVisited ? "Marked as visited in your progress." : "Marked as unvisited in your progress."
-    );
-
-    setStatus(`${nextVisited ? "Visited" : "Unvisited"}: ${stationName}`, "ok");
-  } catch (error) {
-    setStatus(error.message, "error");
-  }
+  await toggleVisitedForStation(feature.properties || {}, feature.geometry?.coordinates || []);
 }
 
 function onStopHoverMove(event) {
@@ -65,6 +25,11 @@ function onStopHoverMove(event) {
 
   const feature = event.features && event.features[0];
   if (!feature || !state.hoverPopup) {
+    return;
+  }
+
+  if (Number(feature?.properties?.is_interactive || 0) !== 1) {
+    onStopHoverLeave();
     return;
   }
 
@@ -162,8 +127,8 @@ function initializeMap() {
   state.map = new maplibregl.Map({
     container: "map",
     style: createMapStyle(),
-    center: [-30, 25],
-    zoom: 1.7,
+    center: [-122.335, 47.608],
+    zoom: 9.5,
     maxPitch: 80,
     antialias: true
   });
@@ -296,7 +261,7 @@ function initializeMap() {
       source: "focus-mask",
       paint: {
         "fill-color": "#1f262d",
-        "fill-opacity": ["case", ["==", ["get", "active"], 1], 0.48, 0]
+        "fill-opacity": ["case", ["==", ["get", "active"], 1], 0.65, 0]
       }
     });
 
@@ -377,6 +342,30 @@ function initializeMap() {
     });
 
     state.map.addLayer({
+      id: "routes-hit",
+      type: "line",
+      source: "routes",
+      filter: ["==", ["get", "is_visible"], 1],
+      paint: {
+        "line-color": "#000000",
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          1,
+          6,
+          4,
+          10,
+          8,
+          14,
+          13,
+          18
+        ],
+        "line-opacity": 0
+      }
+    });
+
+    state.map.addLayer({
       id: "stops-layer",
       type: "circle",
       source: "stops",
@@ -394,17 +383,49 @@ function initializeMap() {
           14,
           7.1
         ],
-        "circle-color": ["case", ["==", ["get", "visited"], 1], "#1a9b66", "#d9563a"],
-        "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 1.2,
-        "circle-opacity": ["case", ["==", ["get", "is_focused"], 1], 0.94, 0.32],
-        "circle-stroke-opacity": ["case", ["==", ["get", "is_focused"], 1], 1, 0.45]
+        "circle-color": [
+          "case",
+          ["==", ["get", "show_all"], 1],
+          "#ffffff",
+          ["==", ["get", "visited"], 1],
+          "#1a9b66",
+          "#d9563a"
+        ],
+        "circle-stroke-color": [
+          "case",
+          ["==", ["get", "show_all"], 1],
+          "#0f1b22",
+          "#ffffff"
+        ],
+        "circle-stroke-width": [
+          "case",
+          ["==", ["get", "show_all"], 1],
+          0.9,
+          1.2
+        ],
+        "circle-opacity": [
+          "case",
+          ["==", ["get", "show_all"], 1],
+          1,
+          ["==", ["get", "is_focused"], 1],
+          0.94,
+          0.32
+        ],
+        "circle-stroke-opacity": [
+          "case",
+          ["==", ["get", "show_all"], 1],
+          1,
+          ["==", ["get", "is_focused"], 1],
+          1,
+          0.45
+        ]
       }
     });
 
-    const interactiveRouteLayers = ["routes-main", "routes-background-main"];
+    const routeHoverLayers = ["routes-main", "routes-background-main"];
+    const routeClickLayers = ["routes-hit"];
 
-    for (const layerId of interactiveRouteLayers) {
+    for (const layerId of routeClickLayers) {
       state.map.on("click", layerId, (event) => {
         const now = Date.now();
         if (now - state.lastStopClickAt < 260) {
@@ -414,9 +435,11 @@ function initializeMap() {
           return;
         }
 
-        const stopHits = state.map.queryRenderedFeatures(event.point, {
-          layers: ["stops-layer"]
-        });
+        const stopHits = state.map
+          .queryRenderedFeatures(event.point, {
+            layers: ["stops-layer"]
+          })
+          .filter((feature) => Number(feature?.properties?.is_interactive || 0) === 1);
         if (
           Array.isArray(stopHits) &&
           stopHits.length > 0 &&
@@ -426,7 +449,7 @@ function initializeMap() {
         }
 
         const routeHits = state.map.queryRenderedFeatures(event.point, {
-          layers: interactiveRouteLayers
+          layers: routeClickLayers
         });
 
         const seenLineKeys = new Set();
@@ -465,7 +488,9 @@ function initializeMap() {
           `Pick one from the selector (${overlappedLines.length} routes).`
         );
       });
+    }
 
+    for (const layerId of routeHoverLayers) {
       state.map.on("mouseenter", layerId, () => {
         if (hoverInteractionsEnabled()) {
           state.map.getCanvas().style.cursor = "pointer";
@@ -485,8 +510,9 @@ function initializeMap() {
     }
 
     state.map.on("click", "stops-layer", onStopClicked);
-    state.map.on("mouseenter", "stops-layer", () => {
-      if (hoverInteractionsEnabled()) {
+    state.map.on("mouseenter", "stops-layer", (event) => {
+      const feature = event.features && event.features[0];
+      if (hoverInteractionsEnabled() && Number(feature?.properties?.is_interactive || 0) === 1) {
         state.map.getCanvas().style.cursor = "pointer";
       }
     });
@@ -516,7 +542,7 @@ function initializeMap() {
             [point.x + closePadding, point.y + closePadding]
           ],
           {
-            layers: interactiveRouteLayers
+            layers: routeClickLayers
           }
         );
 
@@ -535,14 +561,14 @@ function initializeMap() {
           [point.x + closePadding, point.y + closePadding]
         ],
         {
-          layers: ["stops-layer", "routes-main", "routes-background-main"]
+          layers: ["stops-layer", "routes-hit", "routes-main", "routes-background-main"]
         }
       );
 
       const hasVisibleNearbyFeature = Array.isArray(nearby)
         ? nearby.some((feature) => {
             if (feature?.layer?.id === "stops-layer") {
-              return true;
+              return Number(feature?.properties?.is_interactive || 0) === 1;
             }
 
             const line = lineFromRouteFeature(feature);

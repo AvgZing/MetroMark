@@ -1,0 +1,326 @@
+/* Admin Override Page Styles */
+
+.admin-override-shell {
+  display: grid;
+  grid-template-columns: minmax(330px, 420px) 1fr;
+  width: 100%;
+  height: 100%;
+}
+
+.override-sidebar {
+  position: relative;
+  padding: 14px;
+  overflow-y: auto;
+  border-right: 1px solid var(--panel-border);
+  background: var(--shell);
+  backdrop-filter: blur(4px);
+}
+
+.override-map-stage {
+  position: relative;
+}
+
+.override-controls-panel,
+.override-edit-panel {
+  margin-bottom: 14px;
+}
+
+.override-controls-panel h2,
+.override-edit-panel h2 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.override-controls-panel h3,
+.override-edit-panel h3 {
+  margin: 12px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.override-mode-selector select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.override-status {
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(23, 124, 162, 0.1);
+  color: var(--accent);
+  font-size: 12px;
+  text-align: center;
+}
+
+.override-edit-panel label {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.override-edit-panel input,
+.override-edit-panel select {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+
+.override-stops-list {
+  margin: 10px 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.3);
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.override-stops-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid rgba(20, 53, 71, 0.1);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(4px);
+}
+
+.override-stop-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(92px, 0.7fr) minmax(92px, 0.7fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+
+.override-stop-name-input,
+.override-stop-coordinate-input {
+  min-width: 0;
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.override-stop-order-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.override-stop-order-btn {
+  min-width: 44px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: rgba(23, 124, 162, 0.1);
+  border: 1px solid rgba(23, 124, 162, 0.25);
+  color: var(--accent);
+}
+
+.override-stop-order-btn:hover {
+  background: rgba(23, 124, 162, 0.18);
+}
+
+.override-stop-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(20, 53, 71, 0.1);
+  font-size: 12px;
+}
+
+.override-stop-item:last-child {
+  border-bottom: none;
+}
+
+.override-stop-item.is-dragging {
+  opacity: 0.6;
+  background: rgba(23, 124, 162, 0.1);
+}
+
+.override-stop-drag-handle {
+  cursor: grab;
+  color: var(--muted);
+  font-size: 14px;
+  user-select: none;
+}
+
+.override-stop-drag-handle:active {
+  cursor: grabbing;
+}
+
+.override-stop-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.override-stop-delete-btn {
+  width: auto;
+  min-width: 60px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: rgba(182, 72, 44, 0.1);
+  border: 1px solid rgba(182, 72, 44, 0.3);
+  color: var(--warn);
+  cursor: pointer;
+}
+
+.override-stop-delete-btn:hover {
+  background: rgba(182, 72, 44, 0.2);
+}
+
+.override-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.override-actions .btn {
+  flex: 1;
+  font-size: 13px;
+}
+
+/* Review Settings */
+.review-setting {
+  margin-bottom: 10px;
+}
+
+.review-setting label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.review-setting input[type="checkbox"] {
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}
+
+.setting-note {
+  margin: 4px 0 0 26px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Operator Review List */
+.operator-review-list {
+  margin-bottom: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.operator-review-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 12px;
+}
+
+.operator-review-item:not(:last-child) {
+  border-bottom: 1px solid rgba(20, 53, 71, 0.1);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+
+.operator-review-item .operator-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.operator-review-toggles {
+  display: flex;
+  gap: 6px;
+}
+
+.operator-toggle-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.operator-toggle-btn:hover {
+  background: rgba(23, 124, 162, 0.1);
+}
+
+.operator-toggle-btn.allowed {
+  background: rgba(31, 107, 47, 0.2);
+  border-color: #1f6b2f;
+  color: #1f6b2f;
+}
+
+.operator-toggle-btn.blocked {
+  background: rgba(157, 34, 34, 0.2);
+  border-color: #9d2222;
+  color: #9d2222;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .admin-override-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .override-sidebar {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+  }
+
+  .override-sidebar.open {
+    display: block;
+  }
+
+  .override-map-stage {
+    width: 100%;
+    height: 100%;
+  }
+
+  .override-stop-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .override-stops-toolbar {
+    flex-direction: column;
+  }
+}

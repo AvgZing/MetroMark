@@ -1,7 +1,9 @@
+const crypto = require("crypto");
 const config = require("../../config");
 const db = require("../../db");
 const { VectorTile } = require("@mapbox/vector-tile");
 const Pbf = require("pbf").default;
+const { getCityBySlug } = require("../../city-presets");
 const {
   normalizeName,
   stableStationKey,
@@ -50,6 +52,15 @@ function sanitizeColor(rawColor, fallbackSeed) {
 
 function sanitizeText(value) {
   return String(value || "").trim();
+}
+
+function isCacheExpiredRow(cached) {
+  const expiresAt = Number(cached?.expiresAt || 0);
+  if (!Number.isFinite(expiresAt) || expiresAt <= 0) {
+    return false;
+  }
+
+  return expiresAt <= Math.floor(Date.now() / 1000);
 }
 
 function firstTruthy(values) {
@@ -174,7 +185,7 @@ function getTransitlandMetrics() {
   return readTransitlandMetrics();
 }
 
-function parseBboxArray(rawBbox) {
+function parseBboxArray(rawBbox, options = {}) {
   if (!Array.isArray(rawBbox) || rawBbox.length !== 4) {
     throw new Error("bbox must contain four comma-separated coordinates.");
   }
@@ -196,7 +207,8 @@ function parseBboxArray(rawBbox) {
   const width = east - west;
   const height = north - south;
 
-  if (width > config.BBOX_MAX_SPAN_DEGREES || height > config.BBOX_MAX_SPAN_DEGREES) {
+  const allowWideBbox = Boolean(options.allowWideBbox);
+  if (!allowWideBbox && (width > config.BBOX_MAX_SPAN_DEGREES || height > config.BBOX_MAX_SPAN_DEGREES)) {
     throw new Error(
       `bbox span is too large. Zoom in so width/height are under ${config.BBOX_MAX_SPAN_DEGREES} degrees.`
     );
@@ -231,8 +243,10 @@ function snapBboxToGrid(bbox, step) {
   ];
 }
 
-function normalizeBboxForCache(rawBbox, zoom) {
-  const parsed = parseBboxArray(rawBbox);
+function normalizeBboxForCache(rawBbox, zoom, options = {}) {
+  const parsed = parseBboxArray(rawBbox, {
+    allowWideBbox: Boolean(options.allowWideBbox)
+  });
   const step = bboxStepFromZoom(zoom);
   const snapped = snapBboxToGrid(parsed, step);
   const [west, south, east, north] = snapped;
@@ -270,7 +284,48 @@ function wait(milliseconds) {
   });
 }
 
-async function transitlandRequest(path, params) {
+function isBackgroundRequest(options = {}) {
+  const source = String(options.requestSource || "").trim().toLowerCase();
+  return source === "background" || source === "harvest" || source === "scheduler";
+}
+
+async function enforceDailyUsageCapsIfNeeded(kind, options = {}) {
+  const enforce = Boolean(options.enforceDailyCap) || isBackgroundRequest(options);
+  if (!enforce) {
+    return;
+  }
+
+  const usageState = await db.getDailyUsageCapsState({
+    rest: config.HARVEST_DAILY_REST_LIMIT,
+    vector: config.HARVEST_DAILY_VECTOR_LIMIT,
+    routing: config.HARVEST_DAILY_ROUTING_LIMIT
+  });
+
+  const reached =
+    (kind === "rest" && usageState.reached.rest) ||
+    (kind === "vector" && usageState.reached.vector) ||
+    (kind === "routing" && usageState.reached.routing);
+
+  if (!reached) {
+    return;
+  }
+
+  const error = new Error(
+    `Daily ${kind} API cap reached. Background harvesting is paused until the next UTC day.`
+  );
+  error.code = "DAILY_USAGE_LIMIT_REACHED";
+  throw error;
+}
+
+async function recordUsage(kind, amount = 1) {
+  try {
+    await db.incrementUsage(kind, amount);
+  } catch {
+    // Keep request flow resilient if usage logging has a transient DB issue.
+  }
+}
+
+async function transitlandRequest(path, params, options = {}) {
   if (!config.TRANSITLAND_API_KEY) {
     throw new Error("Transitland API key is missing. Set TRANSITLAND_API_KEY in .env.");
   }
@@ -287,8 +342,11 @@ async function transitlandRequest(path, params) {
     const controller = new AbortController();
     const timeoutMs = Math.max(1500, Number(config.TRANSITLAND_REQUEST_TIMEOUT_MS || 15000));
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+    await enforceDailyUsageCapsIfNeeded("rest", options);
     transitlandMetrics.restApiRequestCount += 1;
     transitlandMetrics.lastRestRequestAt = new Date().toISOString();
+    await recordUsage("rest", 1);
 
     try {
       const response = await fetch(url, {
@@ -490,7 +548,7 @@ function routeLookupKeysFromObject(route) {
 async function fetchRoutesVectorTile(z, x, y, options = {}) {
   const cacheKey = `${TRANSIT_CACHE_PREFIX}routes-tile:${z}:${x}:${y}`;
   if (!options.forceRefresh) {
-    const cached = db.getCache(cacheKey);
+    const cached = await db.getCacheAny(cacheKey);
     if (cached?.payload) {
       return cached.payload;
     }
@@ -508,8 +566,11 @@ async function fetchRoutesVectorTile(z, x, y, options = {}) {
   });
 
   const url = `${TRANSITLAND_VECTOR_BASE_URL}/routes/tiles/${z}/${x}/${y}.pbf?${searchParams.toString()}`;
+
+  await enforceDailyUsageCapsIfNeeded("vector", options);
   transitlandMetrics.vectorTileRequestCount += 1;
   transitlandMetrics.lastVectorTileRequestAt = new Date().toISOString();
+  await recordUsage("vector", 1);
 
   try {
     const response = await fetch(url, {
@@ -568,7 +629,9 @@ async function fetchRoutesVectorTile(z, x, y, options = {}) {
     };
 
     const ttlHours = Math.max(1, Number(config.TRANSIT_CACHE_TTL_HOURS || 12));
-    db.setCache(cacheKey, payload, ttlHours * 3600);
+    await db.setCache(cacheKey, payload, ttlHours * 3600, {
+      cacheKind: "vector-tile"
+    });
     return payload;
   } catch (error) {
     if (error?.name === "AbortError") {
@@ -611,7 +674,9 @@ async function fetchVectorRouteHeadwaysForBbox(bboxArray, options = {}) {
     let tilePayload = null;
     try {
       tilePayload = await fetchRoutesVectorTile(tile.z, tile.x, tile.y, {
-        forceRefresh: Boolean(options.forceRefresh)
+        forceRefresh: Boolean(options.forceRefresh),
+        enforceDailyCap: Boolean(options.enforceDailyCap),
+        requestSource: options.requestSource
       });
     } catch {
       continue;
@@ -651,7 +716,7 @@ async function fetchVectorRouteHeadwaysForBbox(bboxArray, options = {}) {
   };
 }
 
-function normalizeRoute(route, index) {
+function normalizeRoute(route, index, options = {}) {
   const shortName = sanitizeText(route.route_short_name || route.short_name);
   const longName = sanitizeText(route.route_long_name || route.route_name || route.name);
   const operatorName = extractOperatorName(route);
@@ -672,7 +737,7 @@ function normalizeRoute(route, index) {
     lineName = `${shortName} | ${longName}`;
   }
 
-  const geometry = route.geometry || null;
+  const geometry = simplifyGeometryForZoom(route.geometry || null, options.zoom);
   if (!geometry || !geometry.type || !geometry.coordinates) {
     return null;
   }
@@ -695,11 +760,11 @@ function normalizeRoute(route, index) {
   };
 }
 
-function normalizeRoutes(rawRoutes) {
+function normalizeRoutes(rawRoutes, options = {}) {
   const unique = new Map();
 
   rawRoutes.forEach((route, index) => {
-    const normalized = normalizeRoute(route, index);
+    const normalized = normalizeRoute(route, index, options);
     if (!normalized) {
       return;
     }
@@ -789,6 +854,167 @@ function routeSortWeight(routeType) {
   if (tier === "special") return 1;
   if (tier === "other") return 2;
   return 3;
+}
+
+function geometryToleranceForZoom(zoom) {
+  const numeric = Number(zoom);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  if (numeric >= 15) return 0;
+  if (numeric >= 14) return 0.00002;
+  if (numeric >= 13) return 0.00004;
+  if (numeric >= 12) return 0.00008;
+  if (numeric >= 11) return 0.00016;
+  if (numeric >= 10) return 0.0003;
+  if (numeric >= 9) return 0.00055;
+  if (numeric >= 8) return 0.0009;
+  return 0.0015;
+}
+
+function perpendicularDistance(point, start, end) {
+  const x = Number(point?.[0]);
+  const y = Number(point?.[1]);
+  const x1 = Number(start?.[0]);
+  const y1 = Number(start?.[1]);
+  const x2 = Number(end?.[0]);
+  const y2 = Number(end?.[1]);
+
+  if ([x, y, x1, y1, x2, y2].some((value) => !Number.isFinite(value))) {
+    return 0;
+  }
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  if (dx === 0 && dy === 0) {
+    const ox = x - x1;
+    const oy = y - y1;
+    return Math.sqrt((ox * ox) + (oy * oy));
+  }
+
+  const numerator = Math.abs(dy * x - dx * y + x2 * y1 - y2 * x1);
+  const denominator = Math.sqrt((dx * dx) + (dy * dy));
+  return denominator > 0 ? numerator / denominator : 0;
+}
+
+function simplifyLineStringCoordinates(coords, tolerance) {
+  if (!Array.isArray(coords) || coords.length <= 2 || tolerance <= 0) {
+    return coords;
+  }
+
+  const simplify = (points) => {
+    if (points.length <= 2) {
+      return points.slice();
+    }
+
+    let maxDistance = 0;
+    let maxIndex = 0;
+
+    for (let index = 1; index < points.length - 1; index += 1) {
+      const distance = perpendicularDistance(points[index], points[0], points[points.length - 1]);
+      if (distance > maxDistance) {
+        maxDistance = distance;
+        maxIndex = index;
+      }
+    }
+
+    if (maxDistance <= tolerance) {
+      return [points[0], points[points.length - 1]];
+    }
+
+    const left = simplify(points.slice(0, maxIndex + 1));
+    const right = simplify(points.slice(maxIndex));
+    return left.slice(0, -1).concat(right);
+  };
+
+  return simplify(coords);
+}
+
+function simplifyGeometryForZoom(geometry, zoom) {
+  if (!geometry || !geometry.type || !Array.isArray(geometry.coordinates)) {
+    return geometry || null;
+  }
+
+  const tolerance = geometryToleranceForZoom(zoom);
+  if (tolerance <= 0) {
+    return geometry;
+  }
+
+  if (geometry.type === "LineString") {
+    const simplified = simplifyLineStringCoordinates(geometry.coordinates, tolerance);
+    return Array.isArray(simplified) && simplified.length >= 2
+      ? { type: "LineString", coordinates: simplified }
+      : null;
+  }
+
+  if (geometry.type === "MultiLineString") {
+    const lines = geometry.coordinates
+      .map((line) => simplifyLineStringCoordinates(line, tolerance))
+      .filter((line) => Array.isArray(line) && line.length >= 2);
+
+    if (!lines.length) {
+      return null;
+    }
+
+    return {
+      type: "MultiLineString",
+      coordinates: lines
+    };
+  }
+
+  return geometry;
+}
+
+function geometrySourceHash(geometry) {
+  if (!geometry) {
+    return "";
+  }
+
+  return crypto.createHash("sha1").update(JSON.stringify(geometry)).digest("hex");
+}
+
+async function resolveGeometryForZoom(route, options = {}) {
+  const lineKey = sanitizeText(route?.lineKey);
+  const zoom = Number(options.zoom);
+  const bbox = Array.isArray(options.bbox) && options.bbox.length === 4
+    ? options.bbox.map((value) => Number(value))
+    : null;
+
+  const fallbackGeometry = simplifyGeometryForZoom(route?.geometry || null, zoom);
+  if (!lineKey || !Number.isFinite(zoom) || !fallbackGeometry) {
+    return fallbackGeometry || null;
+  }
+
+  try {
+    const cached = await db.getRouteGeometryLod(lineKey, zoom, { bbox });
+    if (cached?.geometry) {
+      return cached.geometry;
+    }
+  } catch {
+    // Fall through to local simplification and best-effort storage.
+  }
+
+  try {
+    await db.upsertRouteGeometryLod(lineKey, zoom, fallbackGeometry, {
+      sourceHash: geometrySourceHash(route.geometry || fallbackGeometry)
+    });
+  } catch {
+    // Ignore storage failures and keep serving the simplified geometry.
+  }
+
+  if (bbox) {
+    try {
+      const clipped = await db.getRouteGeometryLod(lineKey, zoom, { bbox });
+      if (clipped?.geometry) {
+        return clipped.geometry;
+      }
+    } catch {
+      // Ignore clipping read failures.
+    }
+  }
+
+  return fallbackGeometry;
 }
 
 function frequencyBucketFromHeadwayMinutes(minutes) {
@@ -962,7 +1188,7 @@ async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
 
   const cacheKey = `${TRANSIT_CACHE_PREFIX}headway:${key}`;
   if (!options.forceRefresh) {
-    const cached = db.getCache(cacheKey);
+    const cached = await db.getCacheAny(cacheKey);
     if (cached && cached.payload) {
       return cached.payload;
     }
@@ -973,6 +1199,11 @@ async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    await enforceDailyUsageCapsIfNeeded("routing", options);
+    transitlandMetrics.routingApiRequestCount += 1;
+    transitlandMetrics.lastRoutingRequestAt = new Date().toISOString();
+    await recordUsage("routing", 1);
+
     const response = await fetch(`https://www.transit.land/routes/${encodeURIComponent(key)}`, {
       headers: {
         Accept: "text/html",
@@ -983,6 +1214,7 @@ async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
     });
 
     if (!response.ok) {
+      transitlandMetrics.routingApiRequestFailureCount += 1;
       return null;
     }
 
@@ -993,9 +1225,12 @@ async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
     }
 
     const ttlHours = Math.max(1, Number(config.ROUTE_HEADWAY_CACHE_TTL_HOURS || 72));
-    db.setCache(cacheKey, summary, ttlHours * 3600);
+    await db.setCache(cacheKey, summary, ttlHours * 3600, {
+      cacheKind: "route-headway"
+    });
     return summary;
   } catch {
+    transitlandMetrics.routingApiRequestFailureCount += 1;
     return null;
   } finally {
     clearTimeout(timeoutHandle);
@@ -1099,8 +1334,44 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
     routeParams.route_types = routeTypes.join(",");
   }
 
-  const routesResponse = await transitlandRequest("/routes", routeParams);
-  const fetchedRoutes = Array.isArray(routesResponse.routes) ? routesResponse.routes : [];
+  // Page through /routes results to avoid missing routes when a single page
+  // is truncated by Transitland limits. Respect routeLimit as the per-request
+  // page size and stop when we reach a reasonable maxResults cap.
+  const fetchedRoutes = [];
+  let afterCursor = null;
+  const pageLimit = Math.max(40, Math.min(routeLimit, 500));
+  const maxResults = Math.max(routeLimit, Number(config.ROUTE_CATALOG_MAX_RESULTS || 220));
+
+  let pagesFetched = 0;
+  while (fetchedRoutes.length < maxResults) {
+    const params = {
+      ...routeParams,
+      limit: String(pageLimit)
+    };
+    if (afterCursor !== null) {
+      params.after = String(afterCursor);
+    }
+
+    const pageResponse = await transitlandRequest("/routes", params, {
+      enforceDailyCap: Boolean(options.enforceDailyCap),
+      requestSource: options.requestSource
+    });
+
+    const pageRoutes = Array.isArray(pageResponse.routes) ? pageResponse.routes : [];
+    for (const r of pageRoutes) {
+      fetchedRoutes.push(r);
+      if (fetchedRoutes.length >= maxResults) break;
+    }
+
+    pagesFetched += 1;
+
+    const nextAfter = Number(pageResponse?.meta?.after);
+    const hasNext = Boolean(pageResponse?.meta?.next) && Number.isFinite(nextAfter);
+    if (!hasNext || pageRoutes.length === 0) {
+      break;
+    }
+    afterCursor = nextAfter;
+  }
   const filteredRoutes = routeTypes.length
     ? fetchedRoutes.filter((route) => allowedRouteTypes.has(Number(route?.route_type)))
     : fetchedRoutes;
@@ -1108,7 +1379,9 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
   const vectorHeadways = await fetchVectorRouteHeadwaysForBbox(bboxArray, {
     routeTypes,
     zoom: options.zoom,
-    forceRefresh: options.forceRefresh
+    forceRefresh: options.forceRefresh,
+    enforceDailyCap: Boolean(options.enforceDailyCap),
+    requestSource: options.requestSource
   });
 
   const headwayByRouteKey = vectorHeadways.headwayByRouteKey || {};
@@ -1136,6 +1409,14 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
       tileCount: vectorHeadways.tileCount,
       omittedTileCount: vectorHeadways.omittedTileCount,
       zoom: vectorHeadways.zoom
+    }
+    ,
+    diagnostics: {
+      pagesFetched,
+      fetchedRoutes: fetchedRoutes.length,
+      filteredRoutes: filteredRoutes.length,
+      requestedRouteLimit: routeLimit,
+      pageLimit
     }
   };
 }
@@ -1340,15 +1621,33 @@ function buildStationHubs(stops, routesByLineKey) {
   return hubStops;
 }
 
-function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
-  const normalizedRoutes = normalizeRoutes(rawRoutes);
-  const routesByLineKey = new Map(normalizedRoutes.map((route) => [route.lineKey, route]));
+async function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
+  const normalizedRoutes = normalizeRoutes(rawRoutes, options);
+  const resolvedRoutes = [];
+  for (const route of normalizedRoutes) {
+    const resolvedGeometry = await resolveGeometryForZoom(route, {
+      zoom: options.zoom,
+      bbox: area?.bbox
+    });
+
+    if (!resolvedGeometry) {
+      continue;
+    }
+
+    resolvedRoutes.push({
+      ...route,
+      geometry: resolvedGeometry,
+      bbox: geometryBbox(resolvedGeometry)
+    });
+  }
+
+  const routesByLineKey = new Map(resolvedRoutes.map((route) => [route.lineKey, route]));
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
   const routeTypes = normalizeRouteTypes(options.routeTypes);
   const allowedStopLocationTypes = new Set(stopLocationTypes);
   const vectorHeadwayMeta = options.vectorHeadwayMeta || {};
 
-  const routeFeatures = normalizedRoutes.map((route) => {
+  const routeFeatures = resolvedRoutes.map((route) => {
     const headwayBestMinutes = Number.isFinite(route.headwaySeconds)
       ? Number((route.headwaySeconds / 60).toFixed(1))
       : null;
@@ -1480,7 +1779,7 @@ function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
     stopCountsByLine.set(stop.lineKey, currentCount + 1);
   }
 
-  const lineSummaries = normalizedRoutes
+  const lineSummaries = resolvedRoutes
     .map((route) => {
       const headwayBestMinutes = Number.isFinite(route.headwaySeconds)
         ? Number((route.headwaySeconds / 60).toFixed(1))
@@ -1576,11 +1875,14 @@ function routeFeatureFromLine(line) {
   };
 }
 
-async function fetchRouteByLineKey(lineKey) {
+async function fetchRouteByLineKey(lineKey, options = {}) {
   const response = await transitlandRequest("/routes", {
     onestop_id: lineKey,
     include_geometry: "true",
     limit: "1"
+  }, {
+    enforceDailyCap: Boolean(options.enforceDailyCap),
+    requestSource: options.requestSource
   });
 
   let normalized = normalizeRoutes(Array.isArray(response.routes) ? response.routes : []);
@@ -1591,6 +1893,9 @@ async function fetchRouteByLineKey(lineKey) {
   try {
     const fallbackResponse = await transitlandRequest(`/routes/${encodeURIComponent(lineKey)}`, {
       include_geometry: "true"
+    }, {
+      enforceDailyCap: Boolean(options.enforceDailyCap),
+      requestSource: options.requestSource
     });
 
     if (fallbackResponse?.route) {
@@ -1604,7 +1909,7 @@ async function fetchRouteByLineKey(lineKey) {
   return null;
 }
 
-async function fetchStopsForRoute(lineKey) {
+async function fetchStopsForRoute(lineKey, options = {}) {
   const pageLimit = Math.max(20, Math.min(config.ROUTE_STOP_PAGE_LIMIT, 500));
   const maxResults = Math.max(pageLimit, Math.min(config.ROUTE_STOP_MAX_RESULTS, 5000));
 
@@ -1622,7 +1927,10 @@ async function fetchStopsForRoute(lineKey) {
       params.after = String(afterCursor);
     }
 
-    const response = await transitlandRequest("/stops", params);
+    const response = await transitlandRequest("/stops", params, {
+      enforceDailyCap: Boolean(options.enforceDailyCap),
+      requestSource: options.requestSource
+    });
     const pageStops = Array.isArray(response.stops) ? response.stops : [];
 
     for (const stop of pageStops) {
@@ -1645,6 +1953,240 @@ async function fetchStopsForRoute(lineKey) {
   return {
     stops,
     truncated
+  };
+}
+
+async function fetchRouteStopPatternsForRoute(lineKey, options = {}) {
+  const normalizedLineKey = sanitizeText(lineKey);
+  if (!normalizedLineKey) {
+    return null;
+  }
+
+  try {
+    return await transitlandRequest(
+      "/route_stop_patterns",
+      {
+        traversed_by: normalizedLineKey,
+        per_page: "1000"
+      },
+      {
+        enforceDailyCap: Boolean(options.enforceDailyCap),
+        requestSource: options.requestSource
+      }
+    );
+  } catch {
+    return null;
+  }
+}
+
+function extractTripStopTimes(tripResponse) {
+  const trip = tripResponse?.trip || tripResponse?.trips?.[0] || tripResponse || {};
+  const candidates = [
+    trip?.stop_times,
+    trip?.stopTimes,
+    tripResponse?.trips?.[0]?.stop_times,
+    tripResponse?.trips?.[0]?.stopTimes,
+    tripResponse?.stop_times,
+    tripResponse?.stopTimes
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  return [];
+}
+
+function extractTripDirectionId(tripResponse) {
+  const trip = tripResponse?.trip || tripResponse?.trips?.[0] || tripResponse || {};
+  const value = trip?.direction_id ?? tripResponse?.direction_id ?? trip?.directionId;
+  const directionId = Number(value);
+  return Number.isFinite(directionId) ? directionId : null;
+}
+
+function extractTripPatternId(tripResponse) {
+  const trip = tripResponse?.trip || tripResponse?.trips?.[0] || tripResponse || {};
+  const value = trip?.stop_pattern_id ?? tripResponse?.stop_pattern_id ?? trip?.stopPatternId;
+  const patternId = Number(value);
+  return Number.isFinite(patternId) ? patternId : null;
+}
+
+function extractTripInternalId(tripResponse) {
+  const trip = tripResponse?.trip || tripResponse?.trips?.[0] || tripResponse || {};
+  const value = trip?.id ?? tripResponse?.id ?? trip?.trip_id ?? tripResponse?.trip_id;
+  const internalId = Number(value);
+  return Number.isFinite(internalId) ? internalId : null;
+}
+
+function extractStopIdFromTripStopTime(stopTime) {
+  const stop = stopTime?.stop || stopTime || {};
+  return sanitizeText(
+    stop?.onestop_id ||
+      stop?.stop_onestop_id ||
+      stop?.id ||
+      stop?.stop_id ||
+      stopTime?.stop_id ||
+      stopTime?.stop_onestop_id
+  );
+}
+
+async function fetchRouteTripsForRoute(lineKey, options = {}) {
+  const normalizedLineKey = sanitizeText(lineKey);
+  if (!normalizedLineKey) {
+    return [];
+  }
+
+  const trips = [];
+  let afterCursor = null;
+  let truncated = false;
+  const pageLimit = Math.max(20, Math.min(200, Number(config.ROUTE_STOP_PAGE_LIMIT || 200)));
+  const maxResults = Math.max(pageLimit, Math.min(1200, Number(config.ROUTE_STOP_MAX_RESULTS || 1200)));
+
+  while (trips.length < maxResults) {
+    const params = {
+      limit: String(pageLimit),
+      include_geometry: "false"
+    };
+
+    if (Number.isFinite(afterCursor)) {
+      params.after = String(afterCursor);
+    }
+
+    const response = await transitlandRequest(
+      `/routes/${encodeURIComponent(normalizedLineKey)}/trips`,
+      params,
+      {
+        enforceDailyCap: Boolean(options.enforceDailyCap),
+        requestSource: options.requestSource
+      }
+    );
+
+    const pageTrips = Array.isArray(response?.trips) ? response.trips : [];
+    for (const trip of pageTrips) {
+      if (trips.length >= maxResults) {
+        truncated = true;
+        break;
+      }
+      trips.push(trip);
+    }
+
+    const nextAfter = Number(response?.meta?.after);
+    const hasNext = Boolean(response?.meta?.next) && Number.isFinite(nextAfter);
+    if (!hasNext || pageTrips.length === 0 || truncated) {
+      break;
+    }
+
+    afterCursor = nextAfter;
+  }
+
+  return trips;
+}
+
+async function fetchTripDetailById(routeKey, tripId, options = {}) {
+  const normalizedRouteKey = sanitizeText(routeKey);
+  const normalizedTripId = sanitizeText(tripId);
+  if (!normalizedRouteKey || !normalizedTripId) {
+    return null;
+  }
+
+  try {
+    return await transitlandRequest(
+      `/routes/${encodeURIComponent(normalizedRouteKey)}/trips/${encodeURIComponent(normalizedTripId)}`,
+      {
+        include_geometry: "true"
+      },
+      {
+        enforceDailyCap: Boolean(options.enforceDailyCap),
+        requestSource: options.requestSource
+      }
+    );
+  } catch {
+    return null;
+  }
+}
+
+async function buildDirectionStopSequencesForRoute(routeKey, options = {}) {
+  const routeTrips = await fetchRouteTripsForRoute(routeKey, options);
+  if (!routeTrips.length) {
+    return null;
+  }
+
+  const representativeTrips = new Map();
+  for (const trip of routeTrips) {
+    const directionId = extractTripDirectionId(trip);
+    if (!Number.isFinite(directionId) || (directionId !== 0 && directionId !== 1)) {
+      continue;
+    }
+
+    const patternId = extractTripPatternId(trip);
+    const tripId = extractTripInternalId(trip);
+    if (!Number.isFinite(tripId)) {
+      continue;
+    }
+
+    const groupingKey = `${directionId}:${Number.isFinite(patternId) ? patternId : tripId}`;
+    if (!representativeTrips.has(groupingKey)) {
+      representativeTrips.set(groupingKey, {
+        directionId,
+        tripId,
+        trip
+      });
+    }
+  }
+
+  const bestByDirection = new Map();
+  const patternsByDirection = new Map([[0, []], [1, []]]);
+  for (const representative of representativeTrips.values()) {
+    const detail = await fetchTripDetailById(routeKey, representative.tripId, options);
+    const stopTimes = extractTripStopTimes(detail);
+    if (!stopTimes.length) {
+      continue;
+    }
+
+    const stopEntries = stopTimes
+      .map((stopTime) => {
+        const stop = stopTime?.stop || stopTime || {};
+        return {
+          id: extractStopIdFromTripStopTime(stopTime),
+          stopId: sanitizeText(stop?.stop_id || stopTime?.stop_id),
+          name: sanitizeText(stop?.stop_name || stopTime?.stop_name)
+        };
+      })
+      .filter((entry) => Boolean(entry.id || entry.stopId || entry.name));
+
+    if (!stopEntries.length) {
+      continue;
+    }
+
+    const payload = {
+      tripId: representative.tripId,
+      patternId: extractTripPatternId(detail) ?? extractTripPatternId(representative.trip),
+      stopEntries
+    };
+
+    const existing = bestByDirection.get(representative.directionId);
+    if (!existing || stopEntries.length > existing.stopEntries.length) {
+      bestByDirection.set(representative.directionId, payload);
+    }
+
+    const list = patternsByDirection.get(representative.directionId) || [];
+    list.push(payload);
+    patternsByDirection.set(representative.directionId, list);
+  }
+
+  if (!bestByDirection.size) {
+    return null;
+  }
+
+  return {
+    0: bestByDirection.get(0)?.stopEntries || [],
+    1: bestByDirection.get(1)?.stopEntries || [],
+    patterns: {
+      0: patternsByDirection.get(0) || [],
+      1: patternsByDirection.get(1) || []
+    }
   };
 }
 
@@ -1804,16 +2346,35 @@ async function getRouteStopsTransit(lineKey, options = {}) {
   }
 
   const forceRefresh = Boolean(options.forceRefresh);
+  const cacheOnly = Boolean(options.cacheOnly);
+  const summaryOnly = Boolean(options.summaryOnly);
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
   const stopTypeKey = stopLocationTypes.join("-");
   const cacheKey = `${TRANSIT_CACHE_PREFIX}route:${normalizedLineKey}:types:${stopTypeKey}`;
 
   if (!forceRefresh) {
-    const cached = db.getCache(cacheKey);
+    const cached = await db.getCacheAny(cacheKey);
     if (cached) {
+      const cacheStatus = isCacheExpiredRow(cached) ? "stale-hit" : "hit";
+      const cachedLineSummary = Array.isArray(cached.payload?.lineSummaries) ? cached.payload.lineSummaries[0] || null : null;
+      if (summaryOnly) {
+        return {
+          payload: {
+            lineSummaries: [{
+              lineKey: normalizedLineKey,
+              stopCount: Number(cachedLineSummary?.stopCount || 0)
+            }]
+          },
+          cacheStatus,
+          cacheKey: `route:${normalizedLineKey}:types:${stopTypeKey}`,
+          cacheExpiresAt: cached.expiresAt,
+          stopLocationTypes
+        };
+      }
+
       return {
         payload: cached.payload,
-        cacheStatus: "hit",
+        cacheStatus,
         cacheKey: `route:${normalizedLineKey}:types:${stopTypeKey}`,
         cacheExpiresAt: cached.expiresAt,
         stopLocationTypes
@@ -1821,19 +2382,38 @@ async function getRouteStopsTransit(lineKey, options = {}) {
     }
   }
 
-  const line = await fetchRouteByLineKey(normalizedLineKey);
+  if (cacheOnly) {
+    return {
+      payload: null,
+      cacheStatus: "miss",
+      cacheKey: `route:${normalizedLineKey}:types:${stopTypeKey}`,
+      stopLocationTypes
+    };
+  }
+
+  const line = await fetchRouteByLineKey(normalizedLineKey, options);
   if (!line) {
     throw new Error(`No route found for ${normalizedLineKey}.`);
   }
 
   const membershipRouteKey = sanitizeText(line.routeOnestopId || normalizedLineKey);
-  const routeStops = await fetchStopsForRoute(membershipRouteKey);
+  const routeStops = await fetchStopsForRoute(membershipRouteKey, options);
+  const directionStopSequences = await buildDirectionStopSequencesForRoute(membershipRouteKey, options);
   const payload = buildRouteStopsPayload(line, routeStops.stops, {
     stopLocationTypes,
     sourceStopsTruncated: routeStops.truncated
   });
 
-  db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600);
+  if (directionStopSequences) {
+    payload.directionStopSequences = directionStopSequences;
+    if (directionStopSequences.patterns) {
+      payload.directionStopPatterns = directionStopSequences.patterns;
+    }
+  }
+
+  await db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600, {
+    cacheKind: "route-stops"
+  });
 
   return {
     payload,
@@ -1849,7 +2429,7 @@ async function getRouteHeadway(lineKey, options = {}) {
     throw new Error("lineKey is required.");
   }
 
-  const line = await fetchRouteByLineKey(normalizedLineKey);
+  const line = await fetchRouteByLineKey(normalizedLineKey, options);
   if (!line) {
     throw new Error(`No route found for ${normalizedLineKey}.`);
   }
@@ -1863,7 +2443,9 @@ async function getRouteHeadway(lineKey, options = {}) {
     const vectorHeadways = await fetchVectorRouteHeadwaysForBbox(bbox, {
       routeTypes: Number.isFinite(line.routeType) ? [line.routeType] : [],
       zoom: options.zoom,
-      forceRefresh: Boolean(options.forceRefresh)
+      forceRefresh: Boolean(options.forceRefresh),
+      enforceDailyCap: Boolean(options.enforceDailyCap),
+      requestSource: options.requestSource
     });
 
     const lookupKeys = routeLookupKeysFromObject({
@@ -1895,7 +2477,9 @@ async function getRouteHeadway(lineKey, options = {}) {
 
   if (!summary) {
     const routePageSummary = await fetchRouteHeadwaySummary(lookupKey, {
-      forceRefresh: Boolean(options.forceRefresh)
+      forceRefresh: Boolean(options.forceRefresh),
+      enforceDailyCap: Boolean(options.enforceDailyCap),
+      requestSource: options.requestSource
     });
 
     if (routePageSummary) {
@@ -1920,6 +2504,150 @@ async function getRouteHeadway(lineKey, options = {}) {
   };
 }
 
+function buildFeedFingerprint(payload) {
+  const lineSummaries = Array.isArray(payload?.lineSummaries) ? payload.lineSummaries : [];
+  if (!lineSummaries.length) {
+    return "";
+  }
+
+  const stableLines = lineSummaries
+    .map((line) => {
+      const lineKey = sanitizeText(line?.lineKey || line?.routeOnestopId);
+      const feedId = sanitizeText(line?.routeFeedId);
+      if (!lineKey) {
+        return "";
+      }
+
+      return `${feedId || "no-feed"}:${lineKey}`;
+    })
+    .filter(Boolean)
+    .sort();
+
+  if (!stableLines.length) {
+    return "";
+  }
+
+  return crypto.createHash("sha1").update(stableLines.join("|"), "utf8").digest("hex");
+}
+
+function buildFeedFingerprintFromRoutes(routes) {
+  const stableRoutes = Array.isArray(routes)
+    ? routes
+      .map((route) => {
+        const routeId = sanitizeText(route?.onestop_id || route?.route_onestop_id);
+        const feedId = sanitizeText(route?.route_feed_onestop_id || route?.feed_onestop_id);
+        if (!routeId) {
+          return "";
+        }
+
+        return `${feedId || "no-feed"}:${routeId}`;
+      })
+      .filter(Boolean)
+      .sort()
+    : [];
+
+  if (!stableRoutes.length) {
+    return "";
+  }
+
+  return crypto.createHash("sha1").update(stableRoutes.join("|"), "utf8").digest("hex");
+}
+
+async function applyRouteOrderingMetadataToPayload(payload) {
+  const lineSummaries = Array.isArray(payload?.lineSummaries) ? payload.lineSummaries : [];
+  if (!lineSummaries.length) {
+    return payload;
+  }
+
+  const lineKeys = Array.from(
+    new Set(lineSummaries.map((line) => sanitizeText(line?.lineKey)).filter(Boolean))
+  );
+
+  if (!lineKeys.length) {
+    return payload;
+  }
+
+  const metadataByLineKey = await db.getRouteOrderingMetadataByLineKeys(lineKeys);
+  if (!metadataByLineKey || metadataByLineKey.size === 0) {
+    return payload;
+  }
+
+  const decorateLine = (line) => {
+    const lineKey = sanitizeText(line?.lineKey);
+    if (!lineKey || !metadataByLineKey.has(lineKey)) {
+      return line;
+    }
+
+    const metadata = metadataByLineKey.get(lineKey) || {};
+    return {
+      ...line,
+      lineViewOrderingDefaultMode: sanitizeText(metadata.orderingModeDefaultMode || "auto") || "auto",
+      lineViewOrderingDefaultSource: sanitizeText(metadata.orderingModeDefaultSource || "auto") || "auto",
+      lineViewOrderingAdminMode: sanitizeText(metadata.orderingModeAdminMode || ""),
+      lineViewOrderingVoteCounts: metadata.orderingModeVoteCounts || {},
+      lineViewOrderingVoteTotal: Number(metadata.orderingModeVoteTotal || 0)
+    };
+  };
+
+  const nextRoutesGeoJson =
+    payload?.routesGeoJson && Array.isArray(payload.routesGeoJson.features)
+      ? {
+          ...payload.routesGeoJson,
+          features: payload.routesGeoJson.features.map((feature) => {
+            const lineKey = sanitizeText(feature?.properties?.line_key);
+            if (!lineKey || !metadataByLineKey.has(lineKey)) {
+              return feature;
+            }
+
+            const metadata = metadataByLineKey.get(lineKey) || {};
+            return {
+              ...feature,
+              properties: {
+                ...feature.properties,
+                line_view_ordering_default_mode: sanitizeText(metadata.orderingModeDefaultMode || "auto") || "auto",
+                line_view_ordering_default_source: sanitizeText(metadata.orderingModeDefaultSource || "auto") || "auto",
+                line_view_ordering_admin_mode: sanitizeText(metadata.orderingModeAdminMode || ""),
+                line_view_ordering_vote_total: Number(metadata.orderingModeVoteTotal || 0)
+              }
+            };
+          })
+        }
+      : payload?.routesGeoJson;
+
+  return {
+    ...payload,
+    lineSummaries: lineSummaries.map(decorateLine),
+    routesGeoJson: nextRoutesGeoJson
+  };
+}
+
+async function queueCityReverifyIfStale(area, cached) {
+  if (!area || area.kind !== "city" || !area.slug || !cached) {
+    return;
+  }
+
+  const staleDays = Math.max(1, Number(config.TRANSIT_CACHE_STALE_DAYS || 30));
+  const ageSeconds =
+    Math.floor(Date.now() / 1000) - Number(cached.verifiedAt || cached.fetchedAt || 0);
+
+  if (!Number.isFinite(ageSeconds) || ageSeconds < staleDays * 86400) {
+    return;
+  }
+
+  await db.ensureCityHarvestState(
+    {
+      slug: area.slug,
+      name: area.name
+    },
+    {
+      priority: Number(area.harvestPriority || 100),
+      initialStatus: "queued",
+      pendingRefresh: true
+    }
+  );
+  await db.queueCityRefresh(area.slug);
+}
+
 async function getTransitForArea(area, options = {}) {
   const forceRefresh = Boolean(options.forceRefresh);
   const cacheKey = `${TRANSIT_CACHE_PREFIX}${area.key}`;
@@ -1927,42 +2655,214 @@ async function getTransitForArea(area, options = {}) {
   const routeTypes = normalizeRouteTypes(options.routeTypes || area.routeTypes);
 
   if (!forceRefresh) {
-    const cached = db.getCache(cacheKey);
+    const cached = await db.getCacheAny(cacheKey);
     if (cached) {
+      const cacheStatus = isCacheExpiredRow(cached) ? "stale-hit" : "hit";
+      await queueCityReverifyIfStale(area, cached);
+
       return {
-        payload: cached.payload,
-        cacheStatus: "hit",
+        payload: await applyRouteOrderingMetadataToPayload(cached.payload || {}),
+        cacheStatus,
         cacheKey: area.key,
         cacheExpiresAt: cached.expiresAt,
+        cacheVerifiedAt: cached.verifiedAt,
+        feedFingerprint: cached.feedFingerprint || "",
+        stopLocationTypes
+      };
+    }
+
+    if (options.cacheOnly) {
+      const [minLon, minLat, maxLon, maxLat] = area.bbox;
+      const overlappingCaches = await db.getCacheByBbox(minLon, minLat, maxLon, maxLat, {
+        includeExpired: true
+      });
+
+      if (overlappingCaches && overlappingCaches.length > 0) {
+        const mergedRoutes = new Map();
+        const mergedStops = new Map();
+        const mergedLines = new Map();
+
+        for (const cacheEntry of overlappingCaches) {
+          const payload = cacheEntry.payload || {};
+
+          for (const feature of payload?.routesGeoJson?.features || []) {
+            const lineKey = feature?.properties?.line_key;
+            if (lineKey && !mergedRoutes.has(lineKey)) {
+              mergedRoutes.set(lineKey, feature);
+            }
+          }
+
+          for (const line of payload?.lineSummaries || []) {
+            const lineKey = line?.lineKey;
+            if (lineKey && !mergedLines.has(lineKey)) {
+              mergedLines.set(lineKey, line);
+            }
+          }
+
+          for (const feature of payload?.stopsGeoJson?.features || []) {
+            const stopId = feature?.properties?.stop_id || feature?.id;
+            if (stopId && !mergedStops.has(stopId)) {
+              mergedStops.set(stopId, feature);
+            }
+          }
+        }
+
+        const mergedPayload = await applyRouteOrderingMetadataToPayload({
+          routesGeoJson: {
+            type: "FeatureCollection",
+            features: Array.from(mergedRoutes.values())
+          },
+          stopsGeoJson: {
+            type: "FeatureCollection",
+            features: Array.from(mergedStops.values())
+          },
+          lineSummaries: Array.from(mergedLines.values()),
+          area: { bbox: area.bbox }
+        });
+
+        return {
+          payload: mergedPayload,
+          cacheStatus: "partial-hit",
+          cacheKey: area.key,
+          stopLocationTypes
+        };
+      }
+
+      return {
+        payload: await applyRouteOrderingMetadataToPayload({
+          routesGeoJson: { type: "FeatureCollection", features: [] },
+          stopsGeoJson: { type: "FeatureCollection", features: [] },
+          lineSummaries: [],
+          area: { bbox: area.bbox }
+        }),
+        cacheStatus: "miss",
+        cacheKey: area.key,
         stopLocationTypes
       };
     }
   }
 
-  const { routes, stops, vectorHeadwayMeta } = await fetchRoutesAndStopsForBbox(area.bbox, {
-    routeTypes,
-    zoom: options.zoom,
-    forceRefresh
+  const fetchResult = await fetchRoutesAndStopsForBbox(area.bbox, {
+    ...options,
+    stopLocationTypes,
+    routeTypes
   });
-  const payload = buildTransitPayload(area, routes, stops, {
+
+  const payload = await buildTransitPayload(area, fetchResult.routes || [], fetchResult.stops || [], {
+    zoom: Number(options.zoom),
     stopLocationTypes,
     routeTypes,
-    vectorHeadwayMeta
+    vectorHeadwayMeta: fetchResult.vectorHeadwayMeta,
+    requestSource: options.requestSource
   });
 
-  db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600);
+  const enrichedPayload = await applyRouteOrderingMetadataToPayload(payload);
+  const ttlSeconds = Math.max(60, Number(config.TRANSIT_CACHE_TTL_HOURS || 2160) * 3600);
+  const fetchedAt = Math.floor(Date.now() / 1000);
+  const feedFingerprint = buildFeedFingerprint(enrichedPayload);
 
-  return {
-    payload,
+  await db.setCache(cacheKey, enrichedPayload, ttlSeconds, {
+    cacheKind: area.kind || "bbox",
+    citySlug: area.slug || null,
+    feedFingerprint,
+    verifiedAt: fetchedAt
+  });
+
+  const result = {
+    payload: enrichedPayload,
     cacheStatus: "miss",
     cacheKey: area.key,
+    cacheExpiresAt: fetchedAt + ttlSeconds,
+    cacheVerifiedAt: fetchedAt,
+    feedFingerprint,
     stopLocationTypes
+  };
+
+  if (options.debug) {
+    result.debug = {
+      fetchDiagnostics: fetchResult.diagnostics || null,
+      areaBbox: area.bbox,
+      requestedRouteTypes: routeTypes,
+      vectorHeadwayMeta: fetchResult.vectorHeadwayMeta || null
+    };
+  }
+
+  return result;
+}
+
+async function getCityTransit(slug, options = {}) {
+  const city = getCityBySlug(slug);
+  if (!city) {
+    return null;
+  }
+
+  const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
+  const routeTypes = normalizeRouteTypes(options.routeTypes);
+  const routeTypeKey = routeTypes.length ? routeTypes.join("-") : "all";
+
+  const area = {
+    key: `city:${city.slug}:route-catalog:route-types:${routeTypeKey}`,
+    kind: "city",
+    slug: city.slug,
+    name: city.name,
+    country: city.country,
+    center: city.center,
+    bbox: city.bbox,
+    routeTypes,
+    harvestPriority: Number(options.harvestPriority || 100)
+  };
+
+  const result = await getTransitForArea(area, {
+    ...options,
+    stopLocationTypes,
+    routeTypes
+  });
+
+  return {
+    ...result,
+    stopLocationTypes,
+    routeTypes
+  };
+}
+
+async function getCityFeedFingerprint(slug, options = {}) {
+  const city = getCityBySlug(slug);
+  if (!city) {
+    return null;
+  }
+
+  const routeTypes = normalizeRouteTypes(options.routeTypes);
+  const routeLimit = Math.max(80, Number(config.ROUTE_CATALOG_MAX_RESULTS || 220));
+  const params = {
+    bbox: toBboxString(city.bbox),
+    include_geometry: "false",
+    limit: String(routeLimit)
+  };
+
+  if (routeTypes.length) {
+    params.route_types = routeTypes.join(",");
+  }
+
+  const routesResponse = await transitlandRequest("/routes", params, {
+    enforceDailyCap: Boolean(options.enforceDailyCap),
+    requestSource: options.requestSource
+  });
+
+  const routes = Array.isArray(routesResponse?.routes) ? routesResponse.routes : [];
+  return {
+    citySlug: city.slug,
+    routeCount: routes.length,
+    feedFingerprint: buildFeedFingerprintFromRoutes(routes)
   };
 }
 
 async function getBboxTransit(rawBbox, options = {}) {
   const zoom = Number(options.zoom);
-  const bboxInfo = normalizeBboxForCache(rawBbox, zoom);
+  const bboxInfo = normalizeBboxForCache(rawBbox, zoom, {
+    // Cache-only requests are Postgres overlap lookups and should work for broad views.
+    // Transitland-fetching requests still obey BBOX_MAX_SPAN_DEGREES.
+    allowWideBbox: Boolean(options.cacheOnly)
+  });
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
   const routeTypes = normalizeRouteTypes(options.routeTypes);
   const routeTypeKey = routeTypes.length ? routeTypes.join("-") : "all";
@@ -1993,6 +2893,8 @@ async function getBboxTransit(rawBbox, options = {}) {
 }
 
 module.exports = {
+  getCityTransit,
+  getCityFeedFingerprint,
   getBboxTransit,
   getRouteStopsTransit,
   getRouteHeadway,

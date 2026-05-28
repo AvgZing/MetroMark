@@ -8,6 +8,33 @@
   });
 }
 
+function setAuthFeedback(message = "", kind = "neutral") {
+  if (!els.authFeedback) {
+    return;
+  }
+
+  const text = String(message || "").trim();
+  els.authFeedback.classList.remove("ok", "error");
+
+  if (!text) {
+    els.authFeedback.hidden = true;
+    els.authFeedback.textContent = "";
+    return;
+  }
+
+  els.authFeedback.hidden = false;
+  els.authFeedback.textContent = text;
+
+  if (kind === "ok" || kind === "error") {
+    els.authFeedback.classList.add(kind);
+  }
+}
+
+// Ensure Line View functions are accessible (defensive programming)
+if (typeof openLineView === 'undefined') {
+  console.warn('openLineView not found in global scope - check core-state-ui.js loading');
+}
+
 function bindEvents() {
   els.themeToggleBtn.addEventListener("click", toggleTheme);
 
@@ -20,11 +47,115 @@ function bindEvents() {
   els.streetsModeBtn.addEventListener("click", () => setMapMode("streets"));
   els.satelliteModeBtn.addEventListener("click", () => setMapMode("satellite"));
 
-  els.accountPopupBtn.addEventListener("click", () => setActivePopup("account"));
+  if (els.showAllStopsBtn) {
+    els.showAllStopsBtn.addEventListener("click", () => {
+      setShowAllStops(!state.showAllStops);
+    });
+  }
+
+  if (els.lineViewBtn) {
+    els.lineViewBtn.addEventListener("click", () => {
+      if (!state.focusedLineKey) {
+        return;
+      }
+
+      if (state.lineViewOpen) {
+        if (typeof closeLineView !== 'undefined') {
+          closeLineView({ restore: true });
+        } else {
+          console.error('closeLineView function not found');
+        }
+      } else {
+        if (typeof openLineView !== 'undefined') {
+          openLineView(state.focusedLineKey).catch((error) => {
+            setStatus(error.message, "error");
+          });
+        } else {
+          console.error('openLineView function not found - core-state-ui.js may not have loaded');
+          setStatus('Line View feature is not available', 'error');
+        }
+      }
+    });
+  }
+
+  if (els.toggleLineViewAutoBtn) {
+    els.toggleLineViewAutoBtn.addEventListener("click", () => {
+      state.lineViewAutoOpenEnabled = !state.lineViewAutoOpenEnabled;
+      if (typeof saveUserPreferences === "function") {
+        saveUserPreferences({ lineViewAutoOpenEnabled: state.lineViewAutoOpenEnabled }).catch(() => {});
+      }
+      renderUserStatus();
+      const status = state.lineViewAutoOpenEnabled ? "enabled" : "disabled";
+      setStatus(`Line view auto-open ${status} for desktop`, "ok");
+    });
+  }
+
+  if (els.lineViewReturnBtn) {
+    els.lineViewReturnBtn.addEventListener("click", () => {
+      if (typeof closeLineView !== 'undefined') {
+        closeLineView({ restore: true });
+      }
+    });
+  }
+
+  if (els.lineViewMapBtn) {
+    els.lineViewMapBtn.addEventListener("click", () => {
+      if (typeof openLineViewMap !== 'undefined') {
+        openLineViewMap().catch((error) => {
+          setStatus(error.message, "error");
+        });
+      } else {
+        console.error('openLineViewMap function not found');
+      }
+    });
+  }
+
+  els.accountPopupBtn.addEventListener("click", () => {
+    if (state.activePopup !== "account") {
+      setAuthFeedback();
+    }
+    setActivePopup("account");
+  });
   els.closeAuthPopupBtn.addEventListener("click", closePopups);
+
+  // Wire simple settings toggles in the account panel
+  try {
+    const showPrivateEl = document.getElementById("showPrivateOperators");
+    if (showPrivateEl) {
+      showPrivateEl.checked = Boolean(state.showPrivateOperators);
+      showPrivateEl.addEventListener("change", () => {
+        state.showPrivateOperators = Boolean(showPrivateEl.checked);
+        if (typeof saveUserPreferences === "function") {
+          saveUserPreferences({ showPrivateOperators: state.showPrivateOperators }).catch(() => {});
+        }
+        if (typeof saveDefaultPresetDebounced === "function") {
+          try { saveDefaultPresetDebounced(); } catch (e) {}
+        }
+      });
+    }
+
+    const showProblemEl = document.getElementById("showProblematicGeometries");
+    if (showProblemEl) {
+      showProblemEl.checked = Boolean(state.showProblematicGeometries);
+      showProblemEl.addEventListener("change", () => {
+        state.showProblematicGeometries = Boolean(showProblemEl.checked);
+        if (typeof saveUserPreferences === "function") {
+          saveUserPreferences({ showProblematicGeometries: state.showProblematicGeometries }).catch(() => {});
+        }
+        if (typeof saveDefaultPresetDebounced === "function") {
+          try { saveDefaultPresetDebounced(); } catch (e) {}
+        }
+      });
+    }
+  } catch (e) {
+    // ignore
+  }
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      if (state.lineViewOpen) {
+        closeLineView({ restore: true });
+      }
       if (state.mobilePanelsOpen) {
         setMobilePanelsOpen(false);
       }
@@ -72,7 +203,19 @@ function bindEvents() {
 
     state.areaCache.clear();
     state.lineStopsCache.clear();
+    if (state.loadedLineSummaries) {
+      state.loadedLineSummaries = [];
+    }
+    if (state.routeStopsAutoLoadAttempts) {
+      state.routeStopsAutoLoadAttempts.clear();
+    }
+    if (state.routeStopCountLoadAttempts) {
+      state.routeStopCountLoadAttempts.clear();
+    }
     state.inFlightLineStopKeys.clear();
+    if (state.inFlightRouteStopCountKeys) {
+      state.inFlightRouteStopCountKeys.clear();
+    }
     resetViewAggregation();
 
     rebuildCombinedTransit();
@@ -131,36 +274,33 @@ function bindEvents() {
     restoreUserStatusFromFocus();
   });
 
-  els.demoLoginBtn.addEventListener("click", async () => {
-    try {
-      await loginWithPayload(apiRequest("/api/auth/demo-login", { method: "POST" }));
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
-  });
-
   els.loginForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    setAuthFeedback();
 
     const formData = new FormData(els.loginForm);
     const email = String(formData.get("email") || "").trim();
     const password = String(formData.get("password") || "");
+    const remember = String(formData.get("remember") || "") === "on" || String(formData.get("remember") || "") === "true";
 
     try {
       await loginWithPayload(
         apiRequest("/api/auth/login", {
           method: "POST",
           body: JSON.stringify({ email, password })
-        })
+        }),
+        { successMessage: "Logged in successfully.", remember }
       );
       els.loginForm.reset();
     } catch (error) {
+      setAuthFeedback(error.message, "error");
       setStatus(error.message, "error");
     }
   });
 
   els.registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    setAuthFeedback();
 
     const formData = new FormData(els.registerForm);
     const email = String(formData.get("email") || "").trim();
@@ -172,10 +312,12 @@ function bindEvents() {
         apiRequest("/api/auth/register", {
           method: "POST",
           body: JSON.stringify({ email, password, displayName })
-        })
+        }),
+        { successMessage: "Account created successfully. You are now signed in." }
       );
       els.registerForm.reset();
     } catch (error) {
+      setAuthFeedback(error.message, "error");
       setStatus(error.message, "error");
     }
   });
@@ -183,6 +325,9 @@ function bindEvents() {
   els.logoutBtn.addEventListener("click", () => {
     setToken("");
     state.user = null;
+    if (state.lineViewOrderingVoteClickSetsByLineKey) {
+      state.lineViewOrderingVoteClickSetsByLineKey.clear();
+    }
     state.visitedByLine = new Map();
 
     updateAuthUi();
@@ -217,8 +362,6 @@ async function init() {
     await Promise.all([loadCities(), hydrateSession()]);
     await waitForMapReady();
 
-    const city = selectedCityPreset();
-
     let initialTriggered = false;
     const triggerInitialLoad = () => {
       if (initialTriggered) {
@@ -231,13 +374,7 @@ async function init() {
       });
     };
 
-    if (city) {
-      state.map.once("moveend", triggerInitialLoad);
-      fitToArea(city);
-    } else {
-      triggerInitialLoad();
-    }
-
+    triggerInitialLoad();
     window.setTimeout(triggerInitialLoad, 1400);
 
     await loadProgress();

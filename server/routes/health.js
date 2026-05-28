@@ -1,6 +1,7 @@
 const express = require("express");
 
 const config = require("../config");
+const { hasLocalPostgresConfig } = require("../postgres");
 const { withTransitlandMetrics } = require("./helpers");
 
 const router = express.Router();
@@ -10,6 +11,7 @@ router.get("/health", (req, res) => {
     status: "ok",
     app: "MetroMark",
     hasTransitlandKey: Boolean(config.TRANSITLAND_API_KEY),
+    hasLocalPostgres: hasLocalPostgresConfig(),
     transitlandRequestTimeoutMs: config.TRANSITLAND_REQUEST_TIMEOUT_MS,
     transitlandRequestRetries: config.TRANSITLAND_REQUEST_RETRIES,
     cacheTtlHours: config.TRANSIT_CACHE_TTL_HOURS,
@@ -20,6 +22,7 @@ router.get("/health", (req, res) => {
     routeStopMaxResults: config.ROUTE_STOP_MAX_RESULTS,
     routeHeadwayTimeoutMs: config.ROUTE_HEADWAY_TIMEOUT_MS,
     routeHeadwayCacheTtlHours: config.ROUTE_HEADWAY_CACHE_TTL_HOURS,
+    lineViewOrderingVoteThreshold: config.LINE_VIEW_ORDERING_VOTE_THRESHOLD,
     vectorTileMaxPerBbox: config.VECTOR_TILE_MAX_PER_BBOX,
     stationHubMaxMeters: config.STATION_HUB_MAX_METERS,
     stationHubSnapMaxMeters: config.STATION_HUB_SNAP_MAX_METERS,
