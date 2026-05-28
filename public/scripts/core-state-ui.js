@@ -57,6 +57,8 @@ const GTFS_MODE_LABELS = {
   12: "Monorail"
 };
 
+const LINE_VIEW_ORDERING_PREFERENCES_STORAGE_KEY = "metromark_line_view_ordering_preferences";
+
 function parseSetFromStorage(storageKey, defaults) {
   try {
     const raw = localStorage.getItem(storageKey);
@@ -125,6 +127,55 @@ function parseVisibilityOverridesFromStorage(storageKey) {
   } catch {
     return new Map();
   }
+}
+
+function parseLineViewOrderingPreferencesFromStorage(storageKey) {
+  try {
+    const raw = sessionStorage.getItem(storageKey);
+    if (!raw) {
+      return new Map();
+    }
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return new Map();
+    }
+
+    const preferenceMap = new Map();
+    for (const [lineKeyRaw, valueRaw] of Object.entries(parsed)) {
+      const lineKey = String(lineKeyRaw || "").trim();
+      if (!lineKey || !valueRaw || typeof valueRaw !== "object" || Array.isArray(valueRaw)) {
+        continue;
+      }
+
+      preferenceMap.set(lineKey, {
+        mode: normalizeLineViewOrderingMode(valueRaw.mode),
+        reversed: Boolean(valueRaw.reversed)
+      });
+    }
+
+    return preferenceMap;
+  } catch {
+    return new Map();
+  }
+}
+
+function persistLineViewOrderingPreferencesToStorage(storageKey, preferenceMap) {
+  const payload = {};
+
+  for (const [lineKeyRaw, valueRaw] of preferenceMap.entries()) {
+    const lineKey = String(lineKeyRaw || "").trim();
+    if (!lineKey) {
+      continue;
+    }
+
+    payload[lineKey] = {
+      mode: normalizeLineViewOrderingMode(valueRaw?.mode),
+      reversed: Boolean(valueRaw?.reversed)
+    };
+  }
+
+  sessionStorage.setItem(storageKey, JSON.stringify(payload));
 }
 
 function persistVisibilityOverridesToStorage(storageKey, visibilityMap) {
@@ -218,8 +269,11 @@ const state = {
   lineViewOpen: false,
   lineViewLineKey: "",
   lineViewReturn: null,
-  lineViewOrderingMode: normalizeLineViewOrderingMode(localStorage.getItem("metromark_line_view_ordering_mode") || "geometry-revised"),
-  lineViewOrderingReversed: localStorage.getItem("metromark_line_view_ordering_reversed") === "true",
+  lineViewOrderingPreferencesByLineKey: parseLineViewOrderingPreferencesFromStorage(LINE_VIEW_ORDERING_PREFERENCES_STORAGE_KEY),
+  lineViewOrderingVoteClickSetsByLineKey: new Map(),
+  lineViewOrderingMode: "auto",
+  lineViewOrderingReversed: false,
+  lineViewOrderingResolved: "geometry-revised",
   lineViewAutoOpenEnabled: localStorage.getItem("metromark_line_view_auto_open") !== "false", // Default to true
   userStatusPinnedKind: "",
   clearRouteProgressConfirmLineKey: "",
@@ -1212,6 +1266,193 @@ function lineViewOrderingStatusLabel() {
   return state.lineViewOrderingReversed ? `${label} · Reversed Route` : label;
 }
 
+function getLineViewOrderingPreference(lineKey) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return {
+      mode: "auto",
+      reversed: false
+    };
+  }
+
+  const stored = state.lineViewOrderingPreferencesByLineKey.get(normalizedLineKey);
+  if (!stored) {
+    return {
+      mode: "auto",
+      reversed: false
+    };
+  }
+
+  return {
+    mode: normalizeLineViewOrderingMode(stored.mode),
+    reversed: Boolean(stored.reversed)
+  };
+}
+
+function setLineViewOrderingPreference(lineKey, preference = {}) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return {
+      mode: "auto",
+      reversed: false
+    };
+  }
+
+  const current = getLineViewOrderingPreference(normalizedLineKey);
+  const nextPreference = {
+    mode: normalizeLineViewOrderingMode(
+      Object.prototype.hasOwnProperty.call(preference, "mode") ? preference.mode : current.mode
+    ),
+    reversed: Object.prototype.hasOwnProperty.call(preference, "reversed")
+      ? Boolean(preference.reversed)
+      : Boolean(current.reversed)
+  };
+
+  state.lineViewOrderingPreferencesByLineKey.set(normalizedLineKey, nextPreference);
+  persistLineViewOrderingPreferencesToStorage(
+    LINE_VIEW_ORDERING_PREFERENCES_STORAGE_KEY,
+    state.lineViewOrderingPreferencesByLineKey
+  );
+
+  return nextPreference;
+}
+
+function applyLineViewOrderingPreference(lineKey) {
+  const preference = getLineViewOrderingPreference(lineKey);
+  state.lineViewOrderingMode = preference.mode;
+  state.lineViewOrderingReversed = Boolean(preference.reversed);
+  return preference;
+}
+
+function lineViewOrderingVoteModeForCurrentState() {
+  const selectedMode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
+  if (selectedMode !== "auto") {
+    return selectedMode;
+  }
+
+  return normalizeLineViewOrderingMode(state.lineViewOrderingResolved || "geometry-revised");
+}
+
+function updateRouteOrderingMetadataForLine(lineKey, metadata = {}) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey || !metadata || typeof metadata !== "object") {
+    return;
+  }
+
+  const nextLineSummaries = state.lineSummaries.map((line) => {
+    if (String(line?.lineKey || "").trim() !== normalizedLineKey) {
+      return line;
+    }
+
+    return {
+      ...line,
+      lineViewOrderingDefaultMode: String(metadata.orderingModeDefaultMode || "auto").trim() || "auto",
+      lineViewOrderingDefaultSource: String(metadata.orderingModeDefaultSource || "auto").trim() || "auto",
+      lineViewOrderingAdminMode: String(metadata.orderingModeAdminMode || "").trim(),
+      lineViewOrderingVoteCounts: metadata.orderingModeVoteCounts || {},
+      lineViewOrderingVoteTotal: Number(metadata.orderingModeVoteTotal || 0)
+    };
+  });
+
+  state.lineSummaries = nextLineSummaries;
+
+  if (Array.isArray(state.loadedLineSummaries) && state.loadedLineSummaries.length > 0) {
+    state.loadedLineSummaries = state.loadedLineSummaries.map((line) => {
+      if (String(line?.lineKey || "").trim() !== normalizedLineKey) {
+        return line;
+      }
+
+      return {
+        ...line,
+        lineViewOrderingDefaultMode: String(metadata.orderingModeDefaultMode || "auto").trim() || "auto",
+        lineViewOrderingDefaultSource: String(metadata.orderingModeDefaultSource || "auto").trim() || "auto",
+        lineViewOrderingAdminMode: String(metadata.orderingModeAdminMode || "").trim(),
+        lineViewOrderingVoteCounts: metadata.orderingModeVoteCounts || {},
+        lineViewOrderingVoteTotal: Number(metadata.orderingModeVoteTotal || 0)
+      };
+    });
+  }
+
+  if (state.transit?.routesGeoJson?.features) {
+    state.transit.routesGeoJson.features = state.transit.routesGeoJson.features.map((feature) => {
+      if (String(feature?.properties?.line_key || "").trim() !== normalizedLineKey) {
+        return feature;
+      }
+
+      return {
+        ...feature,
+        properties: {
+          ...feature.properties,
+          line_view_ordering_default_mode: String(metadata.orderingModeDefaultMode || "auto").trim() || "auto",
+          line_view_ordering_default_source: String(metadata.orderingModeDefaultSource || "auto").trim() || "auto",
+          line_view_ordering_admin_mode: String(metadata.orderingModeAdminMode || "").trim(),
+          line_view_ordering_vote_total: Number(metadata.orderingModeVoteTotal || 0)
+        }
+      };
+    });
+  }
+}
+
+async function submitLineViewOrderingVote(lineKey, orderingMode) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  const normalizedMode = normalizeLineViewOrderingMode(orderingMode);
+  if (!normalizedLineKey || normalizedMode === "auto" || !state.user) {
+    return null;
+  }
+
+  const payload = await apiRequest("/api/transit/route-ordering/vote", {
+    method: "POST",
+    body: {
+      lineKey: normalizedLineKey,
+      citySlug: String(state.initialCitySlug || "").trim(),
+      orderingMode: normalizedMode
+    }
+  });
+
+  if (payload?.metadata) {
+    updateRouteOrderingMetadataForLine(normalizedLineKey, payload.metadata);
+  }
+
+  if (state.lineViewOpen && String(state.lineViewLineKey || "").trim() === normalizedLineKey) {
+    renderLineView();
+  }
+
+  return payload;
+}
+
+function noteLineViewOrderingVoteClick(lineKey, stopKey) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  const normalizedStopKey = String(stopKey || "").trim();
+  if (!normalizedLineKey || !normalizedStopKey || !state.user) {
+    return;
+  }
+
+  let clickSet = state.lineViewOrderingVoteClickSetsByLineKey.get(normalizedLineKey);
+  if (!clickSet) {
+    clickSet = new Set();
+    state.lineViewOrderingVoteClickSetsByLineKey.set(normalizedLineKey, clickSet);
+  }
+
+  if (clickSet.has(normalizedStopKey)) {
+    return;
+  }
+
+  clickSet.add(normalizedStopKey);
+  if (clickSet.size < 2) {
+    return;
+  }
+
+  clickSet.clear();
+  const voteMode = lineViewOrderingVoteModeForCurrentState();
+  if (!voteMode || voteMode === "auto") {
+    return;
+  }
+
+  submitLineViewOrderingVote(normalizedLineKey, voteMode).catch((error) => {
+    console.warn("Unable to record route ordering vote:", error);
+  });
+}
+
 function syncLineViewOrderingControls() {
   const mode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
   state.lineViewOrderingMode = mode;
@@ -1388,6 +1629,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
         event.preventDefault();
         event.stopPropagation();
         toggleVisitedForStation(props, coords);
+        noteLineViewOrderingVoteClick(lineKey, stationKey);
       });
     }
 
@@ -1416,6 +1658,8 @@ function renderLineView() {
   const line = state.lineSummaries.find((entry) => entry.lineKey === lineKey);
   const lineColor = line?.color || "#177ca2";
   const lineLabel = line ? lineDisplayName(line) : "Selected Route";
+
+  applyLineViewOrderingPreference(lineKey);
 
   // Ensure panel is visible and not hidden
   if (els.lineViewPanel) {
@@ -2670,6 +2914,7 @@ function initializeDiagnostics() {
     }
 
     const lineKey = String(state.lineViewLineKey).trim();
+    applyLineViewOrderingPreference(lineKey);
     renderLineViewStops(
       lineKey,
       state.lineSummaries.find((entry) => entry.lineKey === lineKey)?.color || '#177ca2',
@@ -2679,19 +2924,36 @@ function initializeDiagnostics() {
 
   const setOrderingMode = (newMode) => {
     const normalizedMode = normalizeLineViewOrderingMode(newMode);
-    if (state.lineViewOrderingMode === normalizedMode) {
+    const lineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
+    if (!lineKey) {
+      state.lineViewOrderingMode = normalizedMode;
       syncLineViewOrderingControls();
       return;
     }
 
-    state.lineViewOrderingMode = normalizedMode;
-    localStorage.setItem('metromark_line_view_ordering_mode', state.lineViewOrderingMode);
+    const current = getLineViewOrderingPreference(lineKey);
+    if (current.mode === normalizedMode) {
+      applyLineViewOrderingPreference(lineKey);
+      syncLineViewOrderingControls();
+      return;
+    }
+
+    setLineViewOrderingPreference(lineKey, { mode: normalizedMode });
+    applyLineViewOrderingPreference(lineKey);
     rerenderCurrentLineView();
   };
 
   const toggleReverse = () => {
-    state.lineViewOrderingReversed = !state.lineViewOrderingReversed;
-    localStorage.setItem('metromark_line_view_ordering_reversed', state.lineViewOrderingReversed ? 'true' : 'false');
+    const lineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
+    if (!lineKey) {
+      state.lineViewOrderingReversed = !state.lineViewOrderingReversed;
+      syncLineViewOrderingControls();
+      return;
+    }
+
+    const current = getLineViewOrderingPreference(lineKey);
+    setLineViewOrderingPreference(lineKey, { reversed: !current.reversed });
+    applyLineViewOrderingPreference(lineKey);
     rerenderCurrentLineView();
   };
 
@@ -2715,8 +2977,6 @@ function initializeDiagnostics() {
     els.lineViewOrderingReverseBtn.addEventListener('click', toggleReverse);
   }
 
-  localStorage.setItem('metromark_line_view_ordering_mode', state.lineViewOrderingMode);
-  localStorage.setItem('metromark_line_view_ordering_reversed', state.lineViewOrderingReversed ? 'true' : 'false');
   syncLineViewOrderingControls();
 }
 

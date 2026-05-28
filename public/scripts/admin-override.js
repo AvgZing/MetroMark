@@ -30,6 +30,7 @@ const els = {
   overrideAgency: document.getElementById("overrideAgency"),
   overrideMode: document.getElementById("overrideMode"),
   overrideFrequency: document.getElementById("overrideFrequency"),
+  overrideOrderingMode: document.getElementById("overrideOrderingMode"),
   overrideStopsList: document.getElementById("overrideStopsList"),
   saveOverrideBtn: document.getElementById("saveOverrideBtn"),
   discardOverrideBtn: document.getElementById("discardOverrideBtn"),
@@ -428,12 +429,18 @@ async function selectRoute(lineKey) {
       els.overrideAgency.value = payload.agency || "";
       els.overrideMode.value = String(payload.mode || "");
       els.overrideFrequency.value = payload.frequency || "";
+      if (els.overrideOrderingMode) {
+        els.overrideOrderingMode.value = String(payload.orderingMode || "");
+      }
       replaceEditedStops(payload.stops);
     } else {
       // No override yet - load base route data if available
       els.overrideAgency.value = "";
       els.overrideMode.value = "";
       els.overrideFrequency.value = "";
+      if (els.overrideOrderingMode) {
+        els.overrideOrderingMode.value = "";
+      }
       replaceEditedStops(routeStopsFromTransitPayload(transitData));
     }
 
@@ -598,6 +605,7 @@ async function saveOverride() {
       agency: els.overrideAgency.value || null,
       mode: els.overrideMode.value ? Number(els.overrideMode.value) : null,
       frequency: els.overrideFrequency.value ? Number(els.overrideFrequency.value) : null,
+      orderingMode: els.overrideOrderingMode ? String(els.overrideOrderingMode.value || "").trim() || null : null,
       stops: state.editedStops
     };
 

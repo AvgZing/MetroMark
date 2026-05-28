@@ -66,6 +66,14 @@
           <label>Frequency (min)</label>
           <input id="overrideFrequency" type="number" placeholder="Minutes between departures" />
 
+          <label>Stop Ordering Default</label>
+          <select id="overrideOrderingMode">
+            <option value="">Auto</option>
+            <option value="geometry-revised">Main</option>
+            <option value="legacy-geometry">U-Shape</option>
+            <option value="fractions">Loop</option>
+          </select>
+
           <h3>Review Settings</h3>
           <div class="review-setting">
             <label>

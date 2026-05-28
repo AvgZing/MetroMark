@@ -77,6 +77,23 @@ function normalizeDisplayName(value) {
   return normalizeText(value, "MetroMark User");
 }
 
+function normalizeRouteOrderingMode(value) {
+  const mode = normalizeText(value).toLowerCase();
+  if (mode === "auto" || mode === "geometry-revised" || mode === "legacy-geometry" || mode === "fractions") {
+    return mode;
+  }
+
+  if (mode === "geometry-only" || mode === "geometry") {
+    return "legacy-geometry";
+  }
+
+  if (mode === "fractions-only") {
+    return "fractions";
+  }
+
+  return "";
+}
+
 function normalizeAuthError(error, fallbackMessage) {
   if (!error) {
     return new Error(fallbackMessage);
@@ -1369,6 +1386,204 @@ async function deleteRouteOverride(lineKey) {
   await localQuery("delete from public.route_override where line_key = $1", [key]);
 }
 
+async function listRouteOverridesByLineKeys(lineKeys = []) {
+  assertLocalConfigured();
+  const normalizedLineKeys = Array.from(
+    new Set(Array.isArray(lineKeys) ? lineKeys.map((entry) => normalizeText(entry)).filter(Boolean) : [])
+  );
+
+  if (!normalizedLineKeys.length) {
+    return [];
+  }
+
+  const result = await localQuery(
+    `select line_key, city_slug, payload, updated_at
+     from public.route_override
+     where line_key = any($1::text[])`,
+    [normalizedLineKeys]
+  );
+
+  return result.rows || [];
+}
+
+async function upsertRouteOrderingVote(lineKey, citySlug, userId, orderingMode) {
+  assertLocalConfigured();
+  const key = normalizeText(lineKey);
+  const userKey = normalizeText(userId);
+  const city = normalizeText(citySlug) || null;
+  const mode = normalizeRouteOrderingMode(orderingMode);
+
+  if (!key) throw new Error("lineKey is required");
+  if (!userKey) throw new Error("userId is required");
+  if (!mode || mode === "auto") throw new Error("orderingMode is required");
+
+  await localQuery(
+    `insert into public.route_ordering_vote (line_key, user_id, city_slug, ordering_mode, vote_source, updated_at)
+     values ($1, $2, $3, $4, 'signed-in', now())
+     on conflict (line_key, user_id) do update set
+       city_slug = excluded.city_slug,
+       ordering_mode = excluded.ordering_mode,
+       vote_source = excluded.vote_source,
+       updated_at = excluded.updated_at`,
+    [key, userKey, city, mode]
+  );
+
+  return getRouteOrderingVote(key, userKey);
+}
+
+async function getRouteOrderingVote(lineKey, userId) {
+  assertLocalConfigured();
+  const key = normalizeText(lineKey);
+  const userKey = normalizeText(userId);
+  if (!key || !userKey) {
+    return null;
+  }
+
+  const result = await localQuery(
+    `select line_key, user_id, city_slug, ordering_mode, vote_source, updated_at
+     from public.route_ordering_vote
+     where line_key = $1 and user_id = $2
+     limit 1`,
+    [key, userKey]
+  );
+
+  return result.rows?.[0] || null;
+}
+
+async function listRouteOrderingVoteCountsByLineKeys(lineKeys = []) {
+  assertLocalConfigured();
+  const normalizedLineKeys = Array.from(
+    new Set(Array.isArray(lineKeys) ? lineKeys.map((entry) => normalizeText(entry)).filter(Boolean) : [])
+  );
+
+  if (!normalizedLineKeys.length) {
+    return [];
+  }
+
+  const result = await localQuery(
+    `select line_key, ordering_mode, count(*)::int as vote_count
+     from public.route_ordering_vote
+     where line_key = any($1::text[])
+     group by line_key, ordering_mode`,
+    [normalizedLineKeys]
+  );
+
+  return result.rows || [];
+}
+
+async function getRouteOrderingMetadataByLineKeys(lineKeys = []) {
+  assertLocalConfigured();
+  const normalizedLineKeys = Array.from(
+    new Set(Array.isArray(lineKeys) ? lineKeys.map((entry) => normalizeText(entry)).filter(Boolean) : [])
+  );
+
+  if (!normalizedLineKeys.length) {
+    return new Map();
+  }
+
+  const [overrideRows, voteRows] = await Promise.all([
+    listRouteOverridesByLineKeys(normalizedLineKeys),
+    listRouteOrderingVoteCountsByLineKeys(normalizedLineKeys)
+  ]);
+
+  const overrideByLineKey = new Map();
+  for (const row of overrideRows || []) {
+    const lineKey = normalizeText(row?.line_key);
+    if (!lineKey || overrideByLineKey.has(lineKey)) {
+      continue;
+    }
+
+    const orderingMode = normalizeRouteOrderingMode(row?.payload?.orderingMode);
+    if (!orderingMode || orderingMode === "auto") {
+      continue;
+    }
+
+    overrideByLineKey.set(lineKey, {
+      lineKey,
+      orderingModeDefaultMode: orderingMode,
+      orderingModeDefaultSource: "admin",
+      orderingModeAdminMode: orderingMode,
+      orderingModeVoteCounts: {},
+      orderingModeVoteTotal: 0
+    });
+  }
+
+  const votesByLineKey = new Map();
+  for (const row of voteRows || []) {
+    const lineKey = normalizeText(row?.line_key);
+    if (!lineKey) {
+      continue;
+    }
+
+    const orderingMode = normalizeRouteOrderingMode(row?.ordering_mode);
+    if (!orderingMode || orderingMode === "auto") {
+      continue;
+    }
+
+    if (!votesByLineKey.has(lineKey)) {
+      votesByLineKey.set(lineKey, {
+        auto: 0,
+        "geometry-revised": 0,
+        "legacy-geometry": 0,
+        fractions: 0,
+        total: 0
+      });
+    }
+
+    const bucket = votesByLineKey.get(lineKey);
+    bucket[orderingMode] = Number(row.vote_count || 0);
+    bucket.total += Number(row.vote_count || 0);
+  }
+
+  const voteThreshold = Math.max(1, Number(config.LINE_VIEW_ORDERING_VOTE_THRESHOLD || 5));
+  const metadataByLineKey = new Map();
+
+  for (const lineKey of normalizedLineKeys) {
+    const override = overrideByLineKey.get(lineKey);
+    if (override) {
+      metadataByLineKey.set(lineKey, override);
+      continue;
+    }
+
+    const voteCounts = votesByLineKey.get(lineKey) || {
+      auto: 0,
+      "geometry-revised": 0,
+      "legacy-geometry": 0,
+      fractions: 0,
+      total: 0
+    };
+
+    const candidateModes = ["geometry-revised", "legacy-geometry", "fractions"];
+    let winningMode = "";
+    let winningCount = 0;
+    let tie = false;
+
+    for (const mode of candidateModes) {
+      const count = Number(voteCounts[mode] || 0);
+      if (count > winningCount) {
+        winningMode = mode;
+        winningCount = count;
+        tie = false;
+      } else if (count === winningCount && count > 0 && mode !== winningMode) {
+        tie = true;
+      }
+    }
+
+    const defaultMode = !tie && winningMode && winningCount >= voteThreshold ? winningMode : "auto";
+
+    metadataByLineKey.set(lineKey, {
+      lineKey,
+      orderingModeDefaultMode: defaultMode,
+      orderingModeDefaultSource: defaultMode === "auto" ? "auto" : "community",
+      orderingModeAdminMode: "",
+      orderingModeVoteCounts: voteCounts,
+      orderingModeVoteTotal: Number(voteCounts.total || 0)
+    });
+  }
+
+  return metadataByLineKey;
+}
+
 async function getRouteReview(lineKey) {
   assertLocalConfigured();
   const key = normalizeText(lineKey);
@@ -1674,8 +1889,13 @@ module.exports = {
   upsertStationOverride,
   getRouteOverride,
   listRouteOverrides,
+  listRouteOverridesByLineKeys,
   upsertRouteOverride,
   deleteRouteOverride,
+  getRouteOrderingVote,
+  upsertRouteOrderingVote,
+  listRouteOrderingVoteCountsByLineKeys,
+  getRouteOrderingMetadataByLineKeys,
   getRouteReview,
   listRouteReviews,
   upsertRouteReview,

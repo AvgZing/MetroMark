@@ -319,6 +319,9 @@ function bindEvents() {
   els.logoutBtn.addEventListener("click", () => {
     setToken("");
     state.user = null;
+    if (state.lineViewOrderingVoteClickSetsByLineKey) {
+      state.lineViewOrderingVoteClickSetsByLineKey.clear();
+    }
     state.visitedByLine = new Map();
 
     updateAuthUi();

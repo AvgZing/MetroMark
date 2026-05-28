@@ -1,6 +1,7 @@
 const express = require("express");
 
 const db = require("../db");
+const { authMiddleware } = require("../auth");
 const { getCityBySlug } = require("../city-presets");
 const {
   getCityTransit,
@@ -199,6 +200,33 @@ router.get("/transit/reviews", async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       error: "Unable to load review settings.",
+      detail: error.message
+    });
+  }
+});
+
+router.post("/transit/route-ordering/vote", authMiddleware, async (req, res) => {
+  const lineKey = String(req.body?.lineKey || "").trim();
+  const orderingMode = String(req.body?.orderingMode || "").trim();
+  const citySlug = String(req.body?.citySlug || "").trim();
+
+  if (!lineKey) {
+    return res.status(400).json({ error: "lineKey is required." });
+  }
+
+  try {
+    await db.upsertRouteOrderingVote(lineKey, citySlug, req.user.id, orderingMode);
+    const metadataMap = await db.getRouteOrderingMetadataByLineKeys([lineKey]);
+    const metadata = metadataMap.get(lineKey) || null;
+
+    return res.json({
+      ok: true,
+      lineKey,
+      metadata
+    });
+  } catch (error) {
+    return res.status(400).json({
+      error: "Route ordering vote failed.",
       detail: error.message
     });
   }

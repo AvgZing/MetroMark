@@ -2536,6 +2536,74 @@ function buildFeedFingerprintFromRoutes(routes) {
   return crypto.createHash("sha1").update(stableRoutes.join("|"), "utf8").digest("hex");
 }
 
+async function applyRouteOrderingMetadataToPayload(payload) {
+  const lineSummaries = Array.isArray(payload?.lineSummaries) ? payload.lineSummaries : [];
+  if (!lineSummaries.length) {
+    return payload;
+  }
+
+  const lineKeys = Array.from(
+    new Set(lineSummaries.map((line) => sanitizeText(line?.lineKey)).filter(Boolean))
+  );
+
+  if (!lineKeys.length) {
+    return payload;
+  }
+
+  const metadataByLineKey = await db.getRouteOrderingMetadataByLineKeys(lineKeys);
+  if (!metadataByLineKey || metadataByLineKey.size === 0) {
+    return payload;
+  }
+
+  const decorateLine = (line) => {
+    const lineKey = sanitizeText(line?.lineKey);
+    if (!lineKey || !metadataByLineKey.has(lineKey)) {
+      return line;
+    }
+
+    const metadata = metadataByLineKey.get(lineKey) || {};
+    return {
+      ...line,
+      lineViewOrderingDefaultMode: sanitizeText(metadata.orderingModeDefaultMode || "auto") || "auto",
+      lineViewOrderingDefaultSource: sanitizeText(metadata.orderingModeDefaultSource || "auto") || "auto",
+      lineViewOrderingAdminMode: sanitizeText(metadata.orderingModeAdminMode || ""),
+      lineViewOrderingVoteCounts: metadata.orderingModeVoteCounts || {},
+      lineViewOrderingVoteTotal: Number(metadata.orderingModeVoteTotal || 0)
+    };
+  };
+
+  const nextRoutesGeoJson =
+    payload?.routesGeoJson && Array.isArray(payload.routesGeoJson.features)
+      ? {
+          ...payload.routesGeoJson,
+          features: payload.routesGeoJson.features.map((feature) => {
+            const lineKey = sanitizeText(feature?.properties?.line_key);
+            if (!lineKey || !metadataByLineKey.has(lineKey)) {
+              return feature;
+            }
+
+            const metadata = metadataByLineKey.get(lineKey) || {};
+            return {
+              ...feature,
+              properties: {
+                ...feature.properties,
+                line_view_ordering_default_mode: sanitizeText(metadata.orderingModeDefaultMode || "auto") || "auto",
+                line_view_ordering_default_source: sanitizeText(metadata.orderingModeDefaultSource || "auto") || "auto",
+                line_view_ordering_admin_mode: sanitizeText(metadata.orderingModeAdminMode || ""),
+                line_view_ordering_vote_total: Number(metadata.orderingModeVoteTotal || 0)
+              }
+            };
+          })
+        }
+      : payload?.routesGeoJson;
+
+  return {
+    ...payload,
+    lineSummaries: lineSummaries.map(decorateLine),
+    routesGeoJson: nextRoutesGeoJson
+  };
+}
+
 async function queueCityReverifyIfStale(area, cached) {
   if (!area || area.kind !== "city" || !area.slug || !cached) {
     return;
@@ -2576,7 +2644,7 @@ async function getTransitForArea(area, options = {}) {
       await queueCityReverifyIfStale(area, cached);
 
       return {
-        payload: cached.payload,
+        payload: await applyRouteOrderingMetadataToPayload(cached.payload || {}),
         cacheStatus,
         cacheKey: area.key,
         cacheExpiresAt: cached.expiresAt,
@@ -2586,15 +2654,12 @@ async function getTransitForArea(area, options = {}) {
       };
     }
 
-    // If caller specifically requested cache-only behavior, try to find overlapping cached data
     if (options.cacheOnly) {
-      // Query Postgres for any cached data that spatially overlaps this bbox
       const [minLon, minLat, maxLon, maxLat] = area.bbox;
       const overlappingCaches = await db.getCacheByBbox(minLon, minLat, maxLon, maxLat, {
         includeExpired: true
       });
 
-      // If we found overlapping data, aggregate and return it
       if (overlappingCaches && overlappingCaches.length > 0) {
         const mergedRoutes = new Map();
         const mergedStops = new Map();
@@ -2602,8 +2667,7 @@ async function getTransitForArea(area, options = {}) {
 
         for (const cacheEntry of overlappingCaches) {
           const payload = cacheEntry.payload || {};
-          
-          // Merge route geometries
+
           for (const feature of payload?.routesGeoJson?.features || []) {
             const lineKey = feature?.properties?.line_key;
             if (lineKey && !mergedRoutes.has(lineKey)) {
@@ -2611,7 +2675,6 @@ async function getTransitForArea(area, options = {}) {
             }
           }
 
-          // Merge line summaries
           for (const line of payload?.lineSummaries || []) {
             const lineKey = line?.lineKey;
             if (lineKey && !mergedLines.has(lineKey)) {
@@ -2619,7 +2682,6 @@ async function getTransitForArea(area, options = {}) {
             }
           }
 
-          // Merge stops (by stop ID)
           for (const feature of payload?.stopsGeoJson?.features || []) {
             const stopId = feature?.properties?.stop_id || feature?.id;
             if (stopId && !mergedStops.has(stopId)) {
@@ -2628,33 +2690,34 @@ async function getTransitForArea(area, options = {}) {
           }
         }
 
-        return {
-          payload: {
-            routesGeoJson: {
-              type: "FeatureCollection",
-              features: Array.from(mergedRoutes.values())
-            },
-            stopsGeoJson: {
-              type: "FeatureCollection",
-              features: Array.from(mergedStops.values())
-            },
-            lineSummaries: Array.from(mergedLines.values()),
-            area: { bbox: area.bbox }
+        const mergedPayload = await applyRouteOrderingMetadataToPayload({
+          routesGeoJson: {
+            type: "FeatureCollection",
+            features: Array.from(mergedRoutes.values())
           },
+          stopsGeoJson: {
+            type: "FeatureCollection",
+            features: Array.from(mergedStops.values())
+          },
+          lineSummaries: Array.from(mergedLines.values()),
+          area: { bbox: area.bbox }
+        });
+
+        return {
+          payload: mergedPayload,
           cacheStatus: "partial-hit",
           cacheKey: area.key,
           stopLocationTypes
         };
       }
 
-      // No overlapping cache found - return empty
       return {
-        payload: {
+        payload: await applyRouteOrderingMetadataToPayload({
           routesGeoJson: { type: "FeatureCollection", features: [] },
           stopsGeoJson: { type: "FeatureCollection", features: [] },
           lineSummaries: [],
           area: { bbox: area.bbox }
-        },
+        }),
         cacheStatus: "miss",
         cacheKey: area.key,
         stopLocationTypes
@@ -2663,43 +2726,47 @@ async function getTransitForArea(area, options = {}) {
   }
 
   const fetchResult = await fetchRoutesAndStopsForBbox(area.bbox, {
-    routeTypes,
-    zoom: options.zoom,
-    forceRefresh,
-    enforceDailyCap: Boolean(options.enforceDailyCap),
-    requestSource: options.requestSource
+    ...options,
+    stopLocationTypes,
+    routeTypes
   });
-  const { routes, stops, vectorHeadwayMeta, diagnostics: fetchDiagnostics } = fetchResult || {};
-  const payload = await buildTransitPayload(area, routes || [], stops || [], {
+
+  const payload = await buildTransitPayload(area, fetchResult.routes || [], fetchResult.stops || [], {
+    zoom: Number(options.zoom),
     stopLocationTypes,
     routeTypes,
-    vectorHeadwayMeta
+    vectorHeadwayMeta: fetchResult.vectorHeadwayMeta,
+    requestSource: options.requestSource
   });
 
-  const feedFingerprint = buildFeedFingerprint(payload);
-  const verifiedAt = Math.floor(Date.now() / 1000);
+  const enrichedPayload = await applyRouteOrderingMetadataToPayload(payload);
+  const ttlSeconds = Math.max(60, Number(config.TRANSIT_CACHE_TTL_HOURS || 2160) * 3600);
+  const fetchedAt = Math.floor(Date.now() / 1000);
+  const feedFingerprint = buildFeedFingerprint(enrichedPayload);
 
-  await db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600, {
+  await db.setCache(cacheKey, enrichedPayload, ttlSeconds, {
     cacheKind: area.kind || "bbox",
-    citySlug: String(area.slug || "").trim(),
+    citySlug: area.slug || null,
     feedFingerprint,
-    verifiedAt
+    verifiedAt: fetchedAt
   });
 
   const result = {
-    payload,
+    payload: enrichedPayload,
     cacheStatus: "miss",
     cacheKey: area.key,
-    cacheVerifiedAt: verifiedAt,
+    cacheExpiresAt: fetchedAt + ttlSeconds,
+    cacheVerifiedAt: fetchedAt,
     feedFingerprint,
     stopLocationTypes
   };
 
   if (options.debug) {
     result.debug = {
-      fetchDiagnostics: fetchDiagnostics || null,
+      fetchDiagnostics: fetchResult.diagnostics || null,
       areaBbox: area.bbox,
-      requestedRouteTypes: routeTypes
+      requestedRouteTypes: routeTypes,
+      vectorHeadwayMeta: fetchResult.vectorHeadwayMeta || null
     };
   }
 

@@ -207,6 +207,17 @@ async function initializeLocalPostgres() {
   payload jsonb not null,
   updated_at timestamptz not null default now()
 )`,
+      `create table if not exists public.route_ordering_vote (
+  line_key text not null,
+  user_id text not null,
+  city_slug text,
+  ordering_mode text not null,
+  vote_source text not null default 'signed-in',
+  updated_at timestamptz not null default now(),
+  primary key (line_key, user_id)
+)`,
+      `create index if not exists idx_route_ordering_vote_line on public.route_ordering_vote (line_key)`,
+      `create index if not exists idx_route_ordering_vote_city on public.route_ordering_vote (city_slug)`,
     ];
 
     for (const statement of statements) {

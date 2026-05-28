@@ -2063,7 +2063,34 @@ function normalizeLineViewOrderingMode(orderingMode) {
   return 'geometry-revised';
 }
 
+function lineViewOrderingDefaultModeForLine(lineKey) {
+  const normalizedLineKey = String(lineKey || '').trim();
+  if (!normalizedLineKey || !Array.isArray(state?.lineSummaries)) {
+    return 'auto';
+  }
+
+  const line = state.lineSummaries.find((entry) => String(entry?.lineKey || '').trim() === normalizedLineKey);
+  if (!line) {
+    return 'auto';
+  }
+
+  const candidate = normalizeLineViewOrderingMode(
+    line.lineViewOrderingDefaultMode ||
+    line.orderingModeDefaultMode ||
+    line.stopOrderingMode ||
+    line.orderingMode ||
+    'auto'
+  );
+
+  return candidate || 'auto';
+}
+
 function detectAutoLineViewOrderingMode(stopFeatures, lineKey, directionSequences, directionPatterns) {
+  const routeDefaultMode = lineViewOrderingDefaultModeForLine(lineKey);
+  if (routeDefaultMode && routeDefaultMode !== 'auto') {
+    return routeDefaultMode;
+  }
+
   if (directionSequences && typeof directionSequences === 'object') {
     try {
       const branchGroups = buildBranchGroups(stopFeatures, directionSequences, directionPatterns);

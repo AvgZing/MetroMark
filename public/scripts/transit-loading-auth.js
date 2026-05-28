@@ -581,6 +581,9 @@ async function hydrateSession() {
   try {
     const me = await apiRequest("/api/auth/me", { method: "GET" });
     state.user = me.user;
+    if (state.lineViewOrderingVoteClickSetsByLineKey) {
+      state.lineViewOrderingVoteClickSetsByLineKey.clear();
+    }
     if (typeof applyUserPreferences === "function") {
       applyUserPreferences(me.user?.preferences || {});
     }
@@ -588,6 +591,9 @@ async function hydrateSession() {
   } catch {
     setToken("");
     state.user = null;
+    if (state.lineViewOrderingVoteClickSetsByLineKey) {
+      state.lineViewOrderingVoteClickSetsByLineKey.clear();
+    }
     updateAuthUi();
   }
 }
@@ -678,6 +684,9 @@ async function loginWithPayload(payloadPromise, options = {}) {
   }
   setToken(payload.token, Boolean(options.remember));
   state.user = payload.user;
+  if (state.lineViewOrderingVoteClickSetsByLineKey) {
+    state.lineViewOrderingVoteClickSetsByLineKey.clear();
+  }
   if (typeof applyUserPreferences === "function") {
     applyUserPreferences(payload.user?.preferences || {});
   }
