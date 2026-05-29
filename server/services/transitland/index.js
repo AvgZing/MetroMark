@@ -723,9 +723,15 @@ function normalizeRoute(route, index, options = {}) {
   const mode = extractRouteMode(route);
   const routeOnestopId = sanitizeText(route.onestop_id);
   const parsedHeadwaySeconds = Number(route.headway_secs);
-  const headwaySeconds = Number.isFinite(parsedHeadwaySeconds) && parsedHeadwaySeconds > 0
+  const headwayFallback = isFallbackHeadwaySeconds(parsedHeadwaySeconds) ? 1 : 0;
+  const headwaySeconds = Number.isFinite(parsedHeadwaySeconds) && parsedHeadwaySeconds > 0 && !headwayFallback
     ? Math.round(parsedHeadwaySeconds)
     : null;
+  const frequencyBucket = headwayFallback
+    ? fallbackFrequencyBucketForRoute(route)
+    : headwaySeconds
+      ? frequencyBucketFromHeadwayMinutes(headwaySeconds / 60)
+      : "unknown";
 
   const lineKey =
     routeOnestopId ||
@@ -755,6 +761,8 @@ function normalizeRoute(route, index, options = {}) {
     routeFeedId: extractFeedId(route),
     headwaySeconds,
     headwaySource: sanitizeText(route.headway_source || (headwaySeconds ? "transitland-vector-tiles" : "")),
+    headwayFallback,
+    frequencyBucket,
     geometry,
     bbox: geometryBbox(geometry)
   };
@@ -1029,6 +1037,42 @@ function frequencyBucketFromHeadwayMinutes(minutes) {
 
   if (numeric < 30) {
     return "regular";
+  }
+
+  return "local";
+}
+
+const FALLBACK_HEADWAY_SECONDS = 100000;
+const FALLBACK_HEADWAY_MINUTES = Number((FALLBACK_HEADWAY_SECONDS / 60).toFixed(1));
+
+function isFallbackHeadwaySeconds(seconds) {
+  const numeric = Number(seconds);
+  return Number.isFinite(numeric) && Math.abs(numeric - FALLBACK_HEADWAY_SECONDS) < 1;
+}
+
+function isFallbackHeadwayMinutes(minutes) {
+  const numeric = Number(minutes);
+  return Number.isFinite(numeric) && Math.abs(numeric - FALLBACK_HEADWAY_MINUTES) < 0.2;
+}
+
+function fallbackFrequencyBucketForRoute(route = {}) {
+  const routeType = Number(route?.route_type ?? route?.routeType);
+  const routeMode = String(route?.route_type_name || route?.mode || "").toLowerCase();
+  const routeName = [route?.route_short_name, route?.route_long_name, route?.name, route?.route_name]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+  const combined = `${routeMode} ${routeName}`;
+
+  if (routeType === 1 || /\b(subway|metro|rapid transit)\b/.test(combined)) {
+    return "frequent";
+  }
+
+  if (routeType === 0 || /\b(tram|streetcar|light rail)\b/.test(combined)) {
+    return "regular";
+  }
+
+  if (routeType === 12 || /\b(airport|people mover|monorail)\b/.test(combined)) {
+    return "frequent";
   }
 
   return "local";
@@ -1397,7 +1441,15 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
     }
 
     if (Number.isFinite(vectorHeadwaySeconds) && vectorHeadwaySeconds > 0) {
-      route.headway_secs = Math.round(vectorHeadwaySeconds);
+      if (isFallbackHeadwaySeconds(vectorHeadwaySeconds)) {
+        route.headway_secs = null;
+        route.headwayFallback = 1;
+        route.frequency_bucket = fallbackFrequencyBucketForRoute(route);
+      } else {
+        route.headway_secs = Math.round(vectorHeadwaySeconds);
+        route.headwayFallback = 0;
+        route.frequency_bucket = frequencyBucketFromHeadwayMinutes(vectorHeadwaySeconds / 60);
+      }
       route.headway_source = "transitland-vector-tiles";
     }
   }
@@ -2435,6 +2487,7 @@ async function getRouteHeadway(lineKey, options = {}) {
   }
 
   const lookupKey = sanitizeText(line.routeOnestopId || normalizedLineKey);
+  const cacheKey = `${TRANSIT_CACHE_PREFIX}headway:${lookupKey}`;
   const bbox = Array.isArray(line.bbox) && line.bbox.length === 4 ? line.bbox : null;
   let summary = null;
   let normalizedBestMinutes = null;
@@ -2465,12 +2518,15 @@ async function getRouteHeadway(lineKey, options = {}) {
     }
 
     if (Number.isFinite(headwaySeconds) && headwaySeconds > 0) {
-      normalizedBestMinutes = Number((headwaySeconds / 60).toFixed(1));
+      const fallbackHeadway = isFallbackHeadwaySeconds(headwaySeconds);
+      normalizedBestMinutes = fallbackHeadway ? null : Number((headwaySeconds / 60).toFixed(1));
       summary = {
         source: "transitland-vector-tiles",
-        headwaySeconds,
+        headwaySeconds: fallbackHeadway ? null : headwaySeconds,
         bestMinutes: normalizedBestMinutes,
-        frequencyBucket: frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)
+        frequencyBucket: fallbackHeadway ? fallbackFrequencyBucketForRoute(line) : frequencyBucketFromHeadwayMinutes(normalizedBestMinutes),
+        headwayFallback: fallbackHeadway ? 1 : 0,
+        routeType: Number.isFinite(Number(line.routeType)) ? Number(line.routeType) : null
       };
     }
   }
@@ -2483,11 +2539,30 @@ async function getRouteHeadway(lineKey, options = {}) {
     });
 
     if (routePageSummary) {
-      summary = routePageSummary;
       const summaryBestMinutes = Number(routePageSummary.bestMinutes);
-      normalizedBestMinutes = Number.isFinite(summaryBestMinutes) && summaryBestMinutes > 0
+      const fallbackHeadway = isFallbackHeadwayMinutes(summaryBestMinutes);
+      normalizedBestMinutes = Number.isFinite(summaryBestMinutes) && summaryBestMinutes > 0 && !fallbackHeadway
         ? Number(summaryBestMinutes.toFixed(1))
         : null;
+
+      summary = {
+        ...routePageSummary,
+        bestMinutes: normalizedBestMinutes,
+        frequencyBucket: fallbackHeadway ? fallbackFrequencyBucketForRoute(line) : routePageSummary.frequencyBucket,
+        headwayFallback: fallbackHeadway ? 1 : 0,
+        routeType: Number.isFinite(Number(line.routeType)) ? Number(line.routeType) : null
+      };
+    }
+  }
+
+  if (summary && Number(summary.headwayFallback || 0) === 1) {
+    try {
+      const ttlHours = Math.max(1, Number(config.ROUTE_HEADWAY_CACHE_TTL_HOURS || 72));
+      await db.setCache(cacheKey, summary, ttlHours * 3600, {
+        cacheKind: "route-headway"
+      });
+    } catch {
+      // Keep the response clean even if cache rewrite fails.
     }
   }
 
@@ -2497,10 +2572,11 @@ async function getRouteHeadway(lineKey, options = {}) {
     headwaySummary: summary,
     headwayBestMinutes: normalizedBestMinutes,
     headwaySource: summary?.source || "",
+    headwayFallback: Number(summary?.headwayFallback || 0) === 1 ? 1 : 0,
     headwayChecked: 1,
-    frequencyBucket: normalizedBestMinutes
+    frequencyBucket: summary?.frequencyBucket || (normalizedBestMinutes
       ? frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)
-      : "unknown"
+      : "unknown")
   };
 }
 

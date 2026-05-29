@@ -693,16 +693,19 @@ function normalizeHeadwayUpdate(payload) {
       ? Number(headwayBestMinutes.toFixed(1))
       : null;
 
+  const headwayFallback = Boolean(payload?.headwayFallback);
+
   const normalizedBucket = String(payload?.frequencyBucket || "").trim().toLowerCase();
   const frequencyBucket = normalizedBestMinutes
     ? frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)
     : normalizedBucket || FREQUENCY_FILTER_UNKNOWN;
 
   return {
-    headwayBestMinutes: normalizedBestMinutes,
+    headwayBestMinutes: headwayFallback ? null : normalizedBestMinutes,
     frequencyBucket,
     headwaySource: String(payload?.headwaySource || payload?.headwaySummary?.source || "").trim(),
-    headwayChecked: 1
+    headwayChecked: 1,
+    headwayFallback: headwayFallback ? 1 : 0
   };
 }
 

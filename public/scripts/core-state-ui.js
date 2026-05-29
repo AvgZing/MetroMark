@@ -2272,15 +2272,61 @@ function frequencyBucketFromHeadwayMinutes(minutes) {
   return FREQUENCY_FILTER_LOCAL;
 }
 
+const FALLBACK_HEADWAY_MINUTES = Number((100000 / 60).toFixed(1));
+
+function isFallbackHeadwayMinutes(minutes) {
+  const numeric = Number(minutes);
+  return Number.isFinite(numeric) && Math.abs(numeric - FALLBACK_HEADWAY_MINUTES) < 0.2;
+}
+
+function lineFallbackFrequencyBucket(line) {
+  const routeType = Number(line?.routeType);
+  const routeMode = String(line?.mode || line?.lineMode || "").trim().toLowerCase();
+  const routeName = [line?.lineShortName, line?.lineLongName, line?.lineName]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+  const combined = `${routeMode} ${routeName}`;
+
+  if (routeType === 1 || /\b(subway|metro|rapid transit)\b/.test(combined)) {
+    return FREQUENCY_FILTER_FREQUENT;
+  }
+
+  if (routeType === 0 || /\b(tram|streetcar|light rail)\b/.test(combined)) {
+    return FREQUENCY_FILTER_REGULAR;
+  }
+
+  if (routeType === 12 || /\b(airport|people mover|monorail)\b/.test(combined)) {
+    return FREQUENCY_FILTER_FREQUENT;
+  }
+
+  return FREQUENCY_FILTER_LOCAL;
+}
+
+function lineHasFallbackHeadway(line) {
+  if (Number(line?.headwayFallback || 0) === 1) {
+    return true;
+  }
+
+  return isFallbackHeadwayMinutes(line?.headwayBestMinutes);
+}
+
 function lineHeadwayBestMinutes(line) {
   const minutes = Number(line?.headwayBestMinutes);
-  return Number.isFinite(minutes) && minutes > 0 ? minutes : null;
+  if (!Number.isFinite(minutes) || minutes <= 0 || lineHasFallbackHeadway(line)) {
+    return null;
+  }
+
+  return minutes;
 }
 
 function lineFrequencyBucket(line) {
   const bestHeadwayMinutes = lineHeadwayBestMinutes(line);
   if (bestHeadwayMinutes !== null) {
     return frequencyBucketFromHeadwayMinutes(bestHeadwayMinutes);
+  }
+
+  if (lineHasFallbackHeadway(line)) {
+    return lineFallbackFrequencyBucket(line);
   }
 
   const explicit = String(line?.frequencyBucket || "").trim().toLowerCase();
@@ -2308,6 +2354,19 @@ function lineHeadwayLabel(line) {
   const bestHeadwayMinutes = lineHeadwayBestMinutes(line);
   if (bestHeadwayMinutes !== null) {
     return `Peak headway ~${bestHeadwayMinutes} min`;
+  }
+
+  if (lineHasFallbackHeadway(line)) {
+    const fallbackBucket = lineFrequencyBucket(line);
+    if (fallbackBucket === FREQUENCY_FILTER_FREQUENT) {
+      return "Frequency Frequent";
+    }
+
+    if (fallbackBucket === FREQUENCY_FILTER_REGULAR) {
+      return "Frequency Regular";
+    }
+
+    return "Frequency Varies";
   }
 
   return frequencyBucketLabel(lineFrequencyBucket(line));
