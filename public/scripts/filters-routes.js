@@ -54,6 +54,40 @@ function getLoadedLines() {
   return Array.isArray(state.lineSummaries) ? state.lineSummaries : [];
 }
 
+function lineEligibleForToggleCounts(line, options = {}) {
+  if (!line) {
+    return false;
+  }
+
+  if (typeof lineIntersectsCurrentViewport === "function" && !lineIntersectsCurrentViewport(line)) {
+    return false;
+  }
+
+  if (!state.showProblematicGeometries && line?.lineKey) {
+    const routeReview = state.routeReviewsByCity.get(line.lineKey);
+    if (routeReview?.problematic_override === true) {
+      return false;
+    }
+  }
+
+  if (!state.showPrivateOperators && line?.operatorName) {
+    const agencyReview = state.agencyReviewsByCity.get(line.operatorName);
+    if (agencyReview?.allowed_override === false) {
+      return false;
+    }
+  }
+
+  if (Boolean(options.requireModeMatch) && typeof lineMatchesModeSelection === "function" && !lineMatchesModeSelection(line)) {
+    return false;
+  }
+
+  if (Boolean(options.requireFrequencyMatch) && typeof lineMatchesFrequencySelection === "function" && !lineMatchesFrequencySelection(line)) {
+    return false;
+  }
+
+  return true;
+}
+
 function getRouteListLines() {
   const query = String(state.lineSearchQuery || "").trim().toLowerCase();
   const hasQuery = Boolean(query);
@@ -209,10 +243,16 @@ function syncMapSourceData() {
     }
     state.mapRenderedTransit = null;
     state.lastMapFeatureStateSignature = "";
+    state.mapRouteFeatureStateCache = new Map();
+    state.mapStopFeatureStateCache = new Map();
     return;
   }
 
   if (state.transit !== state.mapRenderedTransit) {
+    state.lastMapFeatureStateSignature = "";
+    state.mapRouteFeatureStateCache = new Map();
+    state.mapStopFeatureStateCache = new Map();
+
     const routes = Array.isArray(state.transit?.routesGeoJson?.features)
       ? {
           ...state.transit.routesGeoJson,
@@ -253,32 +293,60 @@ function syncMapFeatureStates() {
   }
   state.lastMapFeatureStateSignature = signature;
 
+  const routeStateCache = state.mapRouteFeatureStateCache instanceof Map
+    ? state.mapRouteFeatureStateCache
+    : new Map();
+  const stopStateCache = state.mapStopFeatureStateCache instanceof Map
+    ? state.mapStopFeatureStateCache
+    : new Map();
+
   const routeFeatures = Array.isArray(state.transit.routesGeoJson?.features)
     ? state.transit.routesGeoJson.features
     : [];
+  const seenRouteIds = new Set();
   for (const feature of routeFeatures) {
     const lineKey = String(feature?.properties?.line_key || "").trim();
     const featureId = String(feature?.id || feature?.properties?.feature_id || lineKey || "").trim();
     if (!featureId) {
       continue;
     }
+    seenRouteIds.add(featureId);
 
     const visible = visibility.visibleLineKeys.has(lineKey) ? 1 : 0;
     const focused = visible && (!visibility.hasFocus || lineKey === state.focusedLineKey) ? 1 : 0;
+    const nextState = {
+      visible,
+      focused,
+      interactive: visible
+    };
+    const previousState = routeStateCache.get(featureId);
+    const changed =
+      !previousState ||
+      previousState.visible !== nextState.visible ||
+      previousState.focused !== nextState.focused ||
+      previousState.interactive !== nextState.interactive;
+
+    if (!changed) {
+      continue;
+    }
 
     state.map.setFeatureState(
       { source: "routes", id: featureId },
-      {
-        visible,
-        focused,
-        interactive: visible
-      }
+      nextState
     );
+    routeStateCache.set(featureId, nextState);
+  }
+
+  for (const cachedId of Array.from(routeStateCache.keys())) {
+    if (!seenRouteIds.has(cachedId)) {
+      routeStateCache.delete(cachedId);
+    }
   }
 
   const stopFeatures = Array.isArray(state.transit.stopsGeoJson?.features)
     ? state.transit.stopsGeoJson.features
     : [];
+  const seenStopIds = new Set();
   for (const feature of stopFeatures) {
     const props = feature?.properties || {};
     const lineKey = String(props.line_key || "").trim();
@@ -287,24 +355,48 @@ function syncMapFeatureStates() {
     if (!featureId) {
       continue;
     }
+    seenStopIds.add(featureId);
 
     const visible = visibility.hasFocus
       ? lineKey === state.focusedLineKey
       : visibility.showAllStops && visibility.visibleLineKeys.has(lineKey)
         ? 1
         : 0;
+    const nextState = {
+      visible,
+      focused: visibility.hasFocus ? 1 : 0,
+      interactive: visibility.hasFocus ? 1 : 0,
+      show_all: visibility.showAllStops ? 1 : 0,
+      visited: getVisitedSetForLine(lineKey).has(stationKey) ? 1 : 0
+    };
+    const previousState = stopStateCache.get(featureId);
+    const changed =
+      !previousState ||
+      previousState.visible !== nextState.visible ||
+      previousState.focused !== nextState.focused ||
+      previousState.interactive !== nextState.interactive ||
+      previousState.show_all !== nextState.show_all ||
+      previousState.visited !== nextState.visited;
+
+    if (!changed) {
+      continue;
+    }
 
     state.map.setFeatureState(
       { source: "stops", id: featureId },
-      {
-        visible,
-        focused: visibility.hasFocus ? 1 : 0,
-        interactive: visibility.hasFocus ? 1 : 0,
-        show_all: visibility.showAllStops ? 1 : 0,
-        visited: getVisitedSetForLine(lineKey).has(stationKey) ? 1 : 0
-      }
+      nextState
     );
+    stopStateCache.set(featureId, nextState);
   }
+
+  for (const cachedId of Array.from(stopStateCache.keys())) {
+    if (!seenStopIds.has(cachedId)) {
+      stopStateCache.delete(cachedId);
+    }
+  }
+
+  state.mapRouteFeatureStateCache = routeStateCache;
+  state.mapStopFeatureStateCache = stopStateCache;
 }
 
 function renderMapData() {
@@ -488,7 +580,7 @@ function renderProgress() {
 function renderModeFilterBar() {
   els.modeFilterBar.innerHTML = "";
 
-  const linesForCounts = getLoadedLines();
+  const linesForCounts = getLoadedLines().filter((line) => lineEligibleForToggleCounts(line));
   const counts = new Map(MODE_DEFS.map((mode) => [mode.key, 0]));
 
   for (const line of linesForCounts) {
@@ -568,7 +660,11 @@ function renderModeFilterBar() {
 function renderFrequencyFilterBar() {
   els.frequencyFilterBar.innerHTML = "";
 
-  const baseLines = getLoadedLines();
+  const baseLines = getLoadedLines().filter((line) =>
+    lineEligibleForToggleCounts(line, {
+      requireModeMatch: true
+    })
+  );
 
   const buckets = new Map([
     [FREQUENCY_FILTER_FREQUENT, 0],

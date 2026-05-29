@@ -577,7 +577,33 @@ function rebuildCombinedTransit() {
     state.focusedLineKey = "";
   }
 
+  const effectiveVisibleLineKeys = new Set(visibleLineKeys);
+
+  for (const [lineKey, override] of state.manualLineVisibility.entries()) {
+    const normalizedOverride = String(override || "").trim().toLowerCase();
+    if (normalizedOverride === "on" && lineByKeyAll.has(lineKey)) {
+      // Only include manual override if route geometry intersects current viewport
+      const line = lineByKeyAll.get(lineKey);
+      if (line && geometryIntersectsBbox(line.geometry, state.currentViewportBbox)) {
+        effectiveVisibleLineKeys.add(lineKey);
+      }
+    } else if (normalizedOverride === "off") {
+      // Explicitly hidden lines are removed from visibility
+      effectiveVisibleLineKeys.delete(lineKey);
+    }
+  }
+
+  const includeStopLineKeys = new Set();
+  if (state.focusedLineKey && lineByKeyAll.has(state.focusedLineKey)) {
+    includeStopLineKeys.add(state.focusedLineKey);
+  } else if (Boolean(state.showAllStops)) {
+    for (const lineKey of effectiveVisibleLineKeys) {
+      includeStopLineKeys.add(lineKey);
+    }
+  }
+
   const stopByLineAndStation = new Map();
+  const stopStationKeysByLine = new Map();
   const activeStopTypeKey = ROUTE_STOP_TYPES_KEY;
   const now = Date.now();
 
@@ -593,9 +619,18 @@ function rebuildCombinedTransit() {
     entry.lastUsedAt = now;
 
     for (const feature of entry.payload?.stopsGeoJson?.features || []) {
-      const lineKey = feature?.properties?.line_key;
-      const stationKey = feature?.properties?.station_key;
+      const lineKey = String(feature?.properties?.line_key || "").trim();
+      const stationKey = String(feature?.properties?.station_key || "").trim();
       if (!lineKey || !stationKey) {
+        continue;
+      }
+
+      if (!stopStationKeysByLine.has(lineKey)) {
+        stopStationKeysByLine.set(lineKey, new Set());
+      }
+      stopStationKeysByLine.get(lineKey).add(stationKey);
+
+      if (!includeStopLineKeys.has(lineKey)) {
         continue;
       }
 
@@ -609,28 +644,8 @@ function rebuildCombinedTransit() {
   }
 
   const stopCountsByLine = new Map();
-  for (const feature of stopByLineAndStation.values()) {
-    const lineKey = feature?.properties?.line_key;
-    if (!lineKey) {
-      continue;
-    }
-    stopCountsByLine.set(lineKey, (stopCountsByLine.get(lineKey) || 0) + 1);
-  }
-
-  const effectiveVisibleLineKeys = new Set(visibleLineKeys);
-
-  for (const [lineKey, override] of state.manualLineVisibility.entries()) {
-    const normalizedOverride = String(override || "").trim().toLowerCase();
-    if (normalizedOverride === "on" && lineByKeyAll.has(lineKey)) {
-      // Only include manual override if route geometry intersects current viewport
-      const line = lineByKeyAll.get(lineKey);
-      if (line && geometryIntersectsBbox(line.geometry, state.currentViewportBbox)) {
-        effectiveVisibleLineKeys.add(lineKey);
-      }
-    } else if (normalizedOverride === "off") {
-      // Explicitly hidden lines are removed from visibility
-      effectiveVisibleLineKeys.delete(lineKey);
-    }
+  for (const [lineKey, stationKeys] of stopStationKeysByLine.entries()) {
+    stopCountsByLine.set(lineKey, Number(stationKeys?.size || 0));
   }
 
   const lineSummaries = Array.from(effectiveVisibleLineKeys)
