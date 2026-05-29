@@ -352,30 +352,37 @@ async function init() {
   bindEvents();
   initializeMap();
 
-  window.requestAnimationFrame(() => {
-    window.requestAnimationFrame(() => {
-      document.body.classList.add("app-ready");
+  let initialTriggered = false;
+  const triggerInitialLoad = () => {
+    if (initialTriggered) {
+      return;
+    }
+    initialTriggered = true;
+
+    loadVisibleTransit({ forceRefresh: false, reason: "initial" }).catch((error) => {
+      setBackendStatus(`Initial load failed: ${error.message}`);
     });
-  });
+  };
+
+  const startupDataPromise = Promise.all([loadCities(), hydrateSession()]);
+  const mapReadyPromise = waitForMapReady();
 
   try {
-    await Promise.all([loadCities(), hydrateSession()]);
-    await waitForMapReady();
+    await mapReadyPromise;
 
-    let initialTriggered = false;
-    const triggerInitialLoad = () => {
-      if (initialTriggered) {
-        return;
-      }
-      initialTriggered = true;
-
-      loadVisibleTransit({ forceRefresh: false, reason: "initial" }).catch((error) => {
-        setBackendStatus(`Initial load failed: ${error.message}`);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        document.body.classList.add("app-ready");
+        if (state.map && typeof state.map.resize === "function") {
+          state.map.resize();
+        }
+        triggerInitialLoad();
       });
-    };
+    });
 
-    triggerInitialLoad();
     window.setTimeout(triggerInitialLoad, 1400);
+
+    await startupDataPromise;
 
     await loadProgress();
 

@@ -407,10 +407,10 @@ function pruneLineStopsCache() {
 
 function syncActiveAreaKeys(options = {}) {
   const now = Date.now();
+  const previousActiveAreaKeys = new Set(state.activeAreaKeys);
   const retainedVisibleKeys = options.retainVisibleKeys || null;
   const allowRetainOutsideRequested = Boolean(options.allowRetainOutsideRequested);
 
-  state.activeAreaKeys = new Set(state.visibleAreaKeys);
   state.visibleAreaKeys = new Set();
 
   for (const key of state.requestedAreaKeys) {
@@ -445,7 +445,12 @@ function syncActiveAreaKeys(options = {}) {
 
   if (state.visibleAreaKeys.size === 0 && options.fallbackToAllCached) {
     state.visibleAreaKeys = new Set(state.activeAreaKeys);
+  }
+
+  if (state.visibleAreaKeys.size > 0) {
     state.activeAreaKeys = new Set(state.visibleAreaKeys);
+  } else {
+    state.activeAreaKeys = previousActiveAreaKeys;
   }
 }
 
