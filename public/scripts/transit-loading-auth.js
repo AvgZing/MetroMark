@@ -419,7 +419,7 @@ async function loadVisibleTransit(options = {}) {
     (request) => options.forceRefresh || !state.areaCache.has(request.areaKey)
   );
 
-  const cachedInView = visibleCachedAreaKeysForViewport(rawBbox);
+  const cachedInView = visibleCachedAreaKeysForViewport(rawBbox, modeRouteTypes);
 
   state.requestedAreaKeys = new Set([
     ...requests.map((request) => request.areaKey),

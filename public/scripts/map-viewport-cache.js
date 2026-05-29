@@ -158,14 +158,34 @@ function geometryIntersectsBbox(geometry, bbox) {
   );
 }
 
-function visibleCachedAreaKeysForViewport(rawBbox) {
+function modeCacheKeyFromRouteTypes(routeTypes) {
+  const normalized = Array.from(
+    new Set(
+      Array.isArray(routeTypes)
+        ? routeTypes
+            .map((value) => Number.parseInt(String(value), 10))
+            .filter((value) => Number.isFinite(value) && value >= 0)
+        : []
+    )
+  );
+  return normalized.length ? normalized.slice().sort((a, b) => a - b).join("-") : "all";
+}
+
+function visibleCachedAreaKeysForViewport(rawBbox, routeTypes = []) {
   const normalizedViewportBbox = normalizeBboxArray(rawBbox);
   if (!normalizedViewportBbox) {
     return new Set();
   }
+  const modeCacheKey = modeCacheKeyFromRouteTypes(routeTypes);
+  const modeSuffix = `:modes:${modeCacheKey}`;
   const visible = new Set();
 
   for (const [cacheKey, entry] of state.areaCache.entries()) {
+    const normalizedCacheKey = String(cacheKey || "");
+    if (!normalizedCacheKey.endsWith(modeSuffix)) {
+      continue;
+    }
+
     const cachedBbox = cacheEntryBbox(cacheKey, entry);
     if (!cachedBbox) {
       continue;
@@ -532,6 +552,13 @@ function rebuildCombinedTransit() {
   const lineByKeyAll = new Map();
   const visibleLineKeys = new Set();
   const viewportBbox = normalizeBboxArray(state.currentViewportBbox);
+  const routeIntersectsViewport = (feature) => {
+    if (!viewportBbox) {
+      return true;
+    }
+
+    return geometryIntersectsBbox(feature?.geometry, viewportBbox);
+  };
 
   for (const cacheKey of state.activeAreaKeys) {
     const payload = state.areaCache.get(cacheKey)?.payload;
@@ -544,6 +571,9 @@ function rebuildCombinedTransit() {
       if (!lineKey) {
         continue;
       }
+      if (!routeIntersectsViewport(feature)) {
+        continue;
+      }
       if (!routeByLine.has(lineKey)) {
         routeByLine.set(lineKey, feature);
       }
@@ -552,6 +582,9 @@ function rebuildCombinedTransit() {
     for (const line of payload?.lineSummaries || []) {
       const lineKey = line?.lineKey;
       if (!lineKey) {
+        continue;
+      }
+      if (!routeByLine.has(lineKey)) {
         continue;
       }
 
