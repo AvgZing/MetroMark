@@ -231,6 +231,7 @@ const state = {
   cities: [],
   transit: null,
   mapRenderedTransit: null,
+  lastMapFeatureStateSignature: "",
   lineSummaries: [],
   loadedLineSummaries: [],
   areaCache: new Map(),

@@ -140,6 +140,25 @@ function getMapFeatureVisibilityState() {
   };
 }
 
+function buildMapFeatureStateSignature(visibility) {
+  if (!visibility) {
+    return "";
+  }
+
+  const visibleLineKeys = Array.from(visibility.visibleLineKeys || []).sort().join("|");
+  const visitedSignature = Array.from(state.visitedByLine.entries())
+    .map(([lineKey, set]) => `${String(lineKey || "").trim()}:${Number(set?.size || 0)}`)
+    .sort()
+    .join("|");
+
+  return [
+    visibility.hasFocus ? state.focusedLineKey : "",
+    visibility.showAllStops ? "1" : "0",
+    visibleLineKeys,
+    visitedSignature
+  ].join("::");
+}
+
 function syncMapSourceData() {
   if (!state.mapReady || !state.map) {
     return;
@@ -189,6 +208,7 @@ function syncMapSourceData() {
       stopsSource.setData(emptyFeatureCollection());
     }
     state.mapRenderedTransit = null;
+    state.lastMapFeatureStateSignature = "";
     return;
   }
 
@@ -226,6 +246,12 @@ function syncMapFeatureStates() {
   if (!visibility) {
     return;
   }
+
+  const signature = buildMapFeatureStateSignature(visibility);
+  if (signature === state.lastMapFeatureStateSignature) {
+    return;
+  }
+  state.lastMapFeatureStateSignature = signature;
 
   const routeFeatures = Array.isArray(state.transit.routesGeoJson?.features)
     ? state.transit.routesGeoJson.features
