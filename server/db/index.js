@@ -558,7 +558,7 @@ async function getCacheByBbox(minLon, minLat, maxLon, maxLat, options = {}) {
            )
        ${whereClause}
      ORDER BY c.cache_kind DESC, c.fetched_at DESC
-     LIMIT 200`,
+     LIMIT 2000`,
     [minLon, minLat, maxLon, maxLat]
   );
 
