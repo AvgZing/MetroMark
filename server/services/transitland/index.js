@@ -1709,8 +1709,10 @@ async function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
 
     return {
       type: "Feature",
+      id: route.lineKey,
       geometry: route.geometry,
       properties: {
+        feature_id: route.lineKey,
         line_key: route.lineKey,
         route_onestop_id: route.routeOnestopId,
         line_name: route.lineName,
@@ -1791,6 +1793,7 @@ async function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
   for (const stop of hubStops) {
     const stationKey = stableStationKey(stop.stationName, stop.hubLon, stop.hubLat);
     const overridden = applyStopOverride(stationKey, stop.stationName, stop.hubLon, stop.hubLat);
+    const featureId = `${stop.lineKey}|${stationKey}`;
 
     for (const sourceStopId of stop.sourceStopIds) {
       db.upsertStopTranslation(sourceStopId, stationKey, "transitland");
@@ -1798,11 +1801,13 @@ async function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
 
     stopFeatures.push({
       type: "Feature",
+      id: featureId,
       geometry: {
         type: "Point",
         coordinates: [overridden.lon, overridden.lat]
       },
       properties: {
+        feature_id: featureId,
         station_key: stationKey,
         line_key: stop.lineKey,
         line_name: stop.lineName,
@@ -2304,6 +2309,7 @@ function buildRouteStopsPayload(line, rawStops, options = {}) {
   for (const stop of hubStops) {
     const stationKey = stableStationKey(stop.stationName, stop.hubLon, stop.hubLat);
     const overridden = applyStopOverride(stationKey, stop.stationName, stop.hubLon, stop.hubLat);
+    const featureId = `${line.lineKey}|${stationKey}`;
 
     for (const sourceStopId of stop.sourceStopIds) {
       db.upsertStopTranslation(sourceStopId, stationKey, "transitland");
@@ -2311,11 +2317,13 @@ function buildRouteStopsPayload(line, rawStops, options = {}) {
 
     stopFeatures.push({
       type: "Feature",
+      id: featureId,
       geometry: {
         type: "Point",
         coordinates: [overridden.lon, overridden.lat]
       },
       properties: {
+        feature_id: featureId,
         station_key: stationKey,
         line_key: stop.lineKey,
         line_name: stop.lineName,
@@ -2701,7 +2709,6 @@ async function queueCityReverifyIfStale(area, cached) {
   if (!area || area.kind !== "city" || !area.slug || !cached) {
     return;
   }
-
   const staleDays = Math.max(1, Number(config.TRANSIT_CACHE_STALE_DAYS || 30));
   const ageSeconds =
     Math.floor(Date.now() / 1000) - Number(cached.verifiedAt || cached.fetchedAt || 0);

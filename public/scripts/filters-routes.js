@@ -122,86 +122,163 @@ function getVisitedSetForLine(lineKey) {
   return fresh;
 }
 
-function getFilteredData() {
+function getMapFeatureVisibilityState() {
   if (!state.transit) {
-    return {
-      routes: emptyFeatureCollection(),
-      stops: emptyFeatureCollection(),
-      shownLines: []
-    };
+    return null;
   }
 
   const shownLines = getShownLines();
   const visibleLineKeys = getVisibleLineKeys(shownLines);
-  const allowedStopTypes = new Set(ROUTE_STOP_TYPES);
   const hasFocus = Boolean(state.focusedLineKey) && visibleLineKeys.has(state.focusedLineKey);
   const showAllStops = Boolean(state.showAllStops) && !hasFocus;
-  const visibleLineCount = visibleLineKeys.size;
 
-  const routes = state.transit.routesGeoJson.features
-    .map((feature) => {
-      const lineKey = String(feature?.properties?.line_key || "").trim();
-      const targetVisible = visibleLineKeys.has(lineKey);
-      const focused = targetVisible && (!hasFocus || lineKey === state.focusedLineKey) ? 1 : 0;
-      const interactive = targetVisible ? 1 : 0;
+  return {
+    shownLines,
+    visibleLineKeys,
+    hasFocus,
+    showAllStops
+  };
+}
 
-      return {
-        ...feature,
-        properties: {
-          ...feature.properties,
-          is_focused: focused,
-          has_focus: hasFocus ? 1 : 0,
-          is_interactive: interactive,
-          is_visible: targetVisible ? 1 : 0
+function syncMapSourceData() {
+  if (!state.mapReady || !state.map) {
+    return;
+  }
+
+  const routesSource = state.map.getSource("routes");
+  const stopsSource = state.map.getSource("stops");
+
+  const normalizeRouteFeature = (feature) => {
+    const lineKey = String(feature?.properties?.line_key || feature?.id || "").trim();
+    const featureId = String(feature?.id || feature?.properties?.feature_id || lineKey || "").trim();
+
+    return {
+      ...feature,
+      id: featureId || undefined,
+      properties: {
+        ...feature?.properties,
+        feature_id: featureId || undefined,
+        line_key: lineKey || feature?.properties?.line_key || ""
+      }
+    };
+  };
+
+  const normalizeStopFeature = (feature) => {
+    const props = feature?.properties || {};
+    const lineKey = String(props.line_key || "").trim();
+    const stationKey = String(props.station_key || props.stop_id || feature?.id || "").trim();
+    const featureId = String(feature?.id || props.feature_id || `${lineKey}|${stationKey}` || "").trim();
+
+    return {
+      ...feature,
+      id: featureId || undefined,
+      properties: {
+        ...props,
+        feature_id: featureId || undefined,
+        line_key: lineKey,
+        station_key: props.station_key || stationKey
+      }
+    };
+  };
+
+  if (!state.transit) {
+    if (routesSource) {
+      routesSource.setData(emptyFeatureCollection());
+    }
+    if (stopsSource) {
+      stopsSource.setData(emptyFeatureCollection());
+    }
+    state.mapRenderedTransit = null;
+    return;
+  }
+
+  if (state.transit !== state.mapRenderedTransit) {
+    const routes = Array.isArray(state.transit?.routesGeoJson?.features)
+      ? {
+          ...state.transit.routesGeoJson,
+          features: state.transit.routesGeoJson.features.map(normalizeRouteFeature)
         }
-      };
-    });
+      : emptyFeatureCollection();
+    const stops = Array.isArray(state.transit?.stopsGeoJson?.features)
+      ? {
+          ...state.transit.stopsGeoJson,
+          features: state.transit.stopsGeoJson.features.map(normalizeStopFeature)
+        }
+      : emptyFeatureCollection();
 
-  let stopSource = [];
-  if (hasFocus) {
-    stopSource = state.transit.stopsGeoJson.features.filter(
-      (feature) => feature?.properties?.line_key === state.focusedLineKey
-    );
-  } else if (showAllStops) {
-    stopSource = state.transit.stopsGeoJson.features.filter((feature) =>
-      visibleLineKeys.has(String(feature?.properties?.line_key || "").trim())
+    if (routesSource) {
+      routesSource.setData(routes);
+    }
+    if (stopsSource) {
+      stopsSource.setData(stops);
+    }
+
+    state.mapRenderedTransit = state.transit || null;
+  }
+}
+
+function syncMapFeatureStates() {
+  if (!state.mapReady || !state.map || !state.transit) {
+    return;
+  }
+
+  const visibility = getMapFeatureVisibilityState();
+  if (!visibility) {
+    return;
+  }
+
+  const routeFeatures = Array.isArray(state.transit.routesGeoJson?.features)
+    ? state.transit.routesGeoJson.features
+    : [];
+  for (const feature of routeFeatures) {
+    const lineKey = String(feature?.properties?.line_key || "").trim();
+    const featureId = String(feature?.id || feature?.properties?.feature_id || lineKey || "").trim();
+    if (!featureId) {
+      continue;
+    }
+
+    const visible = visibility.visibleLineKeys.has(lineKey) ? 1 : 0;
+    const focused = visible && (!visibility.hasFocus || lineKey === state.focusedLineKey) ? 1 : 0;
+
+    state.map.setFeatureState(
+      { source: "routes", id: featureId },
+      {
+        visible,
+        focused,
+        interactive: visible
+      }
     );
   }
 
-  const stops = stopSource
-    .filter((feature) => {
-      const stopType = Number(feature.properties.stop_location_type);
-      const normalizedStopType = Number.isFinite(stopType) ? stopType : 0;
-      return allowedStopTypes.has(normalizedStopType);
-    })
-    .map((feature) => {
-      const visited = getVisitedSetForLine(feature.properties.line_key).has(feature.properties.station_key)
+  const stopFeatures = Array.isArray(state.transit.stopsGeoJson?.features)
+    ? state.transit.stopsGeoJson.features
+    : [];
+  for (const feature of stopFeatures) {
+    const props = feature?.properties || {};
+    const lineKey = String(props.line_key || "").trim();
+    const stationKey = String(props.station_key || "").trim();
+    const featureId = String(feature?.id || props.feature_id || `${lineKey}|${stationKey}` || "").trim();
+    if (!featureId) {
+      continue;
+    }
+
+    const visible = visibility.hasFocus
+      ? lineKey === state.focusedLineKey
+      : visibility.showAllStops && visibility.visibleLineKeys.has(lineKey)
         ? 1
         : 0;
 
-      return {
-        ...feature,
-        properties: {
-          ...feature.properties,
-          visited,
-          is_focused: hasFocus ? 1 : 0,
-          is_interactive: hasFocus ? 1 : 0,
-          show_all: showAllStops ? 1 : 0
-        }
-      };
-    });
-
-  return {
-    routes: {
-      type: "FeatureCollection",
-      features: routes
-    },
-    stops: {
-      type: "FeatureCollection",
-      features: stops
-    },
-    shownLines
-  };
+    state.map.setFeatureState(
+      { source: "stops", id: featureId },
+      {
+        visible,
+        focused: visibility.hasFocus ? 1 : 0,
+        interactive: visibility.hasFocus ? 1 : 0,
+        show_all: visibility.showAllStops ? 1 : 0,
+        visited: getVisitedSetForLine(lineKey).has(stationKey) ? 1 : 0
+      }
+    );
+  }
 }
 
 function renderMapData() {
@@ -209,17 +286,10 @@ function renderMapData() {
     return;
   }
 
-  const filtered = getFilteredData();
-  const routesSource = state.map.getSource("routes");
-  const stopsSource = state.map.getSource("stops");
-  const focusMaskSource = state.map.getSource("focus-mask");
+  syncMapSourceData();
+  syncMapFeatureStates();
 
-  if (routesSource) {
-    routesSource.setData(filtered.routes);
-  }
-  if (stopsSource) {
-    stopsSource.setData(filtered.stops);
-  }
+  const focusMaskSource = state.map.getSource("focus-mask");
   if (focusMaskSource) {
     focusMaskSource.setData(focusMaskFeatureCollection(Boolean(state.focusedLineKey)));
   }

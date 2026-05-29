@@ -230,6 +230,7 @@ const state = {
   user: null,
   cities: [],
   transit: null,
+  mapRenderedTransit: null,
   lineSummaries: [],
   loadedLineSummaries: [],
   areaCache: new Map(),

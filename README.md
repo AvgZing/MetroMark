@@ -78,3 +78,4 @@ Workspace layout cheat sheet: [docs/WORKSPACE-LAYOUT.md](docs/WORKSPACE-LAYOUT.m
 - Very wide zoom levels intentionally pause new fetches to avoid expensive global pulls.
 - Cached, in-view routes can still render while fetch is paused.
 - Route frequency quality depends on available upstream headway data.
+

@@ -4,7 +4,7 @@
     return;
   }
 
-  if (Number(feature?.properties?.is_interactive || 0) !== 1) {
+  if (Number(stopFeatureState(feature)?.interactive || 0) !== 1) {
     return;
   }
 
@@ -28,7 +28,7 @@ function onStopHoverMove(event) {
     return;
   }
 
-  if (Number(feature?.properties?.is_interactive || 0) !== 1) {
+  if (Number(stopFeatureState(feature)?.interactive || 0) !== 1) {
     onStopHoverLeave();
     return;
   }
@@ -51,6 +51,15 @@ function onStopHoverLeave() {
   if (state.userStatusPinnedKind !== "station") {
     restoreUserStatusFromFocus();
   }
+}
+
+function stopFeatureState(feature) {
+  const featureId = String(feature?.id || feature?.properties?.feature_id || "").trim();
+  if (!featureId || !state.map || typeof state.map.getFeatureState !== "function") {
+    return {};
+  }
+
+  return state.map.getFeatureState({ source: "stops", id: featureId }) || {};
 }
 
 function lineFromRouteFeature(feature) {
@@ -166,11 +175,13 @@ function initializeMap() {
   state.map.on("load", () => {
     state.map.addSource("routes", {
       type: "geojson",
+      promoteId: "feature_id",
       data: emptyFeatureCollection()
     });
 
     state.map.addSource("stops", {
       type: "geojson",
+      promoteId: "feature_id",
       data: emptyFeatureCollection()
     });
 
@@ -183,7 +194,6 @@ function initializeMap() {
       id: "routes-background-casing",
       type: "line",
       source: "routes",
-      filter: ["==", ["get", "is_focused"], 0],
       paint: {
         "line-color": "#111920",
         "line-width": [
@@ -202,12 +212,13 @@ function initializeMap() {
           4.3
         ],
         "line-opacity": [
-          "interpolate",
-          ["linear"],
-          ["coalesce", ["to-number", ["get", "is_visible"]], 0],
+          "case",
+          [
+            "all",
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 0]
+          ],
           0,
-          0,
-          1,
           0
         ],
         "line-opacity-transition": {
@@ -221,7 +232,6 @@ function initializeMap() {
       id: "routes-background-main",
       type: "line",
       source: "routes",
-      filter: ["==", ["get", "is_focused"], 0],
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
         "line-width": [
@@ -240,13 +250,14 @@ function initializeMap() {
           2.4
         ],
         "line-opacity": [
-          "interpolate",
-          ["linear"],
-          ["coalesce", ["to-number", ["get", "is_visible"]], 0],
-          0,
-          0,
-          1,
-          0.9
+          "case",
+          [
+            "all",
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 0]
+          ],
+          0.9,
+          0
         ],
         "line-opacity-transition": {
           duration: 220,
@@ -269,7 +280,6 @@ function initializeMap() {
       id: "routes-casing",
       type: "line",
       source: "routes",
-      filter: ["==", ["get", "is_focused"], 1],
       paint: {
         "line-color": "#0f1b22",
         "line-width": [
@@ -288,13 +298,14 @@ function initializeMap() {
           5.2
         ],
         "line-opacity": [
-          "interpolate",
-          ["linear"],
-          ["coalesce", ["to-number", ["get", "is_visible"]], 0],
-          0,
-          0,
-          1,
-          0.38
+          "case",
+          [
+            "all",
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+          ],
+          0.38,
+          0
         ],
         "line-opacity-transition": {
           duration: 220,
@@ -307,7 +318,6 @@ function initializeMap() {
       id: "routes-main",
       type: "line",
       source: "routes",
-      filter: ["==", ["get", "is_focused"], 1],
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
         "line-width": [
@@ -326,13 +336,14 @@ function initializeMap() {
           3.6
         ],
         "line-opacity": [
-          "interpolate",
-          ["linear"],
-          ["coalesce", ["to-number", ["get", "is_visible"]], 0],
-          0,
-          0,
-          1,
-          0.96
+          "case",
+          [
+            "all",
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+          ],
+          0.96,
+          0
         ],
         "line-opacity-transition": {
           duration: 220,
@@ -345,7 +356,6 @@ function initializeMap() {
       id: "routes-hit",
       type: "line",
       source: "routes",
-      filter: ["==", ["get", "is_visible"], 1],
       paint: {
         "line-color": "#000000",
         "line-width": [
@@ -361,7 +371,12 @@ function initializeMap() {
           13,
           18
         ],
-        "line-opacity": 0
+        "line-opacity": [
+          "case",
+          ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+          0,
+          0
+        ]
       }
     });
 
@@ -385,231 +400,236 @@ function initializeMap() {
         ],
         "circle-color": [
           "case",
-          ["==", ["get", "show_all"], 1],
+          ["==", ["coalesce", ["to-number", ["feature-state", "show_all"]], 0], 1],
           "#ffffff",
-          ["==", ["get", "visited"], 1],
+          ["==", ["coalesce", ["to-number", ["feature-state", "visited"]], 0], 1],
           "#1a9b66",
           "#d9563a"
         ],
         "circle-stroke-color": [
           "case",
-          ["==", ["get", "show_all"], 1],
+          ["==", ["coalesce", ["to-number", ["feature-state", "show_all"]], 0], 1],
           "#0f1b22",
           "#ffffff"
         ],
         "circle-stroke-width": [
           "case",
-          ["==", ["get", "show_all"], 1],
+          ["==", ["coalesce", ["to-number", ["feature-state", "show_all"]], 0], 1],
           0.9,
           1.2
         ],
         "circle-opacity": [
           "case",
-          ["==", ["get", "show_all"], 1],
-          1,
-          ["==", ["get", "is_focused"], 1],
-          0.94,
-          0.32
+          ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+          ["case", ["==", ["coalesce", ["to-number", ["feature-state", "show_all"]], 0], 1], 1, ["case", ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1], 0.94, 0.32]],
+          0
         ],
         "circle-stroke-opacity": [
           "case",
-          ["==", ["get", "show_all"], 1],
-          1,
-          ["==", ["get", "is_focused"], 1],
-          1,
-          0.45
+          ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+          ["case", ["==", ["coalesce", ["to-number", ["feature-state", "show_all"]], 0], 1], 1, ["case", ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1], 1, 0.45]],
+          0
         ]
-      }
-    });
-
-    const routeHoverLayers = ["routes-main", "routes-background-main"];
-    const routeClickLayers = ["routes-hit"];
-
-    for (const layerId of routeClickLayers) {
-      state.map.on("click", layerId, (event) => {
-        const now = Date.now();
-        if (now - state.lastStopClickAt < 260) {
-          return;
         }
-        if (now - state.lastRouteClickAt < 160) {
-          return;
-        }
+      });
 
-        const stopHits = state.map
-          .queryRenderedFeatures(event.point, {
-            layers: ["stops-layer"]
-          })
-          .filter((feature) => Number(feature?.properties?.is_interactive || 0) === 1);
-        if (
-          Array.isArray(stopHits) &&
-          stopHits.length > 0 &&
-          state.userStatusPinnedKind !== "station"
-        ) {
-          return;
-        }
+      const routeHoverLayers = ["routes-main", "routes-background-main"];
+      const routeClickLayers = ["routes-hit"];
 
-        const routeHits = state.map.queryRenderedFeatures(event.point, {
-          layers: routeClickLayers
-        });
-
-        const seenLineKeys = new Set();
-        const overlappedLines = [];
-        for (const hit of routeHits || []) {
-          const line = lineFromRouteFeature(hit);
-          const candidateLineKey = String(line?.lineKey || "").trim();
-          if (!line || !lineIsVisible(line) || !candidateLineKey || seenLineKeys.has(candidateLineKey)) {
-            continue;
+      for (const layerId of routeClickLayers) {
+        state.map.on("click", layerId, (event) => {
+          const now = Date.now();
+          if (now - state.lastStopClickAt < 260) {
+            return;
+          }
+          if (now - state.lastRouteClickAt < 160) {
+            return;
           }
 
-          seenLineKeys.add(candidateLineKey);
-          overlappedLines.push(line);
-        }
+          const stopHits = state.map
+            .queryRenderedFeatures(event.point, {
+              layers: ["stops-layer"]
+            })
+            .filter((feature) => Number(stopFeatureState(feature)?.interactive || 0) === 1);
+          if (
+            Array.isArray(stopHits) &&
+            stopHits.length > 0 &&
+            state.userStatusPinnedKind !== "station"
+          ) {
+            return;
+          }
 
-        if (!overlappedLines.length) {
-          return;
-        }
-
-        overlappedLines.sort((a, b) => lineDisplayName(a).localeCompare(lineDisplayName(b)));
-        state.lastRouteClickAt = now;
-
-        if (overlappedLines.length === 1) {
-          closeRouteSelectionPopup();
-          setFocusedLine(overlappedLines[0].lineKey).catch((error) => {
-            setStatus(error.message, "error");
+          const routeHits = state.map.queryRenderedFeatures(event.point, {
+            layers: routeClickLayers
           });
-          return;
-        }
 
-        onRouteHoverLeave();
-        openRouteSelectionPopup(overlappedLines, event.lngLat);
-        setStatus(
-          "Multiple routes overlap here.",
-          "ok",
-          `Pick one from the selector (${overlappedLines.length} routes).`
-        );
-      });
-    }
+          const seenLineKeys = new Set();
+          const overlappedLines = [];
+          for (const hit of routeHits || []) {
+            const line = lineFromRouteFeature(hit);
+            const candidateLineKey = String(line?.lineKey || "").trim();
+            if (!line || !lineIsVisible(line) || !candidateLineKey || seenLineKeys.has(candidateLineKey)) {
+              continue;
+            }
 
-    for (const layerId of routeHoverLayers) {
-      state.map.on("mouseenter", layerId, () => {
-        if (hoverInteractionsEnabled()) {
+            seenLineKeys.add(candidateLineKey);
+            overlappedLines.push(line);
+          }
+
+          if (!overlappedLines.length) {
+            return;
+          }
+
+          overlappedLines.sort((a, b) => lineDisplayName(a).localeCompare(lineDisplayName(b)));
+          state.lastRouteClickAt = now;
+
+          if (overlappedLines.length === 1) {
+            closeRouteSelectionPopup();
+            setFocusedLine(overlappedLines[0].lineKey).catch((error) => {
+              setStatus(error.message, "error");
+            });
+            return;
+          }
+
+          onRouteHoverLeave();
+          openRouteSelectionPopup(overlappedLines, event.lngLat);
+          setStatus(
+            "Multiple routes overlap here.",
+            "ok",
+            `Pick one from the selector (${overlappedLines.length} routes).`
+          );
+        });
+      }
+
+      for (const layerId of routeHoverLayers) {
+        state.map.on("mouseenter", layerId, () => {
+          if (hoverInteractionsEnabled()) {
+            state.map.getCanvas().style.cursor = "pointer";
+          }
+        });
+
+        state.map.on("mousemove", layerId, (event) => {
+          if (hoverInteractionsEnabled()) {
+            onRouteHoverMove(event);
+          }
+        });
+
+        state.map.on("mouseleave", layerId, () => {
+          state.map.getCanvas().style.cursor = "";
+          onRouteHoverLeave();
+        });
+      }
+
+      state.map.on("click", "stops-layer", onStopClicked);
+      state.map.on("mouseenter", "stops-layer", (event) => {
+        const feature = event.features && event.features[0];
+        if (hoverInteractionsEnabled() && Number(stopFeatureState(feature)?.interactive || 0) === 1) {
           state.map.getCanvas().style.cursor = "pointer";
         }
       });
-
-      state.map.on("mousemove", layerId, (event) => {
+      state.map.on("mousemove", "stops-layer", (event) => {
         if (hoverInteractionsEnabled()) {
-          onRouteHoverMove(event);
+          onStopHoverMove(event);
         }
       });
-
-      state.map.on("mouseleave", layerId, () => {
+      state.map.on("mouseleave", "stops-layer", () => {
         state.map.getCanvas().style.cursor = "";
-        onRouteHoverLeave();
+        onStopHoverLeave();
       });
-    }
 
-    state.map.on("click", "stops-layer", onStopClicked);
-    state.map.on("mouseenter", "stops-layer", (event) => {
-      const feature = event.features && event.features[0];
-      if (hoverInteractionsEnabled() && Number(feature?.properties?.is_interactive || 0) === 1) {
-        state.map.getCanvas().style.cursor = "pointer";
-      }
-    });
-    state.map.on("mousemove", "stops-layer", (event) => {
-      if (hoverInteractionsEnabled()) {
-        onStopHoverMove(event);
-      }
-    });
-    state.map.on("mouseleave", "stops-layer", () => {
-      state.map.getCanvas().style.cursor = "";
-      onStopHoverLeave();
-    });
+      state.map.on("click", (event) => {
+        const now = Date.now();
+        if (now - state.lastStopClickAt < 260 || now - state.lastRouteClickAt < 220) {
+          return;
+        }
 
-    state.map.on("click", (event) => {
-      const now = Date.now();
-      if (now - state.lastStopClickAt < 260 || now - state.lastRouteClickAt < 220) {
-        return;
-      }
+        const point = event.point;
+        const closePadding = 14;
 
-      const point = event.point;
-      const closePadding = 14;
+        if (state.routeSelectPopup) {
+          const nearbyRoutes = state.map.queryRenderedFeatures(
+            [
+              [point.x - closePadding, point.y - closePadding],
+              [point.x + closePadding, point.y + closePadding]
+            ],
+            {
+              layers: routeClickLayers
+            }
+          );
 
-      if (state.routeSelectPopup) {
-        const nearbyRoutes = state.map.queryRenderedFeatures(
+          if (!Array.isArray(nearbyRoutes) || nearbyRoutes.length === 0) {
+            closeRouteSelectionPopup();
+          }
+        }
+
+        if (!state.focusedLineKey) {
+          return;
+        }
+
+        const nearby = state.map.queryRenderedFeatures(
           [
             [point.x - closePadding, point.y - closePadding],
             [point.x + closePadding, point.y + closePadding]
           ],
           {
-            layers: routeClickLayers
+            layers: ["stops-layer", "routes-hit", "routes-main", "routes-background-main"]
           }
         );
 
-        if (!Array.isArray(nearbyRoutes) || nearbyRoutes.length === 0) {
-          closeRouteSelectionPopup();
+        const hasVisibleNearbyFeature = Array.isArray(nearby)
+          ? nearby.some((feature) => {
+              if (feature?.layer?.id === "stops-layer") {
+                return Number(stopFeatureState(feature)?.interactive || 0) === 1;
+              }
+
+              const line = lineFromRouteFeature(feature);
+              return Boolean(line && lineIsVisible(line));
+            })
+          : false;
+
+        if (hasVisibleNearbyFeature) {
+          return;
         }
-      }
 
-      if (!state.focusedLineKey) {
-        return;
-      }
+        clearFocusedLine(
+          "Route focus cleared.",
+          "Clicked away from routes/stations. Click a route to focus it again."
+        );
+      });
 
-      const nearby = state.map.queryRenderedFeatures(
-        [
-          [point.x - closePadding, point.y - closePadding],
-          [point.x + closePadding, point.y + closePadding]
-        ],
-        {
-          layers: ["stops-layer", "routes-hit", "routes-main", "routes-background-main"]
-        }
-      );
-
-      const hasVisibleNearbyFeature = Array.isArray(nearby)
-        ? nearby.some((feature) => {
-            if (feature?.layer?.id === "stops-layer") {
-              return Number(feature?.properties?.is_interactive || 0) === 1;
-            }
-
-            const line = lineFromRouteFeature(feature);
-            return Boolean(line && lineIsVisible(line));
-          })
-        : false;
-
-      if (hasVisibleNearbyFeature) {
-        return;
-      }
-
-      clearFocusedLine(
-        "Route focus cleared.",
-        "Clicked away from routes/stations. Click a route to focus it again."
-      );
-    });
-
-    state.map.on("touchstart", () => {
-      onStopHoverLeave();
-      onRouteHoverLeave();
-      closeRouteSelectionPopup();
-    });
-
-    state.map.on("movestart", () => {
-      closeRouteSelectionPopup();
-      if (!hoverInteractionsEnabled()) {
+      state.map.on("touchstart", () => {
         onStopHoverLeave();
         onRouteHoverLeave();
+        closeRouteSelectionPopup();
+      });
+
+      state.map.on("movestart", () => {
+        closeRouteSelectionPopup();
+        if (!hoverInteractionsEnabled()) {
+          onStopHoverLeave();
+          onRouteHoverLeave();
+        }
+      });
+
+      state.map.on("moveend", onMapMoveEnd);
+
+      state.mapReady = true;
+      updateMapModeButtons();
+      renderMapData();
+
+      if (typeof state.mapReadyResolver === "function") {
+        state.mapReadyResolver();
+        state.mapReadyResolver = null;
       }
     });
+  }
 
-    state.map.on("moveend", onMapMoveEnd);
-
-    state.mapReady = true;
-    updateMapModeButtons();
-    renderMapData();
-
-    if (typeof state.mapReadyResolver === "function") {
-      state.mapReadyResolver();
-      state.mapReadyResolver = null;
+  function stopFeatureState(feature) {
+    const featureId = String(feature?.id || feature?.properties?.feature_id || "").trim();
+    if (!featureId || !state.map || typeof state.map.getFeatureState !== "function") {
+      return {};
     }
-  });
-}
+
+    return state.map.getFeatureState({ source: "stops", id: featureId }) || {};
+  }
 

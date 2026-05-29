@@ -1,5 +1,4 @@
 # Local prototypes and non-app reference material
-docs/*.md
 
 # Environment and secrets
 .env
@@ -31,4 +30,3 @@ data/postgres/
 .DS_Store
 Thumbs.db
 .vscode/
-scripts/
