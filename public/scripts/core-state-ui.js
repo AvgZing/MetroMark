@@ -1191,7 +1191,7 @@ async function toggleVisitedForStation(properties, coords) {
 
     renderMapData();
     renderProgress();
-    renderLineView();
+    renderLineView({ forceStopRefresh: true });
 
     setUserStatusFromStation(
       properties || {},
@@ -1709,7 +1709,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
   createLineConnector(lineColor);
 }
 
-function renderLineView() {
+function renderLineView(options = {}) {
   if (!els.lineViewPanel) {
     return;
   }
@@ -1728,6 +1728,7 @@ function renderLineView() {
   const line = state.lineSummaries.find((entry) => entry.lineKey === lineKey);
   const lineColor = line?.color || "#177ca2";
   const lineLabel = line ? lineDisplayName(line) : "Selected Route";
+  const forceStopRefresh = Boolean(options?.forceStopRefresh);
 
   applyLineViewOrderingPreference(lineKey);
 
@@ -1800,7 +1801,7 @@ function renderLineView() {
   }
 
   // renderLineViewStops will manage dataset.lineKey itself to detect line changes
-  renderLineViewStops(lineKey, lineColor).catch(() => {});
+  renderLineViewStops(lineKey, lineColor, { forceRefresh: forceStopRefresh }).catch(() => {});
 }
 
 async function openLineView(lineKey) {

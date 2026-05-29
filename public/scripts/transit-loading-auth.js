@@ -651,7 +651,7 @@ function updateAuthUi() {
     window.refreshFilterPresets({ silent: true }).catch(() => {});
   }
   renderUserStatus();
-  renderLineView();
+  renderLineView({ forceStopRefresh: true });
 }
 
 function rebuildVisitedMap(items) {
@@ -666,7 +666,7 @@ async function loadProgress() {
     state.visitedByLine = new Map();
     renderMapData();
     renderProgress();
-    renderLineView();
+    renderLineView({ forceStopRefresh: true });
     return;
   }
 
@@ -674,7 +674,7 @@ async function loadProgress() {
   rebuildVisitedMap(payload.items || []);
   renderMapData();
   renderProgress();
-  renderLineView();
+  renderLineView({ forceStopRefresh: true });
 }
 
 async function clearRouteProgress(lineKey) {
@@ -702,6 +702,7 @@ async function clearRouteProgress(lineKey) {
     state.visitedByLine.set(normalizedLineKey, new Set());
     renderMapData();
     renderProgress();
+    renderLineView({ forceStopRefresh: true });
     if (line && state.focusedLineKey === normalizedLineKey) {
       setUserStatusFromLine(line);
     } else {
