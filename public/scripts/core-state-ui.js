@@ -1034,6 +1034,82 @@ function buildLineBboxFromRoutes(lineKey) {
   return [bbox.minLng, bbox.minLat, bbox.maxLng, bbox.maxLat];
 }
 
+function mapSafeAreaPadding(extraPadding = 24) {
+  const basePadding = {
+    top: extraPadding,
+    right: extraPadding,
+    bottom: extraPadding,
+    left: extraPadding
+  };
+
+  if (!state.map || typeof state.map.getContainer !== "function") {
+    return basePadding;
+  }
+
+  const mapContainer = state.map.getContainer();
+  if (!mapContainer) {
+    return basePadding;
+  }
+
+  const mapRect = mapContainer.getBoundingClientRect();
+  if (!mapRect || mapRect.width <= 0 || mapRect.height <= 0) {
+    return basePadding;
+  }
+
+  const isDesktopLineView = Boolean(els.lineViewPanel) && !isPortraitMobileLayout();
+  if (isDesktopLineView && !els.lineViewPanel.hidden) {
+    const style = window.getComputedStyle(els.lineViewPanel);
+    if (style.display !== "none" && style.visibility !== "hidden") {
+      const rect = els.lineViewPanel.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0 && rect.right > mapRect.left && rect.left < mapRect.right) {
+        basePadding.right = Math.max(basePadding.right, Math.ceil(rect.width) + extraPadding);
+      }
+    }
+  }
+
+  if (Boolean(els.routeSelectPanel) && !els.routeSelectPanel.hidden) {
+    const style = window.getComputedStyle(els.routeSelectPanel);
+    if (style.display !== "none" && style.visibility !== "hidden") {
+      const rect = els.routeSelectPanel.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0 && rect.bottom > mapRect.top && rect.top < mapRect.bottom) {
+        basePadding.bottom = Math.max(basePadding.bottom, Math.ceil(rect.height) + extraPadding);
+      }
+    }
+  }
+
+  return basePadding;
+}
+
+function fitMapToBbox(bbox, options = {}) {
+  if (!state.map || !bbox || bbox.length !== 4) {
+    return;
+  }
+
+  const duration = Number.isFinite(Number(options.duration)) ? Number(options.duration) : 650;
+  const maxZoom = Number.isFinite(Number(options.maxZoom)) ? Number(options.maxZoom) : 12.5;
+  const extraPadding = Number.isFinite(Number(options.extraPadding)) ? Number(options.extraPadding) : 24;
+  const padding = options.useSafeAreaPadding === false
+    ? {
+        top: extraPadding,
+        right: extraPadding,
+        bottom: extraPadding,
+        left: extraPadding
+      }
+    : mapSafeAreaPadding(extraPadding);
+
+  state.map.fitBounds(
+    [
+      [bbox[0], bbox[1]],
+      [bbox[2], bbox[3]]
+    ],
+    {
+      padding,
+      duration,
+      maxZoom
+    }
+  );
+}
+
 function fitMapToLine(lineKey) {
   if (!state.map || !lineKey) {
     return;
@@ -1044,21 +1120,11 @@ function fitMapToLine(lineKey) {
     return;
   }
 
-  // On mobile, account for the line view header and status panel (roughly 160px at top)
-  const isMobileLayout = isPortraitMobileLayout();
-  const padding = isMobileLayout ? { top: 160, right: 50, bottom: 50, left: 50 } : 70;
-
-  state.map.fitBounds(
-    [
-      [bbox[0], bbox[1]],
-      [bbox[2], bbox[3]]
-    ],
-    {
-      padding: padding,
-      duration: 650,
-      maxZoom: 12.5
-    }
-  );
+  fitMapToBbox(bbox, {
+    extraPadding: isPortraitMobileLayout() ? 24 : 24,
+    duration: 650,
+    maxZoom: 12.5
+  });
 }
 
 function stopKeyForFeature(feature) {

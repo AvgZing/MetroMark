@@ -566,6 +566,15 @@ function fitToArea(area) {
     return;
   }
 
+  if (typeof fitMapToBbox === "function") {
+    fitMapToBbox(area.bbox, {
+      extraPadding: 40,
+      duration: 650,
+      maxZoom: 12.5
+    });
+    return;
+  }
+
   const [minLon, minLat, maxLon, maxLat] = area.bbox;
   state.map.fitBounds(
     [
