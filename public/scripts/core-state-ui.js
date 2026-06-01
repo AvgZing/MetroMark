@@ -7,7 +7,7 @@ const MAX_TARGET_TILES_PER_VIEW = 24;
 const MAX_NEW_FETCHES_PER_VIEW = 18;
 const MAX_PARALLEL_FETCHES = 2;
 const MAX_SESSION_AREAS = 220;
-const MAX_SESSION_ROUTE_STOP_PAYLOADS = 60;
+const MAX_SESSION_ROUTE_STOP_PAYLOADS = 30;
 const MIN_MOVE_FETCH_INTERVAL_MS = 1800;
 
 const ROUTE_STOP_TYPES = [0, 1];
@@ -236,6 +236,9 @@ const state = {
   mapStopFeatureStateCache: new Map(),
   lineSummaries: [],
   loadedLineSummaries: [],
+  viewportSummaryLineSummaries: [],
+  viewportSummaryTransit: null,
+  viewportSummaryRequestToken: 0,
   areaCache: new Map(),
   lineStopsCache: new Map(),
   routeStopsAutoLoadAttempts: new Map(),
@@ -2138,8 +2141,13 @@ function lineIntersectsCurrentViewport(line) {
     return false;
   }
 
-  const features = state.transit?.routesGeoJson?.features;
-  if (!Array.isArray(features) || !features.length) {
+  const features = [
+    ...(Array.isArray(state.transit?.routesGeoJson?.features) ? state.transit.routesGeoJson.features : []),
+    ...(Array.isArray(state.viewportSummaryTransit?.routesGeoJson?.features)
+      ? state.viewportSummaryTransit.routesGeoJson.features
+      : [])
+  ];
+  if (!features.length) {
     return false;
   }
 

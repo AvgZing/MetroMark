@@ -54,6 +54,26 @@ function getLoadedLines() {
   return Array.isArray(state.lineSummaries) ? state.lineSummaries : [];
 }
 
+function getToggleCountLines() {
+  const summaryLines = Array.isArray(state.viewportSummaryTransit?.lineSummaries)
+    ? state.viewportSummaryTransit.lineSummaries
+    : Array.isArray(state.viewportSummaryLineSummaries)
+      ? state.viewportSummaryLineSummaries
+      : [];
+  const sourceLines = summaryLines.length > 0 ? summaryLines : getLoadedLines();
+  const deduped = new Map();
+
+  for (const line of sourceLines) {
+    const lineKey = String(line?.lineKey || "").trim();
+    if (!lineKey || deduped.has(lineKey)) {
+      continue;
+    }
+    deduped.set(lineKey, line);
+  }
+
+  return Array.from(deduped.values());
+}
+
 function lineEligibleForToggleCounts(line, options = {}) {
   if (!line) {
     return false;
@@ -580,7 +600,7 @@ function renderProgress() {
 function renderModeFilterBar() {
   els.modeFilterBar.innerHTML = "";
 
-  const linesForCounts = getLoadedLines().filter((line) => lineEligibleForToggleCounts(line));
+  const linesForCounts = getToggleCountLines().filter((line) => lineEligibleForToggleCounts(line));
   const counts = new Map(MODE_DEFS.map((mode) => [mode.key, 0]));
 
   for (const line of linesForCounts) {
@@ -660,7 +680,7 @@ function renderModeFilterBar() {
 function renderFrequencyFilterBar() {
   els.frequencyFilterBar.innerHTML = "";
 
-  const baseLines = getLoadedLines().filter((line) =>
+  const baseLines = getToggleCountLines().filter((line) =>
     lineEligibleForToggleCounts(line, {
       requireModeMatch: true
     })
@@ -761,6 +781,46 @@ function renderFrequencyFilterBar() {
   }
 }
 
+function compactRouteStopsPayload(payload) {
+  if (!payload) {
+    return {
+      stopsGeoJson: { type: "FeatureCollection", features: [] },
+      directionStopSequences: null,
+      directionStopPatterns: null,
+      matchingStats: null,
+      headwaySummary: null
+    };
+  }
+
+  const {
+    routesGeoJson: _routesGeoJson,
+    lineSummaries: _lineSummaries,
+    ...rest
+  } = payload;
+
+  return {
+    ...rest,
+    stopsGeoJson: rest.stopsGeoJson || { type: "FeatureCollection", features: [] },
+    directionStopSequences: rest.directionStopSequences || null,
+    directionStopPatterns: rest.directionStopPatterns || null,
+    matchingStats: rest.matchingStats ? { ...rest.matchingStats } : null,
+    headwaySummary: rest.headwaySummary ? { ...rest.headwaySummary } : null
+  };
+}
+
+function refreshRouteStopDependentUi(options = {}) {
+  rebuildCombinedTransit();
+  renderMapData();
+  renderLineList();
+  renderProgress();
+
+  if (typeof renderLineView === "function") {
+    renderLineView({ forceStopRefresh: Boolean(options.forceStopRefresh) });
+  }
+
+  restoreUserStatusFromFocus();
+}
+
 async function ensureLineStopsLoaded(lineKey, options = {}) {
   const normalizedLineKey = String(lineKey || "").trim();
   if (!normalizedLineKey) {
@@ -782,6 +842,9 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
         state.routeStopsAutoLoadAttempts.delete(cacheKey);
       }
       existing.lastUsedAt = Date.now();
+      refreshRouteStopDependentUi({
+        forceStopRefresh: false
+      });
       return true;
     }
     existing.patternsRefreshAttempted = true;
@@ -827,10 +890,12 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
       return false;
     }
 
+    const compactPayload = compactRouteStopsPayload(payload);
+
     state.lineStopsCache.set(cacheKey, {
       lineKey: normalizedLineKey,
       stopTypesKey: ROUTE_STOP_TYPES_KEY,
-      payload,
+      payload: compactPayload,
       cacheStatus: payload.cacheStatus || "miss",
       lastUsedAt: Date.now()
     });
@@ -840,8 +905,9 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
     }
 
     pruneLineStopsCache();
-    rebuildCombinedTransit();
-    refreshUiFromState();
+    refreshRouteStopDependentUi({
+      forceStopRefresh: Boolean(requestOptions.forceRefresh)
+    });
     restoreUserStatusFromFocus();
 
     const stationCount = Number(payload?.stopsGeoJson?.features?.length || 0);

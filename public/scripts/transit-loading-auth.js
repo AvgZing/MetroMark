@@ -369,6 +369,8 @@ async function loadVisibleTransit(options = {}) {
     state.lastViewportFetchZoom = Number(zoom || 0);
   }
   if (!rawBbox) {
+    state.viewportSummaryLineSummaries = [];
+    state.viewportSummaryRequestToken += 1;
     const allCachedKeys = new Set(state.areaCache.keys());
     if (allCachedKeys.size === 0) {
       setStatus(
@@ -410,6 +412,8 @@ async function loadVisibleTransit(options = {}) {
 
   const modeRouteTypes = selectedRouteTypesForFetch();
   const requests = viewportRequestsForMode(rawBbox, zoom, modeRouteTypes);
+  state.viewportSummaryLineSummaries = [];
+  state.viewportSummaryRequestToken += 1;
 
   // No low-zoom short-circuit: always generate requests for the full viewport
   // so that the server can return Postgres-backed cached payloads for any zoom.
@@ -514,6 +518,69 @@ async function loadVisibleTransit(options = {}) {
       `Loading transit data for the current map view... Route-first mode active. Stops are loaded only on focused routes (location types ${ROUTE_STOP_TYPES_QUERY}).`
     );
   }
+
+  loadViewportCountSummary(rawBbox, zoom).catch(() => {});
+}
+
+async function loadViewportCountSummary(rawBbox, zoom) {
+  const bbox = normalizeBboxArray(rawBbox);
+  if (!bbox) {
+    return false;
+  }
+
+  const requestToken = state.viewportSummaryRequestToken + 1;
+  state.viewportSummaryRequestToken = requestToken;
+
+  try {
+    const params = new URLSearchParams({
+      bbox: bbox.join(","),
+      zoom: Number.isFinite(Number(zoom)) ? String(Number(zoom)) : "0",
+      cacheOnly: "1",
+      summaryOnly: "1"
+    });
+
+    const payload = await apiRequest(`/api/transit/bbox?${params.toString()}`, {
+      method: "GET"
+    });
+
+    if (requestToken !== state.viewportSummaryRequestToken) {
+      return false;
+    }
+
+    const routesGeoJson = payload?.routesGeoJson && Array.isArray(payload.routesGeoJson.features)
+      ? payload.routesGeoJson
+      : { type: "FeatureCollection", features: [] };
+
+    const lineSummaries = Array.isArray(payload?.lineSummaries)
+      ? payload.lineSummaries
+          .map((line) => ({
+            ...line,
+            lineKey: String(line?.lineKey || "").trim()
+          }))
+          .filter((line) => line.lineKey)
+      : [];
+
+    state.viewportSummaryTransit = {
+      routesGeoJson,
+      lineSummaries
+    };
+    state.viewportSummaryLineSummaries = lineSummaries;
+
+    if (typeof renderModeFilterBar === "function") {
+      renderModeFilterBar();
+    }
+    if (typeof renderFrequencyFilterBar === "function") {
+      renderFrequencyFilterBar();
+    }
+
+    return true;
+  } catch {
+    if (requestToken === state.viewportSummaryRequestToken) {
+      state.viewportSummaryTransit = null;
+      state.viewportSummaryLineSummaries = [];
+    }
+    return false;
+  }
 }
 
 function onMapMoveEnd() {
@@ -546,6 +613,7 @@ function onMapMoveEnd() {
       });
       rebuildCombinedTransit();
       refreshUiFromState();
+      loadViewportCountSummary(rawBbox, zoom).catch(() => {});
       return;
     }
   }

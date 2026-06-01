@@ -2736,12 +2736,90 @@ async function getTransitForArea(area, options = {}) {
   const cacheKey = `${TRANSIT_CACHE_PREFIX}${area.key}`;
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
   const routeTypes = normalizeRouteTypes(options.routeTypes || area.routeTypes);
+  const summaryOnly = Boolean(options.summaryOnly);
+
+  const summaryOnlyPayload = (routesGeoJson, lineSummaries) => ({
+    routesGeoJson: routesGeoJson && Array.isArray(routesGeoJson.features)
+      ? routesGeoJson
+      : { type: "FeatureCollection", features: [] },
+    lineSummaries: Array.isArray(lineSummaries) ? lineSummaries : [],
+    area: { bbox: area.bbox }
+  });
+
+  if (summaryOnly && Boolean(options.cacheOnly)) {
+    const cached = await db.getCacheAny(cacheKey);
+    if (cached) {
+      return {
+        payload: summaryOnlyPayload(cached.payload?.routesGeoJson, cached.payload?.lineSummaries || []),
+        cacheStatus: isCacheExpiredRow(cached) ? "stale-hit" : "hit",
+        cacheKey: area.key,
+        cacheExpiresAt: cached.expiresAt,
+        cacheVerifiedAt: cached.verifiedAt,
+        feedFingerprint: cached.feedFingerprint || "",
+        stopLocationTypes
+      };
+    }
+
+    const [minLon, minLat, maxLon, maxLat] = area.bbox;
+    const overlappingCaches = await db.getCacheByBbox(minLon, minLat, maxLon, maxLat, {
+      includeExpired: true
+    });
+
+    if (overlappingCaches && overlappingCaches.length > 0) {
+      const mergedLines = new Map();
+
+      for (const cacheEntry of overlappingCaches) {
+        const payload = cacheEntry.payload || {};
+
+        for (const line of payload?.lineSummaries || []) {
+          const lineKey = line?.lineKey;
+          if (lineKey && !mergedLines.has(lineKey)) {
+            mergedLines.set(lineKey, line);
+          }
+        }
+      }
+
+      return {
+        payload: summaryOnlyPayload(
+          {
+            type: "FeatureCollection",
+            features: Array.from(mergedRoutes.values())
+          },
+          Array.from(mergedLines.values())
+        ),
+        cacheStatus: "partial-hit",
+        cacheKey: area.key,
+        stopLocationTypes
+      };
+    }
+
+    return {
+      payload: summaryOnlyPayload([]),
+      cacheStatus: "miss",
+      cacheKey: area.key,
+      stopLocationTypes
+    };
+  }
 
   if (!forceRefresh) {
     const cached = await db.getCacheAny(cacheKey);
     if (cached) {
       const cacheStatus = isCacheExpiredRow(cached) ? "stale-hit" : "hit";
-      await queueCityReverifyIfStale(area, cached);
+      if (!summaryOnly) {
+        await queueCityReverifyIfStale(area, cached);
+      }
+
+      if (summaryOnly) {
+        return {
+          payload: summaryOnlyPayload(cached.payload?.lineSummaries || []),
+          cacheStatus,
+          cacheKey: area.key,
+          cacheExpiresAt: cached.expiresAt,
+          cacheVerifiedAt: cached.verifiedAt,
+          feedFingerprint: cached.feedFingerprint || "",
+          stopLocationTypes
+        };
+      }
 
       return {
         payload: await applyRouteOrderingMetadataToPayload(cached.payload || {}),
@@ -2803,6 +2881,15 @@ async function getTransitForArea(area, options = {}) {
           area: { bbox: area.bbox }
         });
 
+        if (summaryOnly) {
+          return {
+            payload: summaryOnlyPayload(Array.from(mergedLines.values())),
+            cacheStatus: "partial-hit",
+            cacheKey: area.key,
+            stopLocationTypes
+          };
+        }
+
         return {
           payload: mergedPayload,
           cacheStatus: "partial-hit",
@@ -2812,12 +2899,17 @@ async function getTransitForArea(area, options = {}) {
       }
 
       return {
-        payload: await applyRouteOrderingMetadataToPayload({
-          routesGeoJson: { type: "FeatureCollection", features: [] },
-          stopsGeoJson: { type: "FeatureCollection", features: [] },
-          lineSummaries: [],
-          area: { bbox: area.bbox }
-        }),
+        payload: summaryOnly
+          ? summaryOnlyPayload(
+              { type: "FeatureCollection", features: [] },
+              []
+            )
+          : await applyRouteOrderingMetadataToPayload({
+              routesGeoJson: { type: "FeatureCollection", features: [] },
+              stopsGeoJson: { type: "FeatureCollection", features: [] },
+              lineSummaries: [],
+              area: { bbox: area.bbox }
+            }),
         cacheStatus: "miss",
         cacheKey: area.key,
         stopLocationTypes
