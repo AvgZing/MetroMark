@@ -590,6 +590,17 @@ function rebuildCombinedTransit() {
     }
   }
 
+  // Upgrade route geometry from route-stops cache (full detail) for any routes that have it
+  for (const [lineKey, routeFeature] of routeByLine) {
+    const stopCacheKey = typeof routeStopCacheKey === "function" ? routeStopCacheKey(lineKey) : null;
+    if (!stopCacheKey) continue;
+    const stopEntry = state.lineStopsCache.get(stopCacheKey);
+    const fullGeo = stopEntry?.payload?.routesGeoJson?.features?.[0]?.geometry;
+    if (fullGeo && fullGeo.coordinates && fullGeo.type) {
+      routeByLine.set(lineKey, { ...routeFeature, geometry: fullGeo });
+    }
+  }
+
   for (const [lineKey, routeFeature] of routeByLine.entries()) {
     if (!lineKey || !routeFeature) {
       continue;
