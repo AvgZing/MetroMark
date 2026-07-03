@@ -391,6 +391,11 @@ async function init() {
     await mapReadyPromise;
     console.log(`[perf] init: map ready in ${(performance.now() - mapT0).toFixed(1)}ms`);
 
+    // Apply map theme now that the map style is loaded
+    if (state.theme === "dark" || state.theme === "light") {
+      setTheme(state.theme, { persist: false });
+    }
+
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         document.body.classList.add("app-ready");

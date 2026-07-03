@@ -279,6 +279,21 @@ function syncMapSourceData() {
           features: state.transit.routesGeoJson.features.map(normalizeRouteFeature)
         }
       : emptyFeatureCollection();
+
+    // Replace focused route's geometry with full-detail version from route-stops cache
+    if (state.focusedLineKey && routes.features.length > 0) {
+      const stopCacheKey = routeStopCacheKey(state.focusedLineKey);
+      const stopCache = state.lineStopsCache.get(stopCacheKey);
+      const fullGeo = stopCache?.payload?.routesGeoJson?.features?.[0]?.geometry;
+      if (fullGeo) {
+        const idx = routes.features.findIndex((f) => f?.properties?.line_key === state.focusedLineKey);
+        if (idx >= 0) {
+          const orig = routes.features[idx];
+          routes.features[idx] = { ...orig, geometry: fullGeo };
+        }
+      }
+    }
+
     const stops = Array.isArray(state.transit?.stopsGeoJson?.features)
       ? {
           ...state.transit.stopsGeoJson,
