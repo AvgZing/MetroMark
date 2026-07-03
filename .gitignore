@@ -5,6 +5,7 @@
 .env.*
 !.env.development.example
 !.env.production.example
+config.js
 config.local.js
 *.local.env
 

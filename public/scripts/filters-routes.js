@@ -420,7 +420,6 @@ function syncMapFeatureStates() {
 }
 
 function renderMapData() {
-  const t0 = performance.now();
   if (!state.mapReady || !state.map) {
     return;
   }
@@ -431,10 +430,6 @@ function renderMapData() {
   const focusMaskSource = state.map.getSource("focus-mask");
   if (focusMaskSource) {
     focusMaskSource.setData(focusMaskFeatureCollection(Boolean(state.focusedLineKey)));
-  }
-  const elapsed = performance.now() - t0;
-  if (elapsed > 30) {
-    console.log(`[perf] renderMapData: ${elapsed.toFixed(1)}ms`);
   }
 }
 
@@ -1741,7 +1736,6 @@ function renderLineList() {
 }
 
 function refreshUiFromState() {
-  const t0 = performance.now();
   renderModeFilterBar();
   renderFrequencyFilterBar();
   renderMapData();
@@ -1755,10 +1749,6 @@ function refreshUiFromState() {
   }
   if (typeof loadVisibleRouteStopCounts === "function") {
     loadVisibleRouteStopCounts().catch(() => {});
-  }
-  const elapsed = performance.now() - t0;
-  if (elapsed > 50) {
-    console.log(`[perf] refreshUiFromState: ${elapsed.toFixed(1)}ms`);
   }
 }
 

@@ -4,8 +4,8 @@ const MIN_VIEWPORT_FETCH_ZOOM = 10.0;
 // Low-zoom views can span multiple metro regions; keep a larger request budget so
 // distant cached areas (e.g. Seattle + DC at US scale) can load together.
 const MAX_TARGET_TILES_PER_VIEW = 24;
-const MAX_NEW_FETCHES_PER_VIEW = 24;
-const MAX_PARALLEL_FETCHES = 8;
+const MAX_NEW_FETCHES_PER_VIEW = 18;
+const MAX_PARALLEL_FETCHES = 2;
 const MAX_SESSION_AREAS = 220;
 const MAX_SESSION_ROUTE_STOP_PAYLOADS = 30;
 const MIN_MOVE_FETCH_INTERVAL_MS = 1800;
@@ -325,10 +325,7 @@ const state = {
     successful: 0
   },
   routeReviewsByCity: new Map(),
-  agencyReviewsByCity: new Map(),
-  renderBatchTimer: null,
-  renderBatchToken: 0,
-  loadTimings: []
+  agencyReviewsByCity: new Map()
 };
 
 const els = {
