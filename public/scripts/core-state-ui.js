@@ -1,13 +1,14 @@
 ﻿// Postgres (cache-only) is primary at all zoom levels.
+// A single viewport-bbox request is sent — the server uses spatial overlap (ST_Intersects
+// with GiST index) to find all intersecting cached Postgres data. Tile decomposition is
+// handled server-side via bbox_geom.
 // Transitland fallback triggers at zoom 10+. Individual tile bboxes are
 // validated server-side by BBOX_MAX_SPAN_DEGREES, and Transitland's own
 // rate limits protect against abuse.
 const MIN_VIEWPORT_FETCH_ZOOM = 10.0;
-// Low-zoom views can span multiple metro regions; keep a larger request budget so
-// distant cached areas (e.g. Seattle + DC at US scale) can load together.
 const MAX_TARGET_TILES_PER_VIEW = 24;
-const MAX_NEW_FETCHES_PER_VIEW = 36;
-const MAX_PARALLEL_FETCHES = 4;
+const MAX_NEW_FETCHES_PER_VIEW = 1;
+const MAX_PARALLEL_FETCHES = 1;
 const MAX_SESSION_AREAS = 440;
 const MAX_SESSION_ROUTE_STOP_PAYLOADS = 30;
 const MIN_MOVE_FETCH_INTERVAL_MS = 1800;
@@ -2250,50 +2251,11 @@ function modeCacheKeyFromRouteTypes(routeTypes) {
 
 function viewportRequestsForMode(rawBbox, zoom, routeTypes) {
   const modeKey = modeCacheKeyFromRouteTypes(routeTypes);
-  const primary = buildViewportTileRequests(rawBbox, zoom);
-  const coarse = zoom >= 8 ? buildViewportTileRequests(rawBbox, zoom - 3) : [];
-  const fine = zoom >= 2 ? buildViewportTileRequests(rawBbox, zoom + 3) : [];
-  const seen = new Set();
-  const merged = [];
-  const push = (reqs) => {
-    for (const req of reqs) {
-      const key = `${req.areaKey}:types:${modeKey}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push({
-        ...req,
-        routeTypes: Array.isArray(routeTypes) ? routeTypes : [],
-        areaKey: key
-      });
-    }
-  };
-  push(primary);
-  push(coarse);
-  push(fine);
-  // Always include detail-level tiles around the center to capture data cached at closer zooms
-  if (zoom >= 3) {
-    const center = bboxCenter(rawBbox);
-    const detailZoom = 9;
-    const ct = lngLatToTile(center[0], center[1], detailZoom);
-    for (let dx = -2; dx <= 2; dx++) {
-      for (let dy = -2; dy <= 2; dy++) {
-        const x = ct.x + dx;
-        const y = ct.y + dy;
-        const tileBbox = tileToBbox(x, y, detailZoom);
-        const key = `tile:${detailZoom}:${x}:${y}:types:${modeKey}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        merged.push({
-          areaKey: key,
-          bbox: tileBbox,
-          zoom,
-          distanceScore: Math.abs(dx) + Math.abs(dy),
-          routeTypes: Array.isArray(routeTypes) ? routeTypes : []
-        });
-      }
-    }
-  }
-  return merged;
+  return buildViewportTileRequests(rawBbox, zoom).map((request) => ({
+    ...request,
+    routeTypes: Array.isArray(routeTypes) ? routeTypes : [],
+    areaKey: `${request.areaKey}:types:${modeKey}`
+  }));
 }
 
 function lineMatchesModeSelection(line) {
