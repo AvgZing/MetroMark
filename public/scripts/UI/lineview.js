@@ -56,29 +56,22 @@ function lineViewOrderingStatusLabel() {
   var adminMode = focusedLine ? String(focusedLine.lineViewOrderingAdminMode || "").trim() : "";
   var voteCounts = (focusedLine && focusedLine.lineViewOrderingVoteCounts) ? focusedLine.lineViewOrderingVoteCounts : {};
 
-  function countLabel(modeKey) {
-    if (adminMode === modeKey) return "(A)";
-    var count = Number(voteCounts[modeKey] || 0);
-    return "(" + count + ")";
-  }
+  var label = mode === "auto"
+    ? "Auto - " + lineViewOrderingModeLabel(activeMode) + " (" + lineViewOrderingTechnicalLabel(activeMode) + ")"
+    : lineViewOrderingModeLabel(activeMode) + " (" + lineViewOrderingTechnicalLabel(activeMode) + ")";
 
-  var parts = [];
-  parts.push("Auto " + countLabel("auto"));
-  parts.push("Main " + countLabel("geometry-revised"));
-  parts.push("U-Shape " + countLabel("legacy-geometry"));
-  parts.push("Loop " + countLabel("fractions"));
-
-  var label = "Auto - " + lineViewOrderingModeLabel(activeMode) + " (" + lineViewOrderingTechnicalLabel(activeMode) + ")";
-  var voteInfo = "";
-  if (adminMode) {
-    voteInfo = " | Admin: " + lineViewOrderingModeLabel(adminMode);
+  var voteSuffix = "";
+  if (adminMode === activeMode) {
+    voteSuffix = " (A)";
+  } else {
+    var count = Number(voteCounts[activeMode] || 0);
+    voteSuffix = " (" + count + ")";
   }
-  voteInfo += " | " + parts.join("  ");
 
   if (state.lineViewOrderingReversed) {
     label = label + " \u00B7 Reversed Route";
   }
-  return label + voteInfo;
+  return label + voteSuffix;
 }
 
 function getLineViewOrderingPreference(lineKey) {
@@ -274,12 +267,6 @@ function syncLineViewOrderingControls() {
   const mode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
   state.lineViewOrderingMode = mode;
 
-  var focusedLineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
-  var focusedLine = null;
-  if (focusedLineKey && Array.isArray(state.lineSummaries)) {
-    focusedLine = state.lineSummaries.find(function(l) { return String(l.lineKey || "").trim() === focusedLineKey; }) || null;
-  }
-
   const buttonByMode = {
     auto: els.lineViewOrderingAutoBtn,
     "geometry-revised": els.lineViewOrderingGeometryRevisedBtn,
@@ -307,16 +294,7 @@ function syncLineViewOrderingControls() {
     }
 
     const isActive = buttonMode === mode;
-    var label = buttonLabelByMode[buttonMode] || button.textContent;
-    if (focusedLine) {
-      if (String(focusedLine.lineViewOrderingAdminMode || "").trim() === buttonMode) {
-        label = label + " (A)";
-      } else {
-        var count = Number((focusedLine.lineViewOrderingVoteCounts && focusedLine.lineViewOrderingVoteCounts[buttonMode]) || 0);
-        label = label + " (" + count + ")";
-      }
-    }
-    button.textContent = label;
+    button.textContent = buttonLabelByMode[buttonMode] || button.textContent;
     button.title = buttonTitleByMode[buttonMode] || button.title || "";
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-pressed", isActive ? "true" : "false");
