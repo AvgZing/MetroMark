@@ -1,3 +1,4 @@
+/** Retrieve a parsed Set from localStorage, falling back to defaults if missing or corrupt. */
 function parseSetFromStorage(storageKey, defaults) {
   try {
     const raw = localStorage.getItem(storageKey);
@@ -17,6 +18,7 @@ function parseSetFromStorage(storageKey, defaults) {
   }
 }
 
+/** Retrieve a boolean value from localStorage with a configurable default. */
 function parseBooleanFromStorage(storageKey, defaultValue = false) {
   try {
     const raw = localStorage.getItem(storageKey);
@@ -30,14 +32,17 @@ function parseBooleanFromStorage(storageKey, defaultValue = false) {
   }
 }
 
+/** Persist a boolean value to localStorage as a "true"/"false" string. */
 function persistBooleanToStorage(storageKey, value) {
   localStorage.setItem(storageKey, value ? "true" : "false");
 }
 
+/** Persist a Set or array of values to localStorage as a JSON array. */
 function persistSetToStorage(storageKey, values) {
   localStorage.setItem(storageKey, JSON.stringify(Array.from(values)));
 }
 
+/** Parse per-line visibility overrides (on/off) from localStorage into a Map. */
 function parseVisibilityOverridesFromStorage(storageKey) {
   try {
     const raw = localStorage.getItem(storageKey);
@@ -68,6 +73,7 @@ function parseVisibilityOverridesFromStorage(storageKey) {
   }
 }
 
+/** Parse per-line route ordering preferences (mode + reversed) from sessionStorage into a Map. */
 function parseLineViewOrderingPreferencesFromStorage(storageKey) {
   try {
     const raw = sessionStorage.getItem(storageKey);
@@ -99,6 +105,7 @@ function parseLineViewOrderingPreferencesFromStorage(storageKey) {
   }
 }
 
+/** Persist per-line route ordering preferences from a Map into sessionStorage as JSON. */
 function persistLineViewOrderingPreferencesToStorage(storageKey, preferenceMap) {
   const payload = {};
 
@@ -117,6 +124,7 @@ function persistLineViewOrderingPreferencesToStorage(storageKey, preferenceMap) 
   sessionStorage.setItem(storageKey, JSON.stringify(payload));
 }
 
+/** Persist per-line visibility overrides from a Map into localStorage as a JSON object. */
 function persistVisibilityOverridesToStorage(storageKey, visibilityMap) {
   const payload = {};
   for (const [lineKeyRaw, valueRaw] of visibilityMap.entries()) {
@@ -134,6 +142,7 @@ function persistVisibilityOverridesToStorage(storageKey, visibilityMap) {
   localStorage.setItem(storageKey, JSON.stringify(payload));
 }
 
+/** Normalize a raw ordering mode string to a recognized enum value (auto, geometry-revised, etc.). */
 function normalizeLineViewOrderingMode(orderingMode) {
   const mode = String(orderingMode || "geometry-revised").trim();
 

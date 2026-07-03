@@ -43,13 +43,42 @@ function lineViewOrderingTechnicalLabel(mode) {
 }
 
 function lineViewOrderingStatusLabel() {
-  const mode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
-  const resolvedMode = normalizeLineViewOrderingMode(state.lineViewOrderingResolved || mode);
-  const activeMode = mode === "auto" ? resolvedMode : mode;
-  const label = mode === "auto"
-    ? `Auto - ${lineViewOrderingModeLabel(activeMode)} (${lineViewOrderingTechnicalLabel(activeMode)})`
-    : `${lineViewOrderingModeLabel(activeMode)} (${lineViewOrderingTechnicalLabel(activeMode)})`;
-  return state.lineViewOrderingReversed ? `${label} · Reversed Route` : label;
+  var mode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
+  var resolvedMode = normalizeLineViewOrderingMode(state.lineViewOrderingResolved || mode);
+  var activeMode = mode === "auto" ? resolvedMode : mode;
+
+  var focusedLineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
+  var focusedLine = null;
+  if (focusedLineKey && Array.isArray(state.lineSummaries)) {
+    focusedLine = state.lineSummaries.find(function(l) { return String(l.lineKey || "").trim() === focusedLineKey; }) || null;
+  }
+
+  var adminMode = focusedLine ? String(focusedLine.lineViewOrderingAdminMode || "").trim() : "";
+  var voteCounts = (focusedLine && focusedLine.lineViewOrderingVoteCounts) ? focusedLine.lineViewOrderingVoteCounts : {};
+
+  function countLabel(modeKey) {
+    if (adminMode === modeKey) return "(A)";
+    var count = Number(voteCounts[modeKey] || 0);
+    return "(" + count + ")";
+  }
+
+  var parts = [];
+  parts.push("Auto " + countLabel("auto"));
+  parts.push("Main " + countLabel("geometry-revised"));
+  parts.push("U-Shape " + countLabel("legacy-geometry"));
+  parts.push("Loop " + countLabel("fractions"));
+
+  var label = "Auto - " + lineViewOrderingModeLabel(activeMode) + " (" + lineViewOrderingTechnicalLabel(activeMode) + ")";
+  var voteInfo = "";
+  if (adminMode) {
+    voteInfo = " | Admin: " + lineViewOrderingModeLabel(adminMode);
+  }
+  voteInfo += " | " + parts.join("  ");
+
+  if (state.lineViewOrderingReversed) {
+    label = label + " \u00B7 Reversed Route";
+  }
+  return label + voteInfo;
 }
 
 function getLineViewOrderingPreference(lineKey) {
@@ -179,6 +208,7 @@ function updateRouteOrderingMetadataForLine(lineKey, metadata = {}) {
   }
 }
 
+/** Submit an authenticated route ordering preference vote for a line. */
 async function submitLineViewOrderingVote(lineKey, orderingMode) {
   const normalizedLineKey = String(lineKey || "").trim();
   const normalizedMode = normalizeLineViewOrderingMode(orderingMode);
@@ -239,9 +269,16 @@ function noteLineViewOrderingVoteClick(lineKey, stopKey) {
   });
 }
 
+/** Sync the route ordering mode buttons and reversed toggle with current state. */
 function syncLineViewOrderingControls() {
   const mode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
   state.lineViewOrderingMode = mode;
+
+  var focusedLineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
+  var focusedLine = null;
+  if (focusedLineKey && Array.isArray(state.lineSummaries)) {
+    focusedLine = state.lineSummaries.find(function(l) { return String(l.lineKey || "").trim() === focusedLineKey; }) || null;
+  }
 
   const buttonByMode = {
     auto: els.lineViewOrderingAutoBtn,
@@ -270,7 +307,16 @@ function syncLineViewOrderingControls() {
     }
 
     const isActive = buttonMode === mode;
-    button.textContent = buttonLabelByMode[buttonMode] || button.textContent;
+    var label = buttonLabelByMode[buttonMode] || button.textContent;
+    if (focusedLine) {
+      if (String(focusedLine.lineViewOrderingAdminMode || "").trim() === buttonMode) {
+        label = label + " (A)";
+      } else {
+        var count = Number((focusedLine.lineViewOrderingVoteCounts && focusedLine.lineViewOrderingVoteCounts[buttonMode]) || 0);
+        label = label + " (" + count + ")";
+      }
+    }
+    button.textContent = label;
     button.title = buttonTitleByMode[buttonMode] || button.title || "";
     button.classList.toggle("is-active", isActive);
     button.setAttribute("aria-pressed", isActive ? "true" : "false");
@@ -289,6 +335,7 @@ function syncLineViewOrderingControls() {
   }
 }
 
+/** Render the ordered stop list for a line inside the line view panel. */
 async function renderLineViewStops(lineKey, lineColor, options = {}) {
   if (!els.lineViewStops) {
     return;
@@ -425,6 +472,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
   createLineConnector(lineColor);
 }
 
+/** Render or update the line view panel with the focused line's metadata and progress. */
 function renderLineView(options = {}) {
   if (!els.lineViewPanel) {
     return;
@@ -520,6 +568,7 @@ function renderLineView(options = {}) {
   renderLineViewStops(lineKey, lineColor, { forceRefresh: forceStopRefresh }).catch(() => {});
 }
 
+/** Open the line view panel for a given line, saving prior map/focus state for restoration. */
 async function openLineView(lineKey) {
   const normalizedLineKey = String(lineKey || "").trim();
   if (!normalizedLineKey) {
@@ -590,6 +639,7 @@ function restoreLineViewReturnState() {
   }
 }
 
+/** Close the line view panel and optionally restore the prior map and focus state. */
 function closeLineView(options = {}) {
   const shouldRestore = options.restore !== false;
 

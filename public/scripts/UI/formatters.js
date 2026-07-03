@@ -1,7 +1,43 @@
+var MODE_FILTER_ALL = "all";
+var MODE_FILTER_BUS = "bus";
+var MODE_FILTER_FERRY = "ferry";
+var MODE_FILTER_METRO = "metro";
+var MODE_FILTER_TRAM = "tram";
+var MODE_FILTER_RAIL = "rail";
+var MODE_FILTER_OTHER = "other";
+
+var MODE_DEFS = [
+  { key: MODE_FILTER_ALL, label: "All Modes", routeTypes: [] },
+  { key: MODE_FILTER_BUS, label: "Bus", routeTypes: [3, 11] },
+  { key: MODE_FILTER_FERRY, label: "Ferries", routeTypes: [4] },
+  { key: MODE_FILTER_METRO, label: "Metro", routeTypes: [1] },
+  { key: MODE_FILTER_TRAM, label: "Tram", routeTypes: [0] },
+  { key: MODE_FILTER_RAIL, label: "Rail", routeTypes: [2] },
+  { key: MODE_FILTER_OTHER, label: "Other", routeTypes: [5, 6, 7, 12] }
+];
+
+var MODE_DEF_BY_KEY = new Map(MODE_DEFS.map(function(entry) { return [entry.key, entry]; }));
+
+var FREQUENCY_FILTER_ALL = "all";
+var FREQUENCY_FILTER_FREQUENT = "frequent";
+var FREQUENCY_FILTER_REGULAR = "regular";
+var FREQUENCY_FILTER_LOCAL = "local";
+var FREQUENCY_FILTER_UNKNOWN = "unknown";
+
+var GTFS_MODE_LABELS = {
+  0: "Tram", 1: "Metro", 2: "Rail", 3: "Bus",
+  4: "Ferry", 5: "Cable Tram", 6: "Aerial", 7: "Funicular",
+  11: "Trolleybus", 12: "Monorail"
+};
+
+var FALLBACK_HEADWAY_MINUTES = Number((100000 / 60).toFixed(1));
+
+/** Constrain a numeric value between a minimum and maximum. */
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+/** Escape HTML special characters in a string to prevent XSS. */
 function escapeHtml(text) {
   return String(text || "")
     .replace(/&/g, "&amp;")
@@ -11,6 +47,7 @@ function escapeHtml(text) {
     .replace(/'/g, "&#039;");
 }
 
+/** Resolve a GTFS route type number to its human-readable mode label. */
 function modeLabelFromRouteType(routeType) {
   const numeric = Number(routeType);
   if (!Number.isFinite(numeric)) {
@@ -19,6 +56,7 @@ function modeLabelFromRouteType(routeType) {
   return GTFS_MODE_LABELS[numeric] || "Unknown";
 }
 
+/** Map a GTFS route type number to its mode filter key. */
 function modeKeyFromRouteType(routeType) {
   const numeric = Number(routeType);
   if (!Number.isFinite(numeric)) {
@@ -33,6 +71,7 @@ function modeKeyFromRouteType(routeType) {
   return MODE_FILTER_OTHER;
 }
 
+/** Resolve a mode filter key to its display label. */
 function modeLabelFromModeKey(modeKey) {
   const modeDef = MODE_DEF_BY_KEY.get(modeKey);
   if (modeDef) {
@@ -41,24 +80,29 @@ function modeLabelFromModeKey(modeKey) {
   return "Unknown";
 }
 
+/** Derive the mode filter key for a line object from its route type. */
 function lineModeKey(line) {
   return modeKeyFromRouteType(line?.routeType);
 }
 
+/** Derive the display mode label for a line object. */
 function lineMode(line) {
   return modeLabelFromModeKey(lineModeKey(line));
 }
 
+/** Determine whether a GTFS route type represents a bus-like mode. */
 function isBusLikeRouteType(routeType) {
   const numeric = Number(routeType);
   return numeric === 3 || numeric === 11;
 }
 
+/** Determine whether a GTFS route type represents a rail-like mode. */
 function isRailLikeRouteType(routeType) {
   const numeric = Number(routeType);
   return numeric === 0 || numeric === 1 || numeric === 2 || numeric === 12;
 }
 
+/** Derive the service tier (rail, bus, special, other) for a line. */
 function lineServiceTier(line) {
   const explicit = String(line?.serviceTier || "").trim().toLowerCase();
   if (explicit) {
@@ -76,6 +120,7 @@ function lineServiceTier(line) {
   return "other";
 }
 
+/** Compute a sort weight for a line based on its service tier. */
 function lineSortWeight(line) {
   const tier = lineServiceTier(line);
   if (tier === "rail") return 0;
@@ -84,10 +129,12 @@ function lineSortWeight(line) {
   return 3;
 }
 
+/** Build the operator display label for a line, with fallbacks. */
 function lineOperatorLabel(line) {
   return String(line.operatorName || line.routeFeedId || "Operator unavailable");
 }
 
+/** Construct a combined display name from a line's short and long names. */
 function lineDisplayName(line) {
   const shortName = String(line.lineShortName || "").trim();
   const longName = String(line.lineLongName || "").trim();
@@ -99,6 +146,7 @@ function lineDisplayName(line) {
   return shortName || longName || line.lineName || "Line";
 }
 
+/** Assemble a line's searchable text blob from all its identifying fields. */
 function lineSearchText(line) {
   return [
     line.lineName,
@@ -116,6 +164,7 @@ function lineSearchText(line) {
     .join(" ");
 }
 
+/** Classify headway minutes into a frequency bucket (frequent, regular, local, unknown). */
 function frequencyBucketFromHeadwayMinutes(minutes) {
   if (!Number.isFinite(minutes) || minutes <= 0) {
     return FREQUENCY_FILTER_UNKNOWN;
@@ -132,11 +181,13 @@ function frequencyBucketFromHeadwayMinutes(minutes) {
   return FREQUENCY_FILTER_LOCAL;
 }
 
+/** Check whether a headway value matches the system fallback (no real data). */
 function isFallbackHeadwayMinutes(minutes) {
   const numeric = Number(minutes);
   return Number.isFinite(numeric) && Math.abs(numeric - FALLBACK_HEADWAY_MINUTES) < 0.2;
 }
 
+/** Estimate a frequency bucket for a line when only fallback headway data is available. */
 function lineFallbackFrequencyBucket(line) {
   const routeType = Number(line?.routeType);
   const routeMode = String(line?.mode || line?.lineMode || "").trim().toLowerCase();
@@ -160,6 +211,7 @@ function lineFallbackFrequencyBucket(line) {
   return FREQUENCY_FILTER_LOCAL;
 }
 
+/** Determine whether a line is using a fallback (estimated) headway value. */
 function lineHasFallbackHeadway(line) {
   if (Number(line?.headwayFallback || 0) === 1) {
     return true;
@@ -168,6 +220,7 @@ function lineHasFallbackHeadway(line) {
   return isFallbackHeadwayMinutes(line?.headwayBestMinutes);
 }
 
+/** Return the best headway minutes for a line, or null if unavailable or fallback. */
 function lineHeadwayBestMinutes(line) {
   const minutes = Number(line?.headwayBestMinutes);
   if (!Number.isFinite(minutes) || minutes <= 0 || lineHasFallbackHeadway(line)) {
@@ -177,6 +230,7 @@ function lineHeadwayBestMinutes(line) {
   return minutes;
 }
 
+/** Resolve the frequency bucket for a line using best-available headway data. */
 function lineFrequencyBucket(line) {
   const bestHeadwayMinutes = lineHeadwayBestMinutes(line);
   if (bestHeadwayMinutes !== null) {
@@ -200,6 +254,7 @@ function lineFrequencyBucket(line) {
   return FREQUENCY_FILTER_UNKNOWN;
 }
 
+/** Map a frequency bucket key to its human-readable label. */
 function frequencyBucketLabel(bucket) {
   if (bucket === FREQUENCY_FILTER_ALL) return "All Frequencies";
   if (bucket === FREQUENCY_FILTER_FREQUENT) return "Frequent (Up to 10m)";
@@ -208,6 +263,7 @@ function frequencyBucketLabel(bucket) {
   return "Frequency Unknown";
 }
 
+/** Build a human-readable headway label for a line, with fallback descriptions. */
 function lineHeadwayLabel(line) {
   const bestHeadwayMinutes = lineHeadwayBestMinutes(line);
   if (bestHeadwayMinutes !== null) {
@@ -230,6 +286,7 @@ function lineHeadwayLabel(line) {
   return frequencyBucketLabel(lineFrequencyBucket(line));
 }
 
+/** Format a count label for a filter chip, showing "?" when uncertain. */
 function filterChipCountLabel(count, uncertain) {
   if (uncertain) {
     return "?";
@@ -239,6 +296,7 @@ function filterChipCountLabel(count, uncertain) {
   return Number.isFinite(numeric) && numeric >= 0 ? String(numeric) : "0";
 }
 
+/** Score a line against a search query for relevance-based sorting. */
 function calculateLineSearchScore(line, query) {
   if (!query) return 0;
   
@@ -270,6 +328,7 @@ function calculateLineSearchScore(line, query) {
   return -999;
 }
 
+/** Map a GTFS stop location type number to its display label. */
 function stopLocationTypeLabel(value) {
   const numeric = Number(value);
   if (numeric === 0) return "Platform/Stop";
@@ -280,6 +339,7 @@ function stopLocationTypeLabel(value) {
   return "Unknown";
 }
 
+/** Construct a line-like plain object from GeoJSON feature properties. */
 function lineLikeFromFeatureProperties(properties) {
   const headwayBestMinutes = Number(
     properties?.headway_best_minutes ?? properties?.headwayBestMinutes

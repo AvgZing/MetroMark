@@ -688,46 +688,7 @@ async function loadCities() {
   }
 }
 
-async function hydrateSession() {
-  if (!state.token) {
-    updateAuthUi();
-    return;
-  }
 
-  try {
-    const me = await apiRequest("/api/auth/me", { method: "GET" });
-    state.user = me.user;
-    if (state.lineViewOrderingVoteClickSetsByLineKey) {
-      state.lineViewOrderingVoteClickSetsByLineKey.clear();
-    }
-    if (typeof applyUserPreferences === "function") {
-      applyUserPreferences(me.user?.preferences || {});
-    }
-    updateAuthUi();
-  } catch {
-    setToken("");
-    state.user = null;
-    if (state.lineViewOrderingVoteClickSetsByLineKey) {
-      state.lineViewOrderingVoteClickSetsByLineKey.clear();
-    }
-    updateAuthUi();
-  }
-}
-
-function updateAuthUi() {
-  const loggedIn = Boolean(state.user);
-  els.authLoggedOut.hidden = loggedIn;
-  els.authLoggedIn.hidden = !loggedIn;
-  els.currentUserLabel.textContent = loggedIn ? `${state.user.displayName} (${state.user.email})` : "-";
-  if (typeof window.updateFilterPresetAuthState === "function") {
-    window.updateFilterPresetAuthState();
-  }
-  if (typeof window.refreshFilterPresets === "function") {
-    window.refreshFilterPresets({ silent: true }).catch(() => {});
-  }
-  renderUserStatus();
-  renderLineView({ forceStopRefresh: true });
-}
 
 function rebuildVisitedMap(items) {
   state.visitedByLine = new Map();
@@ -794,40 +755,4 @@ async function clearRouteProgress(lineKey) {
   }
 }
 
-async function loginWithPayload(payloadPromise, options = {}) {
-  const payload = await payloadPromise;
-  if (typeof setAuthFeedback === "function") {
-    setAuthFeedback();
-  }
-  setToken(payload.token, Boolean(options.remember));
-  state.user = payload.user;
-  if (state.lineViewOrderingVoteClickSetsByLineKey) {
-    state.lineViewOrderingVoteClickSetsByLineKey.clear();
-  }
-  if (typeof applyUserPreferences === "function") {
-    applyUserPreferences(payload.user?.preferences || {});
-  }
-  updateAuthUi();
-  closePopups();
-  await loadProgress();
-
-  // Load saved presets (including the default snapshot preset) and apply defaults if present.
-  if (typeof loadFilterPresets === "function") {
-    try {
-      await loadFilterPresets({ silent: true });
-      if (typeof cachedPresets !== "undefined" && Array.isArray(cachedPresets)) {
-        const defaultPreset = cachedPresets.find((p) => String(p.name || "").trim() === "__defaults__");
-        if (defaultPreset && typeof applyFilterSnapshot === "function") {
-          applyFilterSnapshot(defaultPreset.snapshot || {});
-        }
-      }
-    } catch (e) {
-      // non-fatal
-    }
-  }
-
-  const customMessage = String(options.successMessage || "").trim();
-  const statusMessage = customMessage || `Signed in as ${payload.user.displayName}.`;
-  setStatus(statusMessage, "ok");
-}
 
