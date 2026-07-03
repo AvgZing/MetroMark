@@ -286,8 +286,18 @@ function syncMapSourceData() {
         }
       : emptyFeatureCollection();
 
-    if (routesSource) {
+  if (routesSource) {
       routesSource.setData(routes);
+      if (state.focusedLineKey) {
+        const focused = routes.features.find((f) => f?.properties?.line_key === state.focusedLineKey);
+        if (focused?.geometry?.coordinates) {
+          const coords = focused.geometry.coordinates;
+          const coordCount = Array.isArray(coords[0]?.[0]) ? coords.reduce((sum, seg) => sum + seg.length, 0) : coords.length;
+          const firstCoord = JSON.stringify(Array.isArray(coords[0]?.[0]) ? coords[0][0] : coords[0]);
+          const lastCoord = JSON.stringify(Array.isArray(coords[0]?.[0]) ? coords[coords.length - 1]?.slice(-1)[0] : coords[coords.length - 1]);
+          console.log(`[geo] Focused route geometry: ${coordCount} coords, first=${firstCoord}, last=${lastCoord}, type=${focused.geometry.type}`);
+        }
+      }
     }
     if (stopsSource) {
       stopsSource.setData(stops);
