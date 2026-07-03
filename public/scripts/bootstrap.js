@@ -239,7 +239,19 @@ function bindEvents() {
       if (!confirmed) return;
       setBackendStatus("Reloading viewport from Transitland...");
       try {
+        // Clear focused route's stop cache so geometry re-fetches fresh
+        if (state.focusedLineKey) {
+          const stopCacheKey = typeof routeStopCacheKey === "function" ? routeStopCacheKey(state.focusedLineKey) : `${state.focusedLineKey}|types:${ROUTE_STOP_TYPES_KEY}`;
+          state.lineStopsCache.delete(stopCacheKey);
+          state.inFlightLineStopKeys.delete(stopCacheKey);
+        }
         await loadVisibleTransit({ forceRefresh: true, reason: "manual-refresh" });
+        // Re-fetch focused route stops from Transitland to get full geometry
+        if (state.focusedLineKey && typeof ensureLineStopsLoaded === "function") {
+          await ensureLineStopsLoaded(state.focusedLineKey, { forceRefresh: true, silent: true });
+          rebuildCombinedTransit();
+          renderMapData();
+        }
         setBackendStatus("Transitland reload complete.");
       } catch (error) {
         setStatus(error.message, "error");

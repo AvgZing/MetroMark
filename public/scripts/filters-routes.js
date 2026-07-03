@@ -818,12 +818,12 @@ function compactRouteStopsPayload(payload) {
       directionStopSequences: null,
       directionStopPatterns: null,
       matchingStats: null,
-      headwaySummary: null
+      headwaySummary: null,
+      routesGeoJson: null
     };
   }
 
   const {
-    routesGeoJson: _routesGeoJson,
     lineSummaries: _lineSummaries,
     ...rest
   } = payload;
@@ -831,6 +831,7 @@ function compactRouteStopsPayload(payload) {
   return {
     ...rest,
     stopsGeoJson: rest.stopsGeoJson || { type: "FeatureCollection", features: [] },
+    routesGeoJson: rest.routesGeoJson || null,
     directionStopSequences: rest.directionStopSequences || null,
     directionStopPatterns: rest.directionStopPatterns || null,
     matchingStats: rest.matchingStats ? { ...rest.matchingStats } : null,
