@@ -5,26 +5,10 @@
 .env.*
 !.env.development.example
 !.env.production.example
-config.js
-config.local.js
 *.local.env
 
 # Node / build artifacts
 node_modules/
-dist/
-coverage/
-*.log
-_tmp_*.js
-
-# Runtime data (cache, local DB)
-data/*.db
-data/*.db-shm
-data/*.db-wal
-data/cache/
-data/backups/
-data/local-postgres/
-data/private/
-data/postgres/
 
 # OS/editor noise
 .DS_Store

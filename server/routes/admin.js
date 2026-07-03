@@ -1,13 +1,13 @@
 const crypto = require("crypto");
 const express = require("express");
 
-const config = require("../config");
-const db = require("../db");
-const { getCityBySlug } = require("../city-presets");
-const { TRANSIT_CACHE_PREFIX, getTransitlandMetrics } = require("../transitland");
-const { postgresMetrics } = require("../postgres");
-const { runHarvestCore } = require("../../scripts/harvest-core");
-const { runNonrecoverableBackup } = require("../../scripts/backup-nonrecoverable");
+const config = require("../admin/config");
+const db = require("../processors/db");
+const { getCityBySlug } = require("../processors/city-presets");
+const { TRANSIT_CACHE_PREFIX, getTransitlandMetrics } = require("../processors/transitland");
+const { postgresMetrics } = require("../processors/postgres");
+const { runHarvestCore } = require("../admin/harvest-core");
+const { runNonrecoverableBackup } = require("../admin/backup-nonrecoverable");
 
 const router = express.Router();
 const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 8;

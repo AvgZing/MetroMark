@@ -1,6 +1,6 @@
 const bcrypt = require("bcryptjs");
 
-const config = require("../config");
+const config = require("../../admin/config");
 const { statements, nowSeconds } = require("./client");
 
 function sanitizeUser(row) {

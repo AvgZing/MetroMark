@@ -1,14 +1,14 @@
 const express = require("express");
 
-const db = require("../db");
-const { authMiddleware } = require("../auth");
-const { getCityBySlug } = require("../city-presets");
+const db = require("../processors/db");
+const { authMiddleware } = require("../processors/supabase/auth");
+const { getCityBySlug } = require("../processors/city-presets");
 const {
   getCityTransit,
   getBboxTransit,
   getRouteStopsTransit,
   getRouteHeadway
-} = require("../transitland");
+} = require("../processors/transitland");
 const {
   asBoolean,
   parseStopTypes,

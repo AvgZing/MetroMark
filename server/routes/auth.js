@@ -1,7 +1,7 @@
 const express = require("express");
 
-const db = require("../db");
-const { authMiddleware } = require("../auth");
+const db = require("../processors/db");
+const { authMiddleware } = require("../processors/supabase/auth");
 const { userResponse } = require("./helpers");
 
 const router = express.Router();

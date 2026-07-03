@@ -1,4 +1,4 @@
-# Admin and Maintenance
+# Operations Guide
 
 ## Login model
 - Admin console and manual override editor both require a session login.
@@ -43,3 +43,25 @@
 - Use the admin console to inspect API usage and harvest progress before forcing a refresh.
 - If a route edit is wrong, re-open the editor, load the route again, and adjust the override payload instead of manually editing tables.
 - Manual route override payloads should stay JSON-friendly and small enough to review by eye.
+
+## Production Deployment (Windows 11)
+- Two env profiles: `.env.development` and `.env.production`.
+- Start: `npm run start:dev` / `npm run start:prod`.
+- Operational jobs: `npm run harvest:core`, `npm run backup:nonrecoverable`.
+- Use separate Supabase projects for dev and production.
+- Apply schema from SQL files in `scripts/`.
+
+## Windows Task Scheduler
+- `scripts/windows/register-prod-tasks.ps1` automates scheduling.
+- Harvest every 30 min, backup daily at 02:15.
+- GitHub sync every 10 min via `scripts/windows/sync-from-github.ps1`.
+
+## Production Readiness Checklist
+1. Populate `.env.production` with real production keys.
+2. Apply SQL migration on production Supabase.
+3. Run `npm install` once.
+4. Verify account register/login and progress write/read.
+5. Run one manual harvest and one backup.
+6. Verify `/admin` values.
+7. Enable scheduler tasks.
+8. Confirm GitHub sync task pulls and restarts correctly.

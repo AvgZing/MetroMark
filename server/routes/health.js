@@ -1,7 +1,7 @@
 const express = require("express");
 
-const config = require("../config");
-const { hasLocalPostgresConfig } = require("../postgres");
+const config = require("../admin/config");
+const { hasLocalPostgresConfig } = require("../processors/postgres");
 const { withTransitlandMetrics } = require("./helpers");
 
 const router = express.Router();

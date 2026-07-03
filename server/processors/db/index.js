@@ -1,4 +1,4 @@
-const config = require("../config");
+const config = require("../../admin/config");
 const { hasSupabaseConfig, requireSupabaseClients } = require("../supabase");
 const {
   hasLocalPostgresConfig,

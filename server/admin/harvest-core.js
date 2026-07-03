@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 
-const config = require("../server/config");
-const db = require("../server/db");
-const { defaultCoreHarvestCitySlugs, getCityBySlug } = require("../server/city-presets");
+const config = require("./config");
+const db = require("../processors/db");
+const { defaultCoreHarvestCitySlugs, getCityBySlug } = require("../processors/city-presets");
 const {
   TRANSIT_CACHE_PREFIX,
   getCityTransit,
   getCityFeedFingerprint,
   getRouteStopsTransit
-} = require("../server/transitland");
+} = require("../processors/transitland");
 
 function nowIso() {
   return new Date().toISOString();

@@ -1,5 +1,5 @@
-const { getTransitlandMetrics } = require("../transitland");
-const { postgresMetrics } = require("../postgres");
+const { getTransitlandMetrics } = require("../processors/transitland");
+const { postgresMetrics } = require("../processors/postgres");
 
 function asBoolean(value) {
   const text = String(value || "").toLowerCase();

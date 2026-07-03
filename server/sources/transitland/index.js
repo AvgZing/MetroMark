@@ -1,9 +1,9 @@
 const crypto = require("crypto");
-const config = require("../../config");
-const db = require("../../db");
+const config = require("../../admin/config");
+const db = require("../../processors/db");
 const { VectorTile } = require("@mapbox/vector-tile");
 const Pbf = require("pbf").default;
-const { getCityBySlug } = require("../../city-presets");
+const { getCityBySlug } = require("../../processors/city-presets");
 const {
   normalizeName,
   stableStationKey,
@@ -12,7 +12,7 @@ const {
   nearestPointOnGeometry,
   geometryBbox,
   pointInExpandedBbox
-} = require("../../spatial");
+} = require("../../processors/postgres/spatial");
 const {
   TRANSITLAND_BASE_URL,
   TRANSITLAND_VECTOR_BASE_URL,

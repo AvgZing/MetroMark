@@ -1,6 +1,6 @@
 const { createClient } = require("@supabase/supabase-js");
 
-const config = require("./config");
+const config = require("../../admin/config");
 
 const hasSupabaseConfig = Boolean(
   config.SUPABASE_URL && config.SUPABASE_ANON_KEY && config.SUPABASE_SERVICE_ROLE_KEY

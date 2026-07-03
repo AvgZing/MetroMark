@@ -3,10 +3,10 @@
 const fs = require("fs");
 const path = require("path");
 
-const config = require("../server/config");
-const db = require("../server/db");
-const { query: localQuery } = require("../server/postgres");
-const { requireSupabaseClients } = require("../server/supabase");
+const config = require("./config");
+const db = require("../processors/db");
+const { query: localQuery } = require("../processors/postgres");
+const { requireSupabaseClients } = require("../processors/supabase");
 
 function timestampForFile() {
   const date = new Date();
