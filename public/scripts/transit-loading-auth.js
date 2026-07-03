@@ -320,12 +320,13 @@ function drainFetchQueue() {
               const ended = timings[timings.length - 1].at;
               const totalMs = (ended - started).toFixed(1);
               const lineCount = state.lineSummaries.length;
+              const cachedAreas = state.visibleAreaKeys.size;
               const hitSummary = `Pg:${state.postgresViewportHitCount} miss:${state.postgresViewportMissCount} Tld:${state.transitlandViewportFetchCount}`;
-              console.log(`[perf] Load cycle: ${totalMs}ms, ${lineCount} routes, ${hitSummary}`);
+              console.log(`[perf] Load cycle: ${totalMs}ms, ${lineCount} routes, ${cachedAreas} areas, ${hitSummary}`);
               if (Number(totalMs) > 3000) {
-                console.warn(`[perf] SLOW load cycle: ${totalMs}ms (${hitSummary})`);
+                console.warn(`[perf] SLOW load cycle: ${totalMs}ms (${cachedAreas} tile(s), ${hitSummary})`);
               }
-              setBackendStatus(`Loaded ${lineCount} routes in ${totalMs}ms (${hitSummary}). Select a route to load stops.`);
+              setBackendStatus(`Loaded ${lineCount} routes from ${cachedAreas} area(s) in ${totalMs}ms (${hitSummary}). Select a route to load stops.`);
             }
           }
         });

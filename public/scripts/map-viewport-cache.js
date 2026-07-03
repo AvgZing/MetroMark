@@ -257,15 +257,76 @@ function bboxQueryText(bbox) {
 }
 
 function buildViewportTileRequests(rawBbox, zoom) {
-  const paddedViewport = expandBbox(rawBbox, 0.18);
-  return [
-    {
-      areaKey: `viewport:${bboxQueryText(paddedViewport)}`,
-      bbox: paddedViewport,
-      zoom,
-      distanceScore: 0
+  // Use tiles all the way down to zoom 5 — each tile's exact key matches Postgres
+  // directly without needing spatial overlap. Only at extreme zoom-out (world view)
+  // do we fall back to a single viewport request.
+  if (Number(zoom || 0) < 5) {
+    const paddedViewport = expandBbox(rawBbox, 0.18);
+    return [
+      {
+        areaKey: `viewport:${bboxQueryText(paddedViewport)}`,
+        bbox: paddedViewport,
+        zoom,
+        distanceScore: 0
+      }
+    ];
+  }
+
+  const tileZoom = tileZoomFromMapZoom(zoom);
+  const padded = expandBbox(rawBbox, 0.18);
+  const center = bboxCenter(rawBbox);
+  const centerTile = lngLatToTile(center[0], center[1], tileZoom);
+
+  const northWest = lngLatToTile(padded[0], padded[3], tileZoom);
+  const southEast = lngLatToTile(padded[2], padded[1], tileZoom);
+
+  const minX = Math.min(northWest.x, southEast.x) - 1;
+  const maxX = Math.max(northWest.x, southEast.x) + 1;
+  const minY = Math.min(northWest.y, southEast.y) - 1;
+  const maxY = Math.max(northWest.y, southEast.y) + 1;
+
+  const requestsByKey = new Map();
+
+  for (let x = minX; x <= maxX; x += 1) {
+    for (let y = minY; y <= maxY; y += 1) {
+      const nx = normalizeTileX(x, tileZoom);
+      const ny = normalizeTileY(y, tileZoom);
+      const areaKey = `tile:${tileZoom}:${nx}:${ny}`;
+      if (requestsByKey.has(areaKey)) {
+        continue;
+      }
+
+      const bbox = tileToBbox(nx, ny, tileZoom);
+      const dx = nx - centerTile.x;
+      const dy = ny - centerTile.y;
+      const distanceScore = dx * dx + dy * dy;
+
+      requestsByKey.set(areaKey, {
+        areaKey,
+        bbox,
+        zoom,
+        distanceScore
+      });
     }
-  ];
+  }
+
+  const allTiles = Array.from(requestsByKey.values());
+  
+  // At very low zoom (world/continent), ensure we don't drop distant metros
+  // by selecting tiles more carefully: sort by distance but use a larger budget
+  // rather than slicing aggressively.
+  if (zoom < 5) {
+    // Low zoom: increase budget to 128 (vs default 24) to cover distant metros
+    // but still sort by distance to prioritize the most relevant tiles
+    return allTiles
+      .sort((a, b) => a.distanceScore - b.distanceScore)
+      .slice(0, 128);
+  }
+  
+  // At higher zoom (5+), sort by distance and limit with standard budget
+  return allTiles
+    .sort((a, b) => a.distanceScore - b.distanceScore)
+    .slice(0, MAX_TARGET_TILES_PER_VIEW);
 }
 
 function mergeStopFeature(existing, incoming) {

@@ -561,7 +561,7 @@ async function getCacheByBbox(minLon, minLat, maxLon, maxLat, options = {}) {
              ST_MakeEnvelope($1, $2, $3, $4, 4326)
            )
        ${whereClause}
-     LIMIT 200`,
+     LIMIT 30`,
     [minLon, minLat, maxLon, maxLat]
   );
 
@@ -569,18 +569,17 @@ async function getCacheByBbox(minLon, minLat, maxLon, maxLat, options = {}) {
     return [];
   }
 
-  // Phase 2: batch fetch full payloads in one query
+  // Phase 2: fetch full payloads for matching keys using PK lookups
   const cacheKeys = keyRows.map((r) => r.cache_key);
-  const placeholders = cacheKeys.map((_, i) => `$${i + 1}`).join(", ");
-  const { rows } = await localQuery(
-    `SELECT c.cache_key, c.payload, c.fetched_at, c.expires_at, c.cache_kind, 
-            c.city_slug, c.feed_fingerprint, c.verified_at
-     FROM public.transit_cache c
-     WHERE c.cache_key IN (${placeholders})`,
-    cacheKeys
-  );
+  const payloads = [];
+  for (const key of cacheKeys) {
+    const cached = await getCacheAny(key);
+    if (cached) {
+      payloads.push(cached);
+    }
+  }
 
-  return (rows || []).map((r) => normalizeCacheRow(r));
+  return payloads;
 }
 
 async function setCache(cacheKey, payload, ttlSeconds, options = {}) {
