@@ -2732,6 +2732,7 @@ async function queueCityReverifyIfStale(area, cached) {
 }
 
 async function getTransitForArea(area, options = {}) {
+  const t0 = Date.now();
   const forceRefresh = Boolean(options.forceRefresh);
   const cacheKey = `${TRANSIT_CACHE_PREFIX}${area.key}`;
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
@@ -2745,6 +2746,13 @@ async function getTransitForArea(area, options = {}) {
     lineSummaries: Array.isArray(lineSummaries) ? lineSummaries : [],
     area: { bbox: area.bbox }
   });
+
+  function logGetTransitTiming(detail) {
+    const elapsed = Date.now() - t0;
+    if (elapsed > 200) {
+      console.log(`[perf] getTransitForArea(${area.key.slice(0, 60)}): ${elapsed}ms - ${detail}`);
+    }
+  }
 
   if (summaryOnly && Boolean(options.cacheOnly)) {
     const cached = await db.getCacheAny(cacheKey);
@@ -2779,12 +2787,10 @@ async function getTransitForArea(area, options = {}) {
         }
       }
 
+      logGetTransitTiming('summaryOnly+cacheOnly:spatial-partial');
       return {
         payload: summaryOnlyPayload(
-          {
-            type: "FeatureCollection",
-            features: Array.from(mergedRoutes.values())
-          },
+          { type: "FeatureCollection", features: [] },
           Array.from(mergedLines.values())
         ),
         cacheStatus: "partial-hit",
@@ -2821,6 +2827,7 @@ async function getTransitForArea(area, options = {}) {
         };
       }
 
+      logGetTransitTiming('cache-hit');
       return {
         payload: await applyRouteOrderingMetadataToPayload(cached.payload || {}),
         cacheStatus,
@@ -2833,83 +2840,10 @@ async function getTransitForArea(area, options = {}) {
     }
 
     if (options.cacheOnly) {
-      const [minLon, minLat, maxLon, maxLat] = area.bbox;
-      const overlappingCaches = await db.getCacheByBbox(minLon, minLat, maxLon, maxLat, {
-        includeExpired: true
-      });
-
-      if (overlappingCaches && overlappingCaches.length > 0) {
-        const mergedRoutes = new Map();
-        const mergedStops = new Map();
-        const mergedLines = new Map();
-
-        for (const cacheEntry of overlappingCaches) {
-          const payload = cacheEntry.payload || {};
-
-          for (const feature of payload?.routesGeoJson?.features || []) {
-            const lineKey = feature?.properties?.line_key;
-            if (lineKey && !mergedRoutes.has(lineKey)) {
-              mergedRoutes.set(lineKey, feature);
-            }
-          }
-
-          for (const line of payload?.lineSummaries || []) {
-            const lineKey = line?.lineKey;
-            if (lineKey && !mergedLines.has(lineKey)) {
-              mergedLines.set(lineKey, line);
-            }
-          }
-
-          for (const feature of payload?.stopsGeoJson?.features || []) {
-            const stopId = feature?.properties?.stop_id || feature?.id;
-            if (stopId && !mergedStops.has(stopId)) {
-              mergedStops.set(stopId, feature);
-            }
-          }
-        }
-
-        const mergedPayload = await applyRouteOrderingMetadataToPayload({
-          routesGeoJson: {
-            type: "FeatureCollection",
-            features: Array.from(mergedRoutes.values())
-          },
-          stopsGeoJson: {
-            type: "FeatureCollection",
-            features: Array.from(mergedStops.values())
-          },
-          lineSummaries: Array.from(mergedLines.values()),
-          area: { bbox: area.bbox }
-        });
-
-        if (summaryOnly) {
-          return {
-            payload: summaryOnlyPayload(Array.from(mergedLines.values())),
-            cacheStatus: "partial-hit",
-            cacheKey: area.key,
-            stopLocationTypes
-          };
-        }
-
-        return {
-          payload: mergedPayload,
-          cacheStatus: "partial-hit",
-          cacheKey: area.key,
-          stopLocationTypes
-        };
-      }
-
       return {
         payload: summaryOnly
-          ? summaryOnlyPayload(
-              { type: "FeatureCollection", features: [] },
-              []
-            )
-          : await applyRouteOrderingMetadataToPayload({
-              routesGeoJson: { type: "FeatureCollection", features: [] },
-              stopsGeoJson: { type: "FeatureCollection", features: [] },
-              lineSummaries: [],
-              area: { bbox: area.bbox }
-            }),
+          ? summaryOnlyPayload({ type: "FeatureCollection", features: [] }, [])
+          : { routesGeoJson: { type: "FeatureCollection", features: [] }, stopsGeoJson: { type: "FeatureCollection", features: [] }, lineSummaries: [], area: { bbox: area.bbox } },
         cacheStatus: "miss",
         cacheKey: area.key,
         stopLocationTypes
@@ -2917,6 +2851,7 @@ async function getTransitForArea(area, options = {}) {
     }
   }
 
+  logGetTransitTiming('fetching-from-transitland');
   const fetchResult = await fetchRoutesAndStopsForBbox(area.bbox, {
     ...options,
     stopLocationTypes,

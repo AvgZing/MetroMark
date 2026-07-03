@@ -176,16 +176,9 @@ function visibleCachedAreaKeysForViewport(rawBbox, routeTypes = []) {
   if (!normalizedViewportBbox) {
     return new Set();
   }
-  const modeCacheKey = modeCacheKeyFromRouteTypes(routeTypes);
-  const modeSuffix = `:modes:${modeCacheKey}`;
   const visible = new Set();
 
   for (const [cacheKey, entry] of state.areaCache.entries()) {
-    const normalizedCacheKey = String(cacheKey || "");
-    if (!normalizedCacheKey.endsWith(modeSuffix)) {
-      continue;
-    }
-
     const cachedBbox = cacheEntryBbox(cacheKey, entry);
     if (!cachedBbox) {
       continue;
@@ -264,10 +257,10 @@ function bboxQueryText(bbox) {
 }
 
 function buildViewportTileRequests(rawBbox, zoom) {
-  // For low-zoom views (below Transitland threshold), do a single viewport overlap
-  // request against Postgres instead of tile-budgeting. This avoids city-like limits
-  // and allows all intersecting cached geometry in the viewport to be returned.
-  if (Number(zoom || 0) < MIN_VIEWPORT_FETCH_ZOOM) {
+  // Use tiles all the way down to zoom 5 — each tile's exact key matches Postgres
+  // directly without needing spatial overlap. Only at extreme zoom-out (world view)
+  // do we fall back to a single viewport request.
+  if (Number(zoom || 0) < 5) {
     const paddedViewport = expandBbox(rawBbox, 0.18);
     return [
       {
@@ -493,6 +486,7 @@ function resetViewAggregation() {
 }
 
 function rebuildCombinedTransit() {
+  const rebuildStart = performance.now();
   if (state.activeAreaKeys.size === 0) {
     state.transit = null;
     state.lineSummaries = [];
@@ -762,5 +756,9 @@ function rebuildCombinedTransit() {
   };
   state.lineSummaries = lineSummaries;
   state.loadedLineSummaries = loadedLineSummaries;
+  const rebuildElapsed = performance.now() - rebuildStart;
+  if (rebuildElapsed > 30) {
+    console.log(`[perf] rebuildCombinedTransit: ${rebuildElapsed.toFixed(1)}ms, ${state.activeAreaKeys.size} areas, ${lineSummaries.length} lines`);
+  }
 }
 

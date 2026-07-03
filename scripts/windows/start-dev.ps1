@@ -1,0 +1,19 @@
+param(
+  [string]$RepoDir = ""
+)
+
+$ErrorActionPreference = "Stop"
+
+if (-not $RepoDir) {
+  $RepoDir = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+}
+
+if (-not (Test-Path -Path $RepoDir)) {
+  throw "Repository directory not found: $RepoDir"
+}
+
+Set-Location $RepoDir
+
+Write-Host "[dev] Repo: $RepoDir"
+
+npm run start:dev

@@ -230,6 +230,23 @@ function bindEvents() {
     }
   });
 
+  const forceRefreshBtn = document.getElementById("forceRefreshBtn");
+  if (forceRefreshBtn) {
+    forceRefreshBtn.addEventListener("click", async () => {
+      const confirmed = window.confirm(
+        "Re-fetch transit data for the current viewport from Transitland? This may use API quota."
+      );
+      if (!confirmed) return;
+      setBackendStatus("Reloading viewport from Transitland...");
+      try {
+        await loadVisibleTransit({ forceRefresh: true, reason: "manual-refresh" });
+        setBackendStatus("Transitland reload complete.");
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    });
+  }
+
   if (els.clearRouteProgressBtn) {
     els.clearRouteProgressBtn.addEventListener("click", () => {
       const routeLineKey = state.userStatus.routeLineKey || state.focusedLineKey;
@@ -340,6 +357,7 @@ function bindEvents() {
 }
 
 async function init() {
+  const initT0 = performance.now();
   document.body.classList.remove("app-ready");
   setTheme(state.theme);
   syncMobilePanelLayout();
@@ -350,6 +368,7 @@ async function init() {
   restoreUserStatusFromFocus();
 
   bindEvents();
+  console.log(`[perf] init: pre-map setup in ${(performance.now() - initT0).toFixed(1)}ms`);
   initializeMap();
 
   let initialTriggered = false;
@@ -366,9 +385,11 @@ async function init() {
 
   const startupDataPromise = Promise.all([loadCities(), hydrateSession()]);
   const mapReadyPromise = waitForMapReady();
+  const mapT0 = performance.now();
 
   try {
     await mapReadyPromise;
+    console.log(`[perf] init: map ready in ${(performance.now() - mapT0).toFixed(1)}ms`);
 
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -382,7 +403,9 @@ async function init() {
 
     window.setTimeout(triggerInitialLoad, 1400);
 
+    const startupT0 = performance.now();
     await startupDataPromise;
+    console.log(`[perf] init: startup data (cities + session) in ${(performance.now() - startupT0).toFixed(1)}ms`);
 
     await loadProgress();
 
@@ -395,6 +418,7 @@ async function init() {
       "ok",
       `Visible by default: ${activeModeLabels.join(", ")} | All Frequencies. Stops load only when you focus a route.`
     );
+    console.log(`[perf] init: total app init in ${(performance.now() - initT0).toFixed(1)}ms`);
   } catch (error) {
     setStatus(error.message, "error");
   }

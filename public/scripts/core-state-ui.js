@@ -1,12 +1,14 @@
 ﻿// Postgres (cache-only) is primary at all zoom levels.
-// Transitland fallback only triggers when zoomed in (zoom 10+) to avoid excessive API usage.
+// Transitland fallback triggers at zoom 10+. Individual tile bboxes are
+// validated server-side by BBOX_MAX_SPAN_DEGREES, and Transitland's own
+// rate limits protect against abuse.
 const MIN_VIEWPORT_FETCH_ZOOM = 10.0;
 // Low-zoom views can span multiple metro regions; keep a larger request budget so
 // distant cached areas (e.g. Seattle + DC at US scale) can load together.
 const MAX_TARGET_TILES_PER_VIEW = 24;
-const MAX_NEW_FETCHES_PER_VIEW = 18;
-const MAX_PARALLEL_FETCHES = 2;
-const MAX_SESSION_AREAS = 220;
+const MAX_NEW_FETCHES_PER_VIEW = 36;
+const MAX_PARALLEL_FETCHES = 4;
+const MAX_SESSION_AREAS = 440;
 const MAX_SESSION_ROUTE_STOP_PAYLOADS = 30;
 const MIN_MOVE_FETCH_INTERVAL_MS = 1800;
 
@@ -325,7 +327,10 @@ const state = {
     successful: 0
   },
   routeReviewsByCity: new Map(),
-  agencyReviewsByCity: new Map()
+  agencyReviewsByCity: new Map(),
+  renderBatchTimer: null,
+  renderBatchToken: 0,
+  loadTimings: []
 };
 
 const els = {
@@ -2245,11 +2250,28 @@ function modeCacheKeyFromRouteTypes(routeTypes) {
 
 function viewportRequestsForMode(rawBbox, zoom, routeTypes) {
   const modeKey = modeCacheKeyFromRouteTypes(routeTypes);
-  return buildViewportTileRequests(rawBbox, zoom).map((request) => ({
-    ...request,
-    routeTypes: Array.isArray(routeTypes) ? routeTypes : [],
-    areaKey: `${request.areaKey}:types:${modeKey}`
-  }));
+  const primary = buildViewportTileRequests(rawBbox, zoom);
+  const coarse = zoom >= 7 ? buildViewportTileRequests(rawBbox, zoom - 2) : [];
+  const fine = zoom >= 5 ? buildViewportTileRequests(rawBbox, zoom + 2) : [];
+  const seen = new Set();
+  const merged = [];
+  const push = (reqs) => {
+    for (const req of reqs) {
+      const key = `${req.areaKey}:types:${modeKey}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push({
+        ...req,
+        routeTypes: Array.isArray(routeTypes) ? routeTypes : [],
+        areaKey: key
+      });
+    }
+  };
+  // Prioritize primary tiles, then add extras from coarse/fine
+  push(primary);
+  push(coarse);
+  push(fine);
+  return merged;
 }
 
 function lineMatchesModeSelection(line) {
