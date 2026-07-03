@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 
 const config = require("./config");
-const db = require("../processors/db");
+const db = require("../processors/data");
 const { query: localQuery } = require("../processors/postgres");
 const { requireSupabaseClients } = require("../processors/supabase");
 

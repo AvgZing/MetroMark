@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const config = require("./config");
-const db = require("../processors/db");
+const db = require("../processors/data");
 const { defaultCoreHarvestCitySlugs, getCityBySlug } = require("../processors/city-presets");
 const {
   TRANSIT_CACHE_PREFIX,

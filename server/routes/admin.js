@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const express = require("express");
 
 const config = require("../admin/config");
-const db = require("../processors/db");
+const db = require("../processors/data");
 const { getCityBySlug } = require("../processors/city-presets");
 const { TRANSIT_CACHE_PREFIX, getTransitlandMetrics } = require("../processors/transitland");
 const { postgresMetrics } = require("../processors/postgres");

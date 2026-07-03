@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 const config = require("../../admin/config");
-const db = require("../../processors/db");
+const db = require("../../processors/data");
 const { VectorTile } = require("@mapbox/vector-tile");
 const Pbf = require("pbf").default;
 const { getCityBySlug } = require("../../processors/city-presets");
@@ -14,176 +14,31 @@ const {
   pointInExpandedBbox
 } = require("../../processors/postgres/spatial");
 const {
+  simplifyGeometryForZoom,
+  resolveGeometryForZoom
+} = require("./geometry");
+const {
   TRANSITLAND_BASE_URL,
   TRANSITLAND_VECTOR_BASE_URL,
   TRANSIT_CACHE_PREFIX,
-  transitlandMetrics,
-  getTransitlandMetrics: readTransitlandMetrics
+  transitlandMetrics
 } = require("./metrics");
-
-const fallbackColors = [
-  "#3f7cff",
-  "#eb4f2d",
-  "#0f9d58",
-  "#f4b400",
-  "#0b7285",
-  "#912ca7",
-  "#cd5c08",
-  "#7d3c98"
-];
-
-function colorFromString(input) {
-  const value = String(input || "line");
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = (hash << 5) - hash + value.charCodeAt(i);
-    hash |= 0;
-  }
-  return fallbackColors[Math.abs(hash) % fallbackColors.length];
-}
-
-function sanitizeColor(rawColor, fallbackSeed) {
-  const text = String(rawColor || "").trim().replace(/^#/, "");
-  if (/^[0-9a-fA-F]{6}$/.test(text)) {
-    return `#${text.toLowerCase()}`;
-  }
-  return colorFromString(fallbackSeed);
-}
-
-function sanitizeText(value) {
-  return String(value || "").trim();
-}
-
-function isCacheExpiredRow(cached) {
-  const expiresAt = Number(cached?.expiresAt || 0);
-  if (!Number.isFinite(expiresAt) || expiresAt <= 0) {
-    return false;
-  }
-
-  return expiresAt <= Math.floor(Date.now() / 1000);
-}
-
-function firstTruthy(values) {
-  for (const value of values) {
-    if (value) {
-      return value;
-    }
-  }
-  return "";
-}
-
-function gtfsRouteTypeLabel(routeType) {
-  const numeric = Number(routeType);
-  if (!Number.isFinite(numeric)) {
-    return "";
-  }
-
-  const map = {
-    0: "Tram",
-    1: "Subway",
-    2: "Rail",
-    3: "Bus",
-    4: "Ferry",
-    5: "Cable Tram",
-    6: "Aerial",
-    7: "Funicular",
-    11: "Trolleybus",
-    12: "Monorail"
-  };
-
-  return map[numeric] || "";
-}
-
-function extractOperatorName(route) {
-  const operatorsArray = Array.isArray(route?.operators)
-    ? route.operators
-        .map((entry) => sanitizeText(entry?.name || entry?.operator_name))
-        .filter(Boolean)
-        .join(", ")
-    : "";
-
-  return firstTruthy([
-    sanitizeText(route?.operator_name),
-    sanitizeText(route?.operator?.name),
-    sanitizeText(route?.agency?.agency_name),
-    sanitizeText(route?.agency_name),
-    sanitizeText(route?.operated_by_name),
-    operatorsArray,
-    sanitizeText(route?.operator_onestop_id)
-  ]);
-}
-
-function extractFeedId(entity) {
-  return sanitizeText(entity?.feed_version?.feed?.onestop_id || entity?.feed?.onestop_id);
-}
-
-function extractParentStopId(stop) {
-  return sanitizeText(stop?.parent?.onestop_id || stop?.parent?.stop_id || stop?.parent_stop_id);
-}
-
-function extractParentStopName(stop) {
-  return sanitizeText(stop?.parent?.stop_name || stop?.parent?.name);
-}
-
-function extractRouteMode(route) {
-  return firstTruthy([
-    sanitizeText(route?.route_type_name),
-    gtfsRouteTypeLabel(route?.route_type)
-  ]);
-}
-
-function canonicalStationName(name) {
-  const normalized = normalizeName(name);
-  if (!normalized) {
-    return "station";
-  }
-
-  const trimmed = normalized
-    .replace(/\b(station|stn|stop|platform|entrance|exit|transit center|transit ctr|tc)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return trimmed || normalized;
-}
-
-function normalizeStopLocationTypes(rawValue) {
-  const allowed = new Set([0, 1, 2, 3, 4]);
-
-  const source = Array.isArray(rawValue)
-    ? rawValue
-    : String(rawValue || "")
-        .split(",")
-        .map((entry) => entry.trim())
-        .filter(Boolean);
-
-  const parsed = source
-    .map((entry) => Number.parseInt(entry, 10))
-    .filter((entry) => Number.isFinite(entry) && allowed.has(entry));
-
-  const uniqueSorted = Array.from(new Set(parsed)).sort((a, b) => a - b);
-  return uniqueSorted.length ? uniqueSorted : [0, 1];
-}
-
-function normalizeRouteTypes(rawValue) {
-  const allowed = new Set([0, 1, 2, 3, 4, 5, 6, 7, 11, 12]);
-
-  const source = Array.isArray(rawValue)
-    ? rawValue
-    : String(rawValue || "")
-        .split(",")
-        .map((entry) => entry.trim())
-        .filter(Boolean);
-
-  const parsed = source
-    .map((entry) => Number.parseInt(entry, 10))
-    .filter((entry) => Number.isFinite(entry) && allowed.has(entry));
-
-  return Array.from(new Set(parsed)).sort((a, b) => a - b);
-}
-
-function getTransitlandMetrics() {
-  return readTransitlandMetrics();
-}
+const {
+  sanitizeText,
+  extractOperatorName,
+  extractRouteMode,
+  sanitizeColor,
+  extractFeedId,
+  extractParentStopId,
+  extractParentStopName,
+  canonicalStationName,
+  normalizeStopLocationTypes,
+  normalizeRouteTypes,
+  isCacheExpiredRow,
+  getTransitlandMetrics,
+  colorFromString,
+  firstTruthy
+} = require("./helpers");
 
 function parseBboxArray(rawBbox, options = {}) {
   if (!Array.isArray(rawBbox) || rawBbox.length !== 4) {
@@ -862,167 +717,6 @@ function routeSortWeight(routeType) {
   if (tier === "special") return 1;
   if (tier === "other") return 2;
   return 3;
-}
-
-function geometryToleranceForZoom(zoom) {
-  const numeric = Number(zoom);
-  if (!Number.isFinite(numeric)) {
-    return 0;
-  }
-
-  if (numeric >= 15) return 0;
-  if (numeric >= 14) return 0.00002;
-  if (numeric >= 13) return 0.00004;
-  if (numeric >= 12) return 0.00008;
-  if (numeric >= 11) return 0.00016;
-  if (numeric >= 10) return 0.0003;
-  if (numeric >= 9) return 0.00055;
-  if (numeric >= 8) return 0.0009;
-  return 0.0015;
-}
-
-function perpendicularDistance(point, start, end) {
-  const x = Number(point?.[0]);
-  const y = Number(point?.[1]);
-  const x1 = Number(start?.[0]);
-  const y1 = Number(start?.[1]);
-  const x2 = Number(end?.[0]);
-  const y2 = Number(end?.[1]);
-
-  if ([x, y, x1, y1, x2, y2].some((value) => !Number.isFinite(value))) {
-    return 0;
-  }
-
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  if (dx === 0 && dy === 0) {
-    const ox = x - x1;
-    const oy = y - y1;
-    return Math.sqrt((ox * ox) + (oy * oy));
-  }
-
-  const numerator = Math.abs(dy * x - dx * y + x2 * y1 - y2 * x1);
-  const denominator = Math.sqrt((dx * dx) + (dy * dy));
-  return denominator > 0 ? numerator / denominator : 0;
-}
-
-function simplifyLineStringCoordinates(coords, tolerance) {
-  if (!Array.isArray(coords) || coords.length <= 2 || tolerance <= 0) {
-    return coords;
-  }
-
-  const simplify = (points) => {
-    if (points.length <= 2) {
-      return points.slice();
-    }
-
-    let maxDistance = 0;
-    let maxIndex = 0;
-
-    for (let index = 1; index < points.length - 1; index += 1) {
-      const distance = perpendicularDistance(points[index], points[0], points[points.length - 1]);
-      if (distance > maxDistance) {
-        maxDistance = distance;
-        maxIndex = index;
-      }
-    }
-
-    if (maxDistance <= tolerance) {
-      return [points[0], points[points.length - 1]];
-    }
-
-    const left = simplify(points.slice(0, maxIndex + 1));
-    const right = simplify(points.slice(maxIndex));
-    return left.slice(0, -1).concat(right);
-  };
-
-  return simplify(coords);
-}
-
-function simplifyGeometryForZoom(geometry, zoom) {
-  if (!geometry || !geometry.type || !Array.isArray(geometry.coordinates)) {
-    return geometry || null;
-  }
-
-  const tolerance = geometryToleranceForZoom(zoom);
-  if (tolerance <= 0) {
-    return geometry;
-  }
-
-  if (geometry.type === "LineString") {
-    const simplified = simplifyLineStringCoordinates(geometry.coordinates, tolerance);
-    return Array.isArray(simplified) && simplified.length >= 2
-      ? { type: "LineString", coordinates: simplified }
-      : null;
-  }
-
-  if (geometry.type === "MultiLineString") {
-    const lines = geometry.coordinates
-      .map((line) => simplifyLineStringCoordinates(line, tolerance))
-      .filter((line) => Array.isArray(line) && line.length >= 2);
-
-    if (!lines.length) {
-      return null;
-    }
-
-    return {
-      type: "MultiLineString",
-      coordinates: lines
-    };
-  }
-
-  return geometry;
-}
-
-function geometrySourceHash(geometry) {
-  if (!geometry) {
-    return "";
-  }
-
-  return crypto.createHash("sha1").update(JSON.stringify(geometry)).digest("hex");
-}
-
-async function resolveGeometryForZoom(route, options = {}) {
-  const lineKey = sanitizeText(route?.lineKey);
-  const zoom = Number(options.zoom);
-  const bbox = Array.isArray(options.bbox) && options.bbox.length === 4
-    ? options.bbox.map((value) => Number(value))
-    : null;
-
-  const fallbackGeometry = simplifyGeometryForZoom(route?.geometry || null, zoom);
-  if (!lineKey || !Number.isFinite(zoom) || !fallbackGeometry) {
-    return fallbackGeometry || null;
-  }
-
-  try {
-    const cached = await db.getRouteGeometryLod(lineKey, zoom, { bbox });
-    if (cached?.geometry) {
-      return cached.geometry;
-    }
-  } catch {
-    // Fall through to local simplification and best-effort storage.
-  }
-
-  try {
-    await db.upsertRouteGeometryLod(lineKey, zoom, fallbackGeometry, {
-      sourceHash: geometrySourceHash(route.geometry || fallbackGeometry)
-    });
-  } catch {
-    // Ignore storage failures and keep serving the simplified geometry.
-  }
-
-  if (bbox) {
-    try {
-      const clipped = await db.getRouteGeometryLod(lineKey, zoom, { bbox });
-      if (clipped?.geometry) {
-        return clipped.geometry;
-      }
-    } catch {
-      // Ignore clipping read failures.
-    }
-  }
-
-  return fallbackGeometry;
 }
 
 function frequencyBucketFromHeadwayMinutes(minutes) {

@@ -1,5 +1,5 @@
 const config = require("./admin/config");
-const db = require("./processors/db");
+const db = require("./processors/data");
 const { createApp } = require("./app");
 
 async function startServer() {

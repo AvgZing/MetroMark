@@ -1,6 +1,6 @@
 const express = require("express");
 
-const db = require("../processors/db");
+const db = require("../processors/data");
 const { authMiddleware } = require("../processors/supabase/auth");
 const { getCityBySlug } = require("../processors/city-presets");
 const {
