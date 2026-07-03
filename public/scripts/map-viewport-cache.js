@@ -493,6 +493,7 @@ function resetViewAggregation() {
 }
 
 function rebuildCombinedTransit() {
+  const rebuildStart = performance.now();
   if (state.activeAreaKeys.size === 0) {
     state.transit = null;
     state.lineSummaries = [];
@@ -762,5 +763,9 @@ function rebuildCombinedTransit() {
   };
   state.lineSummaries = lineSummaries;
   state.loadedLineSummaries = loadedLineSummaries;
+  const rebuildElapsed = performance.now() - rebuildStart;
+  if (rebuildElapsed > 30) {
+    console.log(`[perf] rebuildCombinedTransit: ${rebuildElapsed.toFixed(1)}ms, ${state.activeAreaKeys.size} areas, ${lineSummaries.length} lines`);
+  }
 }
 

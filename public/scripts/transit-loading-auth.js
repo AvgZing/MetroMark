@@ -1,4 +1,35 @@
-﻿function updateLoadingStatus() {
+﻿function logTiming(label) {
+  const entry = { label, at: performance.now() };
+  state.loadTimings.push(entry);
+  return entry;
+}
+
+function scheduleBatchRender() {
+  if (state.renderBatchTimer) return;
+  const token = ++state.renderBatchToken;
+  state.renderBatchTimer = setTimeout(() => {
+    if (token !== state.renderBatchToken) return;
+    state.renderBatchTimer = null;
+    logTiming('batch-render-start');
+    rebuildCombinedTransit();
+    refreshUiFromState();
+    logTiming('batch-render-end');
+  }, 80);
+}
+
+function flushBatchRender() {
+  if (state.renderBatchTimer) {
+    clearTimeout(state.renderBatchTimer);
+    state.renderBatchTimer = null;
+  }
+  state.renderBatchToken += 1;
+  logTiming('flush-render-start');
+  rebuildCombinedTransit();
+  refreshUiFromState();
+  logTiming('flush-render-end');
+}
+
+function updateLoadingStatus() {
   const areaLoadingCount = state.inFlightAreaKeys.size;
   const queuedCount = state.fetchQueue.length;
   const routeStopLoadingCount = state.inFlightLineStopKeys.size;
@@ -188,6 +219,8 @@ if (!state.partialFetchAttempts) {
 }
 
 async function fetchTile(job) {
+  const fetchLabel = `fetch-tile:${job.cacheKey.slice(0, 40)}`;
+  logTiming(`${fetchLabel}:start`);
   state.inFlightAreaKeys.add(job.cacheKey);
   updateLoadingStatus();
 
@@ -209,17 +242,21 @@ async function fetchTile(job) {
       params.set("routeTypes", job.routeTypes.join(","));
     }
 
+    logTiming(`${fetchLabel}:request`);
     const payload = await apiRequest(`/api/transit/bbox?${params.toString()}`, {
       method: "GET"
     });
+    logTiming(`${fetchLabel}:response`);
+
+    const serverTiming = Number(payload?.serverTimingMs || 0);
+    if (serverTiming > 200) {
+      console.warn(`[perf] Slow server response for ${job.cacheKey}: ${serverTiming}ms`);
+    }
 
     if (job.epoch !== state.loadEpoch) {
       return;
     }
 
-    // Only persist server payloads that include actual transit content or
-    // are cache hits. Avoid overwriting an existing good session cache with
-    // an empty miss (which can happen when requesting cache-only).
     const hasRoutes = Array.isArray(payload?.lineSummaries) && payload.lineSummaries.length > 0;
     const cacheStatus = String(payload?.cacheStatus || "").trim().toLowerCase();
     const isHit = cacheStatus === "hit" || cacheStatus === "partial-hit" || cacheStatus === "stale-hit";
@@ -228,8 +265,6 @@ async function fetchTile(job) {
     }
     state.lastLoadStats.successful += 1;
 
-    // Update viewport source counters so the advanced panel can prove whether
-    // data came from Postgres or from an actual Transitland fetch.
     state.viewportRequestCount += 1;
     if (cacheStatus === "hit" || cacheStatus === "partial-hit" || cacheStatus === "stale-hit") {
       state.postgresViewportHitCount += 1;
@@ -243,32 +278,8 @@ async function fetchTile(job) {
     syncActiveAreaKeys({
       fallbackToAllCached: false
     });
-    rebuildCombinedTransit();
-    refreshUiFromState();
-
-    const lines = Number(payload?.lineSummaries?.length || 0);
-    const vectorTileCount = Number(payload?.matchingStats?.vectorHeadwayTileCount || 0);
-    const omittedVectorTiles = Number(payload?.matchingStats?.vectorHeadwayOmittedTileCount || 0);
-    
-    // Build source description based on cache status
-    let sourceDesc = "";
-    if (cacheStatus === "hit") {
-      sourceDesc = "Postgres cache (exact match)";
-    } else if (cacheStatus === "partial-hit") {
-      sourceDesc = "Postgres cache (spatial overlap)";
-    } else if (cacheStatus === "stale-hit") {
-      sourceDesc = "Postgres cache (stale)";
-    } else if (cacheStatus === "miss" && job.cacheOnly) {
-      sourceDesc = "Postgres cache miss (no overlap)";
-    } else {
-      sourceDesc = "Transitland (fetched)";
-    }
-    
-    setBackendStatus(
-      `Fetched ${job.cacheKey} from ${sourceDesc} (${lines} routes${vectorTileCount > 0 ? `, ${vectorTileCount} vector tiles` : ""}${
-        omittedVectorTiles > 0 ? `, +${omittedVectorTiles} omitted` : ""
-      }). Select a route to load stops.`
-    );
+    scheduleBatchRender();
+    logTiming(`${fetchLabel}:cached`);
 
     if (job.cacheOnly && (cacheStatus === "miss" || cacheStatus === "partial-hit") && Number(job.zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM) {
       const attempts = Number(state.partialFetchAttempts.get(job.cacheKey) || 0);
@@ -329,6 +340,7 @@ function drainFetchQueue() {
   }
 
   state.queueDrainRunning = true;
+  logTiming('queue-drain-start');
 
   const launch = () => {
     while (state.inFlightAreaKeys.size < MAX_PARALLEL_FETCHES && state.fetchQueue.length > 0) {
@@ -341,7 +353,23 @@ function drainFetchQueue() {
             launch();
           } else {
             state.queueDrainRunning = false;
+            logTiming('queue-drain-end');
+            flushBatchRender();
             updateLoadingStatus();
+            const timings = state.loadTimings;
+            if (timings.length > 2) {
+              const started = timings[0].at;
+              const ended = timings[timings.length - 1].at;
+              const totalMs = (ended - started).toFixed(1);
+              const lineCount = state.lineSummaries.length;
+              const cachedAreas = state.visibleAreaKeys.size;
+              const hitSummary = `Pg:${state.postgresViewportHitCount} miss:${state.postgresViewportMissCount} Tld:${state.transitlandViewportFetchCount}`;
+              console.log(`[perf] Load cycle: ${totalMs}ms, ${lineCount} routes, ${cachedAreas} areas, ${hitSummary}`);
+              if (Number(totalMs) > 3000) {
+                console.warn(`[perf] SLOW load cycle: ${totalMs}ms (${cachedAreas} tile(s), ${hitSummary})`);
+              }
+              setBackendStatus(`Loaded ${lineCount} routes from ${cachedAreas} area(s) in ${totalMs}ms (${hitSummary}). Select a route to load stops.`);
+            }
           }
         });
     }
@@ -361,6 +389,9 @@ async function loadVisibleTransit(options = {}) {
     return;
   }
 
+  state.loadTimings = [];
+  logTiming('load-visible-transit-start');
+  const loadReason = String(options.reason || '').trim() || 'unknown';
   const zoom = state.map.getZoom();
   const rawBbox = mapBoundsToBbox();
   state.currentViewportBbox = rawBbox ? [...rawBbox] : null;
@@ -519,7 +550,19 @@ async function loadVisibleTransit(options = {}) {
     );
   }
 
-  loadViewportCountSummary(rawBbox, zoom).catch(() => {});
+  debouncedViewportSummary(rawBbox, zoom);
+  logTiming('load-visible-transit-queued');
+}
+
+let viewportSummaryTimeout = null;
+function debouncedViewportSummary(rawBbox, zoom) {
+  if (viewportSummaryTimeout) {
+    clearTimeout(viewportSummaryTimeout);
+  }
+  viewportSummaryTimeout = setTimeout(() => {
+    viewportSummaryTimeout = null;
+    loadViewportCountSummary(rawBbox, zoom).catch(() => {});
+  }, 400);
 }
 
 async function loadViewportCountSummary(rawBbox, zoom) {
@@ -613,7 +656,7 @@ function onMapMoveEnd() {
       });
       rebuildCombinedTransit();
       refreshUiFromState();
-      loadViewportCountSummary(rawBbox, zoom).catch(() => {});
+      debouncedViewportSummary(rawBbox, zoom);
       return;
     }
   }

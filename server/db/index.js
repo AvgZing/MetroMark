@@ -533,17 +533,22 @@ async function getCache(cacheKey) {
 
 async function getCacheAny(cacheKey) {
   assertLocalConfigured();
+  const t0 = Date.now();
   const { rows } = await localQuery(
     "select cache_key,payload,fetched_at,expires_at,cache_kind,city_slug,feed_fingerprint,verified_at from public.transit_cache where cache_key = $1 limit 1",
     [cacheKey]
   );
-
+  const elapsed = Date.now() - t0;
+  if (elapsed > 50) {
+    console.log(`[perf] getCacheAny(${cacheKey.slice(0, 60)}): ${elapsed}ms`);
+  }
   return normalizeCacheRow(rows?.[0] || null);
 }
 
 // Query cache by spatial bbox intersection - finds overlapping cached data
 async function getCacheByBbox(minLon, minLat, maxLon, maxLat, options = {}) {
   assertLocalConfigured();
+  const t0 = Date.now();
   const includeExpired = Boolean(options.includeExpired);
   const whereClause = includeExpired ? "" : "AND c.expires_at > now()";
   
@@ -562,12 +567,20 @@ async function getCacheByBbox(minLon, minLat, maxLon, maxLat, options = {}) {
     [minLon, minLat, maxLon, maxLat]
   );
 
+  const spatialMs = Date.now() - t0;
+  if (spatialMs > 100) {
+    console.log(`[perf] getCacheByBbox spatial query: ${spatialMs}ms, found ${rows?.length || 0} rows`);
+  }
+
   if (Array.isArray(rows) && rows.length > 0) {
+    const totalMs = Date.now() - t0;
+    if (totalMs > 150) {
+      console.log(`[perf] getCacheByBbox total: ${totalMs}ms (spatial query ${spatialMs}ms)`);
+    }
     return rows.map((r) => normalizeCacheRow(r));
   }
 
-  // Fallback for legacy rows that may not have bbox_geom populated.
-  // Use payload.area.bbox for overlap checks in application code.
+  const t1 = Date.now();
   const { rows: fallbackRows } = await localQuery(
     `SELECT c.cache_key, c.payload, c.fetched_at, c.expires_at, c.cache_kind,
             c.city_slug, c.feed_fingerprint, c.verified_at
@@ -579,7 +592,13 @@ async function getCacheByBbox(minLon, minLat, maxLon, maxLat, options = {}) {
     []
   );
 
+  const fallbackSelectMs = Date.now() - t1;
+  if (fallbackSelectMs > 200) {
+    console.log(`[perf] getCacheByBbox fallback select: ${fallbackSelectMs}ms, ${fallbackRows?.length || 0} rows`);
+  }
+
   const viewportBbox = [minLon, minLat, maxLon, maxLat];
+  const t2 = Date.now();
   const matchedFallbackRows = (fallbackRows || []).filter((row) => {
     const payloadBbox = normalizeBboxArray(row?.payload?.area?.bbox);
     if (!payloadBbox) {
@@ -587,6 +606,16 @@ async function getCacheByBbox(minLon, minLat, maxLon, maxLat, options = {}) {
     }
     return bboxIntersects(viewportBbox, payloadBbox);
   });
+
+  const filterMs = Date.now() - t2;
+  if (filterMs > 50) {
+    console.log(`[perf] getCacheByBbox fallback filter: ${filterMs}ms for ${fallbackRows?.length || 0} rows`);
+  }
+
+  const totalMs = Date.now() - t0;
+  if (totalMs > 150) {
+    console.log(`[perf] getCacheByBbox total: ${totalMs}ms (spatial=${spatialMs}ms, fallback=${fallbackSelectMs}ms, filter=${filterMs}ms)`);
+  }
 
   return matchedFallbackRows.slice(0, 200).map((row) => normalizeCacheRow(row));
 }

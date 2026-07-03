@@ -58,6 +58,7 @@ router.get("/transit/city/:slug", async (req, res) => {
 });
 
 router.get("/transit/bbox", async (req, res) => {
+  const requestStart = Date.now();
   const bboxRaw = String(req.query.bbox || "").trim();
   if (!bboxRaw) {
     return res.status(400).json({ error: "bbox query parameter is required." });
@@ -79,7 +80,13 @@ router.get("/transit/bbox", async (req, res) => {
       requestSource: "user"
     });
 
+    const serverTimingMs = Date.now() - requestStart;
+    if (serverTimingMs > 500) {
+      console.log(`[perf] /api/transit/bbox took ${serverTimingMs}ms (cacheOnly=${req.query.cacheOnly || 0}, zoom=${zoom})`);
+    }
+
     return res.json(withTransitlandMetrics({
+      serverTimingMs,
       cacheStatus: data.cacheStatus,
       cacheKey: data.cacheKey,
       cacheExpiresAt: data.cacheExpiresAt || null,
@@ -91,6 +98,7 @@ router.get("/transit/bbox", async (req, res) => {
     }));
   } catch (error) {
     return res.status(400).json({
+      serverTimingMs: Date.now() - requestStart,
       error: "Visible-area transit fetch failed.",
       detail: error.message
     });

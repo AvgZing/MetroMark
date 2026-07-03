@@ -2732,6 +2732,7 @@ async function queueCityReverifyIfStale(area, cached) {
 }
 
 async function getTransitForArea(area, options = {}) {
+  const t0 = Date.now();
   const forceRefresh = Boolean(options.forceRefresh);
   const cacheKey = `${TRANSIT_CACHE_PREFIX}${area.key}`;
   const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
@@ -2746,9 +2747,17 @@ async function getTransitForArea(area, options = {}) {
     area: { bbox: area.bbox }
   });
 
+  function logGetTransitTiming(detail) {
+    const elapsed = Date.now() - t0;
+    if (elapsed > 200) {
+      console.log(`[perf] getTransitForArea(${area.key.slice(0, 60)}): ${elapsed}ms - ${detail}`);
+    }
+  }
+
   if (summaryOnly && Boolean(options.cacheOnly)) {
     const cached = await db.getCacheAny(cacheKey);
     if (cached) {
+      logGetTransitTiming('summaryOnly+cacheOnly:cached-hit');
       return {
         payload: summaryOnlyPayload(cached.payload?.routesGeoJson, cached.payload?.lineSummaries || []),
         cacheStatus: isCacheExpiredRow(cached) ? "stale-hit" : "hit",
@@ -2765,33 +2774,31 @@ async function getTransitForArea(area, options = {}) {
       includeExpired: true
     });
 
-    if (overlappingCaches && overlappingCaches.length > 0) {
-      const mergedLines = new Map();
+      if (overlappingCaches && overlappingCaches.length > 0) {
+        const mergedLines = new Map();
 
-      for (const cacheEntry of overlappingCaches) {
-        const payload = cacheEntry.payload || {};
+        for (const cacheEntry of overlappingCaches) {
+          const payload = cacheEntry.payload || {};
 
-        for (const line of payload?.lineSummaries || []) {
-          const lineKey = line?.lineKey;
-          if (lineKey && !mergedLines.has(lineKey)) {
-            mergedLines.set(lineKey, line);
+          for (const line of payload?.lineSummaries || []) {
+            const lineKey = line?.lineKey;
+            if (lineKey && !mergedLines.has(lineKey)) {
+              mergedLines.set(lineKey, line);
+            }
           }
         }
-      }
 
-      return {
-        payload: summaryOnlyPayload(
-          {
-            type: "FeatureCollection",
-            features: Array.from(mergedRoutes.values())
-          },
-          Array.from(mergedLines.values())
-        ),
-        cacheStatus: "partial-hit",
-        cacheKey: area.key,
-        stopLocationTypes
-      };
-    }
+        logGetTransitTiming('summaryOnly+cacheOnly:spatial-partial');
+        return {
+          payload: summaryOnlyPayload(
+            { type: "FeatureCollection", features: [] },
+            Array.from(mergedLines.values())
+          ),
+          cacheStatus: "partial-hit",
+          cacheKey: area.key,
+          stopLocationTypes
+        };
+      }
 
     return {
       payload: summaryOnlyPayload([]),
@@ -2821,6 +2828,7 @@ async function getTransitForArea(area, options = {}) {
         };
       }
 
+      logGetTransitTiming('cache-hit');
       return {
         payload: await applyRouteOrderingMetadataToPayload(cached.payload || {}),
         cacheStatus,
@@ -2882,6 +2890,7 @@ async function getTransitForArea(area, options = {}) {
         });
 
         if (summaryOnly) {
+          logGetTransitTiming('cacheOnly:partial-hit-summary');
           return {
             payload: summaryOnlyPayload(Array.from(mergedLines.values())),
             cacheStatus: "partial-hit",
@@ -2890,6 +2899,7 @@ async function getTransitForArea(area, options = {}) {
           };
         }
 
+        logGetTransitTiming('cacheOnly:partial-hit');
         return {
           payload: mergedPayload,
           cacheStatus: "partial-hit",
@@ -2898,6 +2908,7 @@ async function getTransitForArea(area, options = {}) {
         };
       }
 
+      logGetTransitTiming('cacheOnly:miss');
       return {
         payload: summaryOnly
           ? summaryOnlyPayload(
@@ -2917,6 +2928,7 @@ async function getTransitForArea(area, options = {}) {
     }
   }
 
+  logGetTransitTiming('fetching-from-transitland');
   const fetchResult = await fetchRoutesAndStopsForBbox(area.bbox, {
     ...options,
     stopLocationTypes,
@@ -2952,6 +2964,8 @@ async function getTransitForArea(area, options = {}) {
     feedFingerprint,
     stopLocationTypes
   };
+
+  logGetTransitTiming('transitland-fetched');
 
   if (options.debug) {
     result.debug = {
