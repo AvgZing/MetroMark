@@ -547,7 +547,39 @@ async function getCacheAny(cacheKey) {
 
 // Query cache by spatial bbox intersection - finds overlapping cached data
 async function getCacheByBbox(minLon, minLat, maxLon, maxLat, options = {}) {
-  return [];
+  assertLocalConfigured();
+  const includeExpired = Boolean(options.includeExpired);
+  const whereClause = includeExpired ? "" : "AND c.expires_at > now()";
+
+  // Phase 1: find matching cache keys (fast — no payload column)
+  const { rows: keyRows } = await localQuery(
+    `SELECT c.cache_key
+     FROM public.transit_cache c
+     WHERE c.bbox_geom IS NOT NULL 
+       AND ST_Intersects(
+             c.bbox_geom,
+             ST_MakeEnvelope($1, $2, $3, $4, 4326)
+           )
+       ${whereClause}
+     LIMIT 30`,
+    [minLon, minLat, maxLon, maxLat]
+  );
+
+  if (!Array.isArray(keyRows) || keyRows.length === 0) {
+    return [];
+  }
+
+  // Phase 2: fetch full payloads for matching keys using PK lookups
+  const cacheKeys = keyRows.map((r) => r.cache_key);
+  const payloads = [];
+  for (const key of cacheKeys) {
+    const cached = await getCacheAny(key);
+    if (cached) {
+      payloads.push(cached);
+    }
+  }
+
+  return payloads;
 }
 
 async function setCache(cacheKey, payload, ttlSeconds, options = {}) {

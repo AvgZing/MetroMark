@@ -2840,6 +2840,63 @@ async function getTransitForArea(area, options = {}) {
     }
 
     if (options.cacheOnly) {
+      const [minLon, minLat, maxLon, maxLat] = area.bbox;
+      const overlappingCaches = await db.getCacheByBbox(minLon, minLat, maxLon, maxLat, {
+        includeExpired: true
+      });
+
+      if (overlappingCaches && overlappingCaches.length > 0) {
+        const mergedRoutes = new Map();
+        const mergedStops = new Map();
+        const mergedLines = new Map();
+
+        for (const cacheEntry of overlappingCaches) {
+          const payload = cacheEntry.payload || {};
+
+          for (const feature of payload?.routesGeoJson?.features || []) {
+            const lineKey = feature?.properties?.line_key;
+            if (lineKey && !mergedRoutes.has(lineKey)) {
+              mergedRoutes.set(lineKey, feature);
+            }
+          }
+
+          for (const line of payload?.lineSummaries || []) {
+            const lineKey = line?.lineKey;
+            if (lineKey && !mergedLines.has(lineKey)) {
+              mergedLines.set(lineKey, line);
+            }
+          }
+
+          for (const feature of payload?.stopsGeoJson?.features || []) {
+            const stopId = feature?.properties?.stop_id || feature?.id;
+            if (stopId && !mergedStops.has(stopId)) {
+              mergedStops.set(stopId, feature);
+            }
+          }
+        }
+
+        if (summaryOnly) {
+          return {
+            payload: summaryOnlyPayload({ type: "FeatureCollection", features: [] }, Array.from(mergedLines.values())),
+            cacheStatus: "partial-hit",
+            cacheKey: area.key,
+            stopLocationTypes
+          };
+        }
+
+        return {
+          payload: {
+            routesGeoJson: { type: "FeatureCollection", features: Array.from(mergedRoutes.values()) },
+            stopsGeoJson: { type: "FeatureCollection", features: Array.from(mergedStops.values()) },
+            lineSummaries: Array.from(mergedLines.values()),
+            area: { bbox: area.bbox }
+          },
+          cacheStatus: "partial-hit",
+          cacheKey: area.key,
+          stopLocationTypes
+        };
+      }
+
       return {
         payload: summaryOnly
           ? summaryOnlyPayload({ type: "FeatureCollection", features: [] }, [])

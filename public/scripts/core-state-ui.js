@@ -2251,8 +2251,8 @@ function modeCacheKeyFromRouteTypes(routeTypes) {
 function viewportRequestsForMode(rawBbox, zoom, routeTypes) {
   const modeKey = modeCacheKeyFromRouteTypes(routeTypes);
   const primary = buildViewportTileRequests(rawBbox, zoom);
-  const coarse = zoom >= 7 ? buildViewportTileRequests(rawBbox, zoom - 2) : [];
-  const fine = zoom >= 5 ? buildViewportTileRequests(rawBbox, zoom + 2) : [];
+  const coarse = zoom >= 8 ? buildViewportTileRequests(rawBbox, zoom - 3) : [];
+  const fine = zoom >= 2 ? buildViewportTileRequests(rawBbox, zoom + 3) : [];
   const seen = new Set();
   const merged = [];
   const push = (reqs) => {
@@ -2267,10 +2267,32 @@ function viewportRequestsForMode(rawBbox, zoom, routeTypes) {
       });
     }
   };
-  // Prioritize primary tiles, then add extras from coarse/fine
   push(primary);
   push(coarse);
   push(fine);
+  // Always include detail-level tiles around the center to capture data cached at closer zooms
+  if (zoom >= 3) {
+    const center = bboxCenter(rawBbox);
+    const detailZoom = 9;
+    const ct = lngLatToTile(center[0], center[1], detailZoom);
+    for (let dx = -2; dx <= 2; dx++) {
+      for (let dy = -2; dy <= 2; dy++) {
+        const x = ct.x + dx;
+        const y = ct.y + dy;
+        const tileBbox = tileToBbox(x, y, detailZoom);
+        const key = `tile:${detailZoom}:${x}:${y}:types:${modeKey}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push({
+          areaKey: key,
+          bbox: tileBbox,
+          zoom,
+          distanceScore: Math.abs(dx) + Math.abs(dy),
+          routeTypes: Array.isArray(routeTypes) ? routeTypes : []
+        });
+      }
+    }
+  }
   return merged;
 }
 
