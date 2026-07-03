@@ -400,7 +400,15 @@ async function loadVisibleTransit(options = {}) {
   }
 
   const modeRouteTypes = selectedRouteTypesForFetch();
-  const requests = viewportRequestsForMode(rawBbox, zoom, modeRouteTypes);
+  let requests = viewportRequestsForMode(rawBbox, zoom, modeRouteTypes);
+
+  // When force-refreshing, limit to a handful of tiles near center to avoid
+  // overwhelming Transitland with concurrent API calls, each taking 15+ seconds.
+  if (options.forceRefresh && requests.length > 8) {
+    requests.sort((a, b) => (a.distanceScore || 0) - (b.distanceScore || 0));
+    requests = requests.slice(0, 8);
+  }
+
   state.viewportSummaryLineSummaries = [];
   state.viewportSummaryRequestToken += 1;
 

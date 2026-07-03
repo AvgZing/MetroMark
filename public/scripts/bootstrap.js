@@ -246,6 +246,18 @@ function bindEvents() {
           state.inFlightLineStopKeys.delete(stopCacheKey);
         }
         await loadVisibleTransit({ forceRefresh: true, reason: "manual-refresh" });
+        // Wait for the full Transitland phase to complete (fires 100ms later)
+        await new Promise((resolve) => {
+          const poll = () => {
+            if (state.fetchQueue.length === 0 && state.inFlightAreaKeys.size === 0) {
+              // Small extra wait for the final responses to be processed
+              setTimeout(resolve, 200);
+            } else {
+              setTimeout(poll, 300);
+            }
+          };
+          setTimeout(poll, 300);
+        });
         // Re-fetch focused route stops from Transitland to get full geometry
         if (state.focusedLineKey && typeof ensureLineStopsLoaded === "function") {
           await ensureLineStopsLoaded(state.focusedLineKey, { forceRefresh: true, silent: true });
