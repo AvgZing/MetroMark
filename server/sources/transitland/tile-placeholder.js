@@ -72,7 +72,9 @@ async function fetchTileData(z, x, y, options = {}) {
   }
 
   const controller = new AbortController();
-  const timeoutMs = Math.max(1500, Number(config.TRANSITLAND_REQUEST_TIMEOUT_MS || 15000));
+  const timeoutMs = Number.isFinite(Number(options.timeoutMs))
+    ? Number(options.timeoutMs)
+    : Math.max(1500, Number(config.TRANSITLAND_REQUEST_TIMEOUT_MS || 15000));
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
   const url = `${TRANSITLAND_VECTOR_BASE_URL}/routes/tiles/${z}/${x}/${y}.pbf?api_key=${config.TRANSITLAND_API_KEY}`;
@@ -208,6 +210,41 @@ async function getTilePlaceholderGeojson(bbox, zoom, routeTypes) {
   return result;
 }
 
+async function getMvtLineKeyCount(bbox, zoom) {
+  if (!Array.isArray(bbox) || bbox.length !== 4) return null;
+
+  // Use a single tile at the viewport center
+  const centerLon = (bbox[0] + bbox[2]) / 2;
+  const centerLat = (bbox[1] + bbox[3]) / 2;
+  const tileZoom = Math.min(12, Math.max(10, Math.round(Number(zoom) || 10)));
+  const size = 2 ** tileZoom;
+  const tx = Math.floor((centerLon + 180) / 360 * size);
+  const ty = Math.floor(
+    (1 - Math.log(Math.tan(centerLat * Math.PI / 180) + 1 / Math.cos(centerLat * Math.PI / 180)) / Math.PI) / 2 * size
+  );
+
+  // Check cached headway tile data first — this is free and instant
+  const cacheKey = `transit-v4:routes-tile:${tileZoom}:${tx}:${Math.max(0, Math.min(size - 1, ty))}`;
+  try {
+    const cached = await db.getCacheAny(cacheKey);
+    if (cached?.payload?.headwayByRouteKey) {
+      return Object.keys(cached.payload.headwayByRouteKey).length;
+    }
+  } catch { /* Cache miss — try fresh fetch below */ }
+
+  // Fallback: fetch the raw MVT tile (expensive, uses vector tile quota)
+  const data = await fetchTileData(tileZoom, Math.max(0, Math.min(size - 1, tx)), Math.max(0, Math.min(size - 1, ty)), { timeoutMs: 4000 });
+  if (!data) return null;
+
+  var features = decodeTileGeometry(data, tx, ty, tileZoom);
+  var seen = new Set();
+  for (var i = 0; i < features.length; i++) {
+    var lk = features[i]?.properties?.line_key;
+    if (lk) seen.add(lk);
+  }
+  return seen.size;
+}
+
 function emptyResponse() {
   return {
     routesGeoJson: { type: "FeatureCollection", features: [] },
@@ -216,4 +253,4 @@ function emptyResponse() {
   };
 }
 
-module.exports = { getTilePlaceholderGeojson };
+module.exports = { getTilePlaceholderGeojson, getMvtLineKeyCount };

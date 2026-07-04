@@ -408,8 +408,8 @@ async function loadVisibleTransit(options = {}) {
   if (Boolean(options.forceRefresh)) {
     params.set("refresh", "1");
     params.delete("cacheOnly");
-  }
-  if (Array.isArray(modeRouteTypes) && modeRouteTypes.length) {
+    // Force refresh always fetches all route types — mode filter is client-side only
+  } else if (Array.isArray(modeRouteTypes) && modeRouteTypes.length) {
     params.set("routeTypes", modeRouteTypes.join(","));
   }
 
@@ -465,6 +465,20 @@ async function loadVisibleTransit(options = {}) {
       hideMapLoadingBadge();
       setBackendStatus(responseRoutes + " routes loaded for viewport at zoom " +
         Number(zoom).toFixed(0) + " (" + responseCacheStatus + ")");
+
+      // At zoom >= 10, always backfill from Transitland so Postgres is complete.
+      // The spatial query may only have a subset of routes (Amtrak from a
+      // different bbox, mode-filtered previous fetch). One fetch per viewport
+      // snap cell per session fills the gap permanently.
+      if (Number(zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM && !appState._forceRefreshInFlight) {
+        appState._forceRefreshInFlight = true;
+        setBackendStatus(responseRoutes + " routes loaded — backfilling from Transitland...");
+        loadVisibleTransit({ forceRefresh: true, reason: "auto-backfill" }).then(function () {
+          appState._forceRefreshInFlight = false;
+        }).catch(function () {
+          appState._forceRefreshInFlight = false;
+        });
+      }
     } else {
       // No routes in viewport — keep _viewportPayload for route-click fallback
       if (!hasExistingRoutes) {
