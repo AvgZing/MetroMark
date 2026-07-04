@@ -127,6 +127,32 @@ async function getRouteStopsTransit(lineKey, options = {}) {
     }
   }
 
+  // Store per-route metadata so page reloads and subsequent viewport loads
+  // have headway, stop count, color, and other properties immediately.
+  const routeMetadata = Array.isArray(payload?.lineSummaries) ? payload.lineSummaries[0] : null;
+  if (routeMetadata && normalizedLineKey) {
+    try {
+      await db.setRouteMetadata(normalizedLineKey, {
+        routeOnestopId: line.routeOnestopId || routeMetadata.routeOnestopId,
+        lineName: line.lineName || routeMetadata.lineName,
+        lineShortName: line.lineShortName || routeMetadata.lineShortName,
+        lineLongName: line.lineLongName || routeMetadata.lineLongName,
+        operatorName: line.operatorName || routeMetadata.operatorName,
+        mode: line.mode || routeMetadata.mode,
+        routeType: line.routeType ?? routeMetadata.routeType,
+        routeFeedId: line.routeFeedId || routeMetadata.routeFeedId,
+        serviceTier: line.serviceTier || routeMetadata.serviceTier,
+        frequencyBucket: routeMetadata.frequencyBucket || "unknown",
+        headwayBestMinutes: routeMetadata.headwayBestMinutes ?? null,
+        headwaySource: routeMetadata.headwaySource || "",
+        headwayChecked: routeMetadata.headwayChecked ?? 0,
+        color: line.color || routeMetadata.color || ""
+      });
+    } catch {
+      // Best-effort
+    }
+  }
+
   await db.setCache(cacheKey, payload, config.TRANSIT_CACHE_TTL_HOURS * 3600, {
     cacheKind: "route-stops"
   });
