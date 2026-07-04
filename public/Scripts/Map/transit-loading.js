@@ -469,9 +469,12 @@ async function loadVisibleTransit(options = {}) {
       // No routes in viewport — keep _viewportPayload for route-click fallback
       if (!hasExistingRoutes) {
         appState._viewportPayload = null;
+        rebuildCombinedTransit();
+        refreshUiFromState();
       }
-      rebuildCombinedTransit();
-      refreshUiFromState();
+      // If routes were already visible, don't rebuild — the existing
+      // appState.transit is still valid. Skipping avoids the flash from
+      // syncMapSourceData resetting feature states on a new object ref.
       hideMapLoadingBadge();
       if (!hasExistingRoutes && Number(zoom || 0) < MIN_VIEWPORT_FETCH_ZOOM) {
         setMapNotice("Zoom in to see routes", "Pan or zoom the map to load transit.", "neutral", "center");

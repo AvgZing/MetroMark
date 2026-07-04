@@ -25,6 +25,15 @@ function setTheme(theme, options = {}) {
         console.warn("Could not update map theme:", e);
       }
     }
+
+    // Update focus-dim fill color to match the base map background
+    if (appState.map.getLayer("focus-dim-layer")) {
+      appState.map.setPaintProperty(
+        "focus-dim-layer",
+        "fill-color",
+        appState.theme === "dark" ? "#0a121c" : "#1f262d"
+      );
+    }
   }
 
   if (options.persist === false) {

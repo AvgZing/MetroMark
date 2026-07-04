@@ -63,6 +63,30 @@ async function getRouteStopsTransit(lineKey, options = {}) {
     if (cached) {
       const cacheStatus = isCacheExpiredRow(cached) ? "stale-hit" : "hit";
       const cachedLineSummary = Array.isArray(cached.payload?.lineSummaries) ? cached.payload.lineSummaries[0] || null : null;
+
+      if (cachedLineSummary && normalizedLineKey) {
+        try {
+          await db.setRouteMetadata(normalizedLineKey, {
+            routeOnestopId: cachedLineSummary.routeOnestopId || "",
+            lineName: cachedLineSummary.lineName || "",
+            lineShortName: cachedLineSummary.lineShortName || "",
+            lineLongName: cachedLineSummary.lineLongName || "",
+            operatorName: cachedLineSummary.operatorName || "",
+            mode: cachedLineSummary.mode || "",
+            routeType: Number.isFinite(Number(cachedLineSummary.routeType)) ? Number(cachedLineSummary.routeType) : null,
+            routeFeedId: cachedLineSummary.routeFeedId || "",
+            serviceTier: cachedLineSummary.serviceTier || "",
+            frequencyBucket: cachedLineSummary.frequencyBucket || "unknown",
+            headwayBestMinutes: Number.isFinite(Number(cachedLineSummary.headwayBestMinutes)) ? Number(cachedLineSummary.headwayBestMinutes) : null,
+            headwaySource: cachedLineSummary.headwaySource || "",
+            headwayChecked: Number(cachedLineSummary.headwayChecked || 0) === 1 ? 1 : 0,
+            color: cachedLineSummary.color || "#d44d1f"
+          });
+        } catch (error) {
+          console.warn("[perf] getRouteStopsTransit: metadata promotion failed for " + normalizedLineKey + ": " + (error?.message || error));
+        }
+      }
+
       if (summaryOnly) {
         return {
           payload: {
@@ -304,6 +328,20 @@ async function getRouteHeadway(lineKey, options = {}) {
       });
     } catch {
       // Keep the response clean even if cache rewrite fails.
+    }
+  }
+
+  // Store headway to route_metadata so it persists across page reloads
+  if (summary && Number.isFinite(Number(summary.bestMinutes)) && Number(summary.bestMinutes) > 0) {
+    try {
+      await db.setRouteMetadata(normalizedLineKey, {
+        frequencyBucket: String(summary.frequencyBucket || "unknown"),
+        headwayBestMinutes: Number(summary.bestMinutes),
+        headwaySource: String(summary.source || "transitland-vector-tiles"),
+        headwayChecked: 1
+      });
+    } catch {
+      // Best-effort
     }
   }
 
@@ -559,8 +597,13 @@ async function getTransitForArea(area, options = {}) {
       let metadataByLineKey = new Map();
       try {
         metadataByLineKey = await db.getRouteMetadatasByLineKeys(lineKeys);
-      } catch {
+      } catch (error) {
+        console.warn("[perf] getMetadatasByLineKeys failed: " + (error?.message || error) + " (lineKeys: " + lineKeys.length + ")");
         // Non-critical — routes display fine without enriched metadata
+      }
+
+      if (metadataByLineKey.size > 0) {
+        console.log("[perf] getMetadatasByLineKeys: found " + metadataByLineKey.size + " metadata entries for " + lineKeys.length + " routes");
       }
 
       for (const entry of routeGeometries) {
@@ -585,7 +628,7 @@ async function getTransitForArea(area, options = {}) {
             ? Number(meta.headwayBestMinutes) : null,
           headway_source: String(meta.headwaySource || ""),
           headway_checked: Number(meta.headwayChecked || 0) === 1 ? 1 : 0,
-          color: String(meta.color || "")
+          color: String(meta.color || "#d44d1f")
         } : { line_key: lk };
 
         routeFeatures.push({
@@ -598,59 +641,61 @@ async function getTransitForArea(area, options = {}) {
         lineSummaries.push(meta ? { ...meta, lineKey: lk } : { lineKey: lk, lineName: lk });
       }
 
-      const routesGeoJson = { type: "FeatureCollection", features: routeFeatures };
-      const stopsGeoJson = { type: "FeatureCollection", features: [] };
+    const routesGeoJson = { type: "FeatureCollection", features: routeFeatures };
+    const stopsGeoJson = { type: "FeatureCollection", features: [] };
 
-      const spatialPayload = {
-        routesGeoJson,
-        stopsGeoJson,
-        lineSummaries,
-        area: { bbox: area.bbox },
-        matchingStats: {
-          routeCount: routeGeometries.length
-        }
-      };
-
-      if (summaryOnly) {
-        logGetTransitTiming("route-geometry:" + routeGeometries.length + "routes:summaryOnly");
-        return {
-          payload: summaryOnlyPayload(routesGeoJson, lineSummaries),
-          cacheStatus: "hit",
-          cacheKey: area.key,
-          stopLocationTypes
-        };
+    const spatialPayload = {
+      routesGeoJson,
+      stopsGeoJson,
+      lineSummaries,
+      area: { bbox: area.bbox },
+      matchingStats: {
+        routeCount: routeGeometries.length,
+        metadataCacheCount: metadataByLineKey.size
       }
+    };
 
-      let enrichedPayload = spatialPayload;
-      try {
-        enrichedPayload = await applyRouteOrderingMetadataToPayload(spatialPayload);
-      } catch {
-        // Best-effort
-      }
-
-      logGetTransitTiming("route-geometry:" + routeGeometries.length + "routes");
+    if (summaryOnly) {
+      logGetTransitTiming("route-geometry:summaryOnly");
       return {
-        payload: enrichedPayload,
+        payload: summaryOnlyPayload(routesGeoJson, lineSummaries),
         cacheStatus: "hit",
         cacheKey: area.key,
         stopLocationTypes
       };
     }
 
-    // route_geometry_lod is empty for this viewport.
-    // If cacheOnly, return miss — Postgres has no per-route data here yet.
-    // If NOT cacheOnly, jump directly to Transitland fetch.
-    if (Boolean(options.cacheOnly) && !forceRefresh) {
-      logGetTransitTiming("route-geometry:empty");
-      return {
-        payload: summaryOnly
-          ? summaryOnlyPayload({ type: "FeatureCollection", features: [] }, [])
-          : { routesGeoJson: { type: "FeatureCollection", features: [] }, stopsGeoJson: { type: "FeatureCollection", features: [] }, lineSummaries: [], area: { bbox: area.bbox } },
-        cacheStatus: "miss",
-        cacheKey: area.key,
-        stopLocationTypes
-      };
+    let enrichedPayload = spatialPayload;
+    try {
+      enrichedPayload = await applyRouteOrderingMetadataToPayload(spatialPayload);
+    } catch {
+      // Best-effort
     }
+
+    logGetTransitTiming(`route-geometry:${routeGeometries.length}routes`);
+    return {
+      payload: enrichedPayload,
+      cacheStatus: "hit",
+      cacheKey: area.key,
+      stopLocationTypes
+    };
+  }
+
+  // route_geometry_lod is empty for this viewport.
+  // If cacheOnly, return miss. If NOT cacheOnly, go to Transitland.
+  if (Boolean(options.cacheOnly) && !forceRefresh) {
+    logGetTransitTiming("route-geometry:empty");
+    return {
+      payload: summaryOnly
+        ? summaryOnlyPayload({ type: "FeatureCollection", features: [] }, [])
+        : { routesGeoJson: { type: "FeatureCollection", features: [] }, stopsGeoJson: { type: "FeatureCollection", features: [] }, lineSummaries: [], area: { bbox: area.bbox } },
+      cacheStatus: "miss",
+      cacheKey: area.key,
+      stopLocationTypes
+    };
+  }
+
+  // If neither spatial query nor cacheOnly returned, fall through to Transitland
   }
 
   logGetTransitTiming('fetching-from-transitland');
@@ -670,8 +715,6 @@ async function getTransitForArea(area, options = {}) {
 
   const enrichedPayload = await applyRouteOrderingMetadataToPayload(payload);
 
-  // Store each route's geometry to route_geometry_lod so subsequent spatial
-  // queries (getRouteGeometriesByBbox) can find them without tile fragmentation.
   const storeZoom = Math.max(15, Math.round(Number(options.zoom) || 15));
   for (const feature of enrichedPayload?.routesGeoJson?.features || []) {
     const lineKey = feature?.properties?.line_key;
@@ -681,13 +724,10 @@ async function getTransitForArea(area, options = {}) {
         await db.upsertRouteGeometryLod(lineKey, storeZoom, geometry, {
           sourceHash: geometrySourceHash(geometry)
         });
-      } catch {
-        // Best-effort
-      }
+      } catch { /* Best-effort */ }
     }
   }
 
-  // Store per-route metadata alongside geometry
   for (const line of enrichedPayload?.lineSummaries || []) {
     const lk = line?.lineKey;
     if (lk) {
@@ -708,27 +748,22 @@ async function getTransitForArea(area, options = {}) {
           headwayChecked: line.headwayChecked,
           color: line.color
         });
-      } catch {
-        // Best-effort
-      }
+      } catch { /* Best-effort */ }
     }
   }
 
-  // Write to transit_cache for backward compatibility with harvesters
   const ttlSeconds = Math.max(60, Number(config.TRANSIT_CACHE_TTL_HOURS || 2160) * 3600);
   const fetchedAt = Math.floor(Date.now() / 1000);
-  const feedFingerprint = buildFeedFingerprint(enrichedPayload);
+  const feedFingerprint = buildFeedFingerprint(payload);
 
-  await db.setCache(cacheKey, enrichedPayload, ttlSeconds, {
+  await db.setCache(cacheKey, payload, ttlSeconds, {
     cacheKind: area.kind || "bbox",
     citySlug: area.slug || null,
     feedFingerprint,
     verifiedAt: fetchedAt
   });
 
-  // Build response from Postgres tables — never serve raw Transitland data.
-  // Re-query route_geometry_lod + route_metadata with the same spatial path
-  // the frontend would use on a subsequent request.
+  // Serve from Postgres — never raw Transitland response
   const responseGeometries = await db.getRouteGeometriesByBbox(area.bbox, spatialZoom);
   const responseFeatures = [];
   const responseLineSummaries = [];
@@ -738,9 +773,7 @@ async function getTransitForArea(area, options = {}) {
   if (responseLineKeys.length) {
     try {
       responseMetadata = await db.getRouteMetadatasByLineKeys(responseLineKeys);
-    } catch {
-      // Best-effort
-    }
+    } catch { /* Best-effort */ }
   }
 
   for (const entry of responseGeometries) {
@@ -765,11 +798,10 @@ async function getTransitForArea(area, options = {}) {
         route_feed_id: String(meta.routeFeedId || ""),
         service_tier: String(meta.serviceTier || ""),
         frequency_bucket: String(meta.frequencyBucket || "unknown"),
-        headway_best_minutes: Number.isFinite(Number(meta.headwayBestMinutes))
-          ? Number(meta.headwayBestMinutes) : null,
+        headway_best_minutes: Number.isFinite(Number(meta.headwayBestMinutes)) ? Number(meta.headwayBestMinutes) : null,
         headway_source: String(meta.headwaySource || ""),
         headway_checked: Number(meta.headwayChecked || 0) === 1 ? 1 : 0,
-        color: String(meta.color || "")
+        color: String(meta.color || "#d44d1f")
       } : { line_key: lk }
     });
 
@@ -787,9 +819,7 @@ async function getTransitForArea(area, options = {}) {
   let enrichedFromPostgres = fromPostgresPayload;
   try {
     enrichedFromPostgres = await applyRouteOrderingMetadataToPayload(fromPostgresPayload);
-  } catch {
-    // Best-effort
-  }
+  } catch { /* Best-effort */ }
 
   const result = {
     payload: enrichedFromPostgres,

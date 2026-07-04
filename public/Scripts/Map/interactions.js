@@ -220,11 +220,7 @@ function initializeMap() {
           ],
           0,
           0
-        ],
-        "line-opacity-transition": {
-          duration: 220,
-          delay: 0
-        }
+        ]
       }
     });
 
@@ -258,11 +254,7 @@ function initializeMap() {
           ],
           0.9,
           0
-        ],
-        "line-opacity-transition": {
-          duration: 220,
-          delay: 0
-        }
+        ]
       }
     });
 
@@ -306,11 +298,7 @@ function initializeMap() {
           ],
           0.38,
           0
-        ],
-        "line-opacity-transition": {
-          duration: 220,
-          delay: 0
-        }
+        ]
       }
     });
 
@@ -344,11 +332,7 @@ function initializeMap() {
           ],
           0.96,
           0
-        ],
-        "line-opacity-transition": {
-          duration: 220,
-          delay: 0
-        }
+        ]
       }
     });
 
