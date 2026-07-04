@@ -141,22 +141,3 @@ function persistVisibilityOverridesToStorage(storageKey, visibilityMap) {
 
   localStorage.setItem(storageKey, JSON.stringify(payload));
 }
-
-/** Normalize a raw ordering mode string to a recognized enum value (auto, geometry-revised, etc.). */
-function normalizeLineViewOrderingMode(orderingMode) {
-  const mode = String(orderingMode || "geometry-revised").trim();
-
-  if (mode === "auto" || mode === "geometry-revised" || mode === "legacy-geometry" || mode === "fractions") {
-    return mode;
-  }
-
-  if (mode === "geometry-only") {
-    return "legacy-geometry";
-  }
-
-  if (mode === "fractions-only") {
-    return "fractions";
-  }
-
-  return "geometry-revised";
-}
