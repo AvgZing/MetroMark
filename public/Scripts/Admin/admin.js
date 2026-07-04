@@ -42,9 +42,9 @@ const state = {
 };
 
 function setAdminSession(token) {
-  state.adminKey = String(token || "").trim();
-  if (state.adminKey) {
-    sessionStorage.setItem(SESSION_KEY, state.adminKey);
+  appState.adminKey = String(token || "").trim();
+  if (appState.adminKey) {
+    sessionStorage.setItem(SESSION_KEY, appState.adminKey);
   } else {
     sessionStorage.removeItem(SESSION_KEY);
   }
@@ -55,11 +55,11 @@ function clearAdminSession() {
 }
 
 function setAdminLocked(locked) {
-  if (els.adminLoginShell) {
-    els.adminLoginShell.hidden = !locked;
+  if (dom.adminLoginShell) {
+    dom.adminLoginShell.hidden = !locked;
   }
-  if (els.adminApp) {
-    els.adminApp.hidden = locked;
+  if (dom.adminApp) {
+    dom.adminApp.hidden = locked;
   }
   document.body.classList.toggle("admin-locked", Boolean(locked));
 }
@@ -69,18 +69,18 @@ function appendLog(message, payload = null) {
   const next = payload
     ? `${prefix}\n${JSON.stringify(payload, null, 2)}`
     : prefix;
-  const current = String(els.actionLog.textContent || "").trim();
+  const current = String(dom.actionLog.textContent || "").trim();
   const output = current ? `${next}\n\n${current}` : next;
-  els.actionLog.textContent = output.slice(0, 40000);
+  dom.actionLog.textContent = output.slice(0, 40000);
 }
 
 function setStatus(text, isError = false) {
-  els.statusMessage.textContent = text;
-  els.statusMessage.style.color = isError ? "#a22828" : "#5a5a5a";
+  dom.statusMessage.textContent = text;
+  dom.statusMessage.style.color = isError ? "#a22828" : "#5a5a5a";
 }
 
 async function apiRequest(path, options = {}) {
-  const requestKey = String(options.adminKey || state.adminKey || "").trim();
+  const requestKey = String(options.adminKey || appState.adminKey || "").trim();
   const response = await fetch(path, {
     method: options.method || "GET",
     headers: {
@@ -116,7 +116,7 @@ function renderKv(container, rows) {
 }
 
 function renderQueue(rows) {
-  els.queueBody.innerHTML = "";
+  dom.queueBody.innerHTML = "";
 
   if (!rows.length) {
     const tr = document.createElement("tr");
@@ -124,7 +124,7 @@ function renderQueue(rows) {
     td.colSpan = 6;
     td.textContent = "No pending city harvests.";
     tr.appendChild(td);
-    els.queueBody.appendChild(tr);
+    dom.queueBody.appendChild(tr);
     return;
   }
 
@@ -145,19 +145,19 @@ function renderQueue(rows) {
       tr.appendChild(td);
     });
 
-    els.queueBody.appendChild(tr);
+    dom.queueBody.appendChild(tr);
   });
 }
 
 function renderCityOptions(cities) {
   const cityRows = Array.isArray(cities) ? cities : [];
-  els.queueCitySelect.innerHTML = "";
+  dom.queueCitySelect.innerHTML = "";
 
   cityRows.forEach((city) => {
     const option = document.createElement("option");
     option.value = city.slug;
     option.textContent = `${city.name} (${city.slug})`;
-    els.queueCitySelect.appendChild(option);
+    dom.queueCitySelect.appendChild(option);
   });
 }
 
@@ -170,7 +170,7 @@ async function refreshStats() {
         .join(", ")
     : "";
 
-  renderKv(els.usageStats, [
+  renderKv(dom.usageStats, [
     { label: "UTC Day", value: payload.usage.dayKey },
     {
       label: "REST",
@@ -190,7 +190,7 @@ async function refreshStats() {
     },
   ]);
 
-  renderKv(els.harvestStats, [
+  renderKv(dom.harvestStats, [
     {
       label: "Active Cached Cities",
       value: String(payload.harvest.activeCachedCities),
@@ -204,7 +204,7 @@ async function refreshStats() {
     { label: "Total", value: String(payload.harvest.totalCities) },
   ]);
 
-  renderKv(els.storageStats, [
+  renderKv(dom.storageStats, [
     { label: "Cache Rows", value: String(payload.cache.total) },
     {
       label: "City-Tagged Cache Rows",
@@ -216,7 +216,7 @@ async function refreshStats() {
     { label: "Storage Path", value: payload.database.path },
   ]);
 
-  renderKv(els.accountStats, [
+  renderKv(dom.accountStats, [
     { label: "Profiles Total", value: String(payload.accounts.profilesTotal) },
     {
       label: "Profiles Active",
@@ -234,7 +234,7 @@ async function refreshStats() {
     },
   ]);
 
-  renderKv(els.performanceStats, [
+  renderKv(dom.performanceStats, [
     { label: "Uptime", value: `${payload.performance.processUptimeSec}s` },
     { label: "Node", value: String(payload.performance.nodeVersion || "-") },
     {
@@ -251,7 +251,7 @@ async function refreshStats() {
     },
   ]);
 
-  renderKv(els.transitlandStats, [
+  renderKv(dom.transitlandStats, [
     {
       label: "REST (req/fail)",
       value: `${Number(payload.transitland.restApiRequests || 0)}/${Number(payload.transitland.restApiFailures || 0)}`,
@@ -312,7 +312,7 @@ async function refreshCities() {
 }
 
 async function refreshAll() {
-  if (!state.adminKey) {
+  if (!appState.adminKey) {
     setAdminLocked(true);
     setStatus("Log in first.", true);
     return;
@@ -322,7 +322,7 @@ async function refreshAll() {
     await Promise.all([refreshStats(), refreshQueue()]);
     setAdminLocked(false);
     setStatus("Admin data refreshed.");
-    if (!state.refreshTimer) {
+    if (!appState.refreshTimer) {
       startPolling();
     }
   } catch (error) {
@@ -333,17 +333,17 @@ async function refreshAll() {
 }
 
 function startPolling() {
-  if (state.refreshTimer) {
-    window.clearInterval(state.refreshTimer);
+  if (appState.refreshTimer) {
+    window.clearInterval(appState.refreshTimer);
   }
 
-  state.refreshTimer = window.setInterval(() => {
+  appState.refreshTimer = window.setInterval(() => {
     refreshAll().catch(() => {});
   }, 20000);
 }
 
 async function runAction(label, requestFactory) {
-  if (!state.adminKey) {
+  if (!appState.adminKey) {
     setStatus("Log in first.", true);
     return;
   }
@@ -361,9 +361,9 @@ async function runAction(label, requestFactory) {
 }
 
 function bindEvents() {
-  els.saveKeyBtn.addEventListener("click", () => {
-    const username = String(els.adminKeyInput.value || "").trim();
-    const password = String(els.overrideKeyInput.value || "");
+  dom.saveKeyBtn.addEventListener("click", () => {
+    const username = String(dom.adminKeyInput.value || "").trim();
+    const password = String(dom.overrideKeyInput.value || "");
 
     if (!username || !password) {
       setStatus("Username and password are required.", true);
@@ -384,8 +384,8 @@ function bindEvents() {
     });
   });
 
-  if (els.logoutBtn) {
-    els.logoutBtn.addEventListener("click", () => {
+  if (dom.logoutBtn) {
+    dom.logoutBtn.addEventListener("click", () => {
       apiRequest("/api/admin/logout", { method: "POST" }).catch(() => {});
       clearAdminSession();
       setAdminLocked(true);
@@ -393,17 +393,17 @@ function bindEvents() {
     });
   }
 
-  els.refreshAllBtn.addEventListener("click", () => {
+  dom.refreshAllBtn.addEventListener("click", () => {
     refreshAll().catch(() => {});
   });
 
-  els.runHarvestBtn.addEventListener("click", () => {
+  dom.runHarvestBtn.addEventListener("click", () => {
     runAction("harvest", () =>
       apiRequest("/api/admin/actions/harvest-core", { method: "POST" }),
     );
   });
 
-  els.runBackupBtn.addEventListener("click", () => {
+  dom.runBackupBtn.addEventListener("click", () => {
     runAction("backup", () =>
       apiRequest("/api/admin/actions/backup-nonrecoverable", {
         method: "POST",
@@ -411,8 +411,8 @@ function bindEvents() {
     );
   });
 
-  els.queueCityBtn.addEventListener("click", () => {
-    const slug = String(els.queueCitySelect.value || "").trim();
+  dom.queueCityBtn.addEventListener("click", () => {
+    const slug = String(dom.queueCitySelect.value || "").trim();
     if (!slug) {
       return;
     }
@@ -424,26 +424,26 @@ function bindEvents() {
     );
   });
 
-  els.applyOverrideBtn.addEventListener("click", () => {
-    const stationKey = String(els.overrideStationKey.value || "").trim();
+  dom.applyOverrideBtn.addEventListener("click", () => {
+    const stationKey = String(dom.overrideStationKey.value || "").trim();
     if (!stationKey) {
       setStatus("stationKey is required for overrides.", true);
       return;
     }
 
-    const overrideAdminKey = String(state.adminKey || "").trim();
+    const overrideAdminKey = String(appState.adminKey || "").trim();
     if (!overrideAdminKey) {
       setStatus("Login before applying overrides.", true);
       return;
     }
 
-    const manualLatRaw = String(els.overrideManualLat.value || "").trim();
-    const manualLonRaw = String(els.overrideManualLon.value || "").trim();
+    const manualLatRaw = String(dom.overrideManualLat.value || "").trim();
+    const manualLonRaw = String(dom.overrideManualLon.value || "").trim();
 
     const body = {
       stationKey,
-      manualName: String(els.overrideManualName.value || "").trim(),
-      note: String(els.overrideNote.value || "").trim(),
+      manualName: String(dom.overrideManualName.value || "").trim(),
+      note: String(dom.overrideNote.value || "").trim(),
     };
 
     if (manualLatRaw) {
@@ -464,19 +464,19 @@ function bindEvents() {
   });
 
   // Route overrides
-  els.loadRouteBtn.addEventListener("click", async () => {
-    const lineKey = String(els.routeLineKey.value || "").trim();
+  dom.loadRouteBtn.addEventListener("click", async () => {
+    const lineKey = String(dom.routeLineKey.value || "").trim();
     if (!lineKey) return setStatus("lineKey is required to load.", true);
-    const adminKey = String(state.adminKey || "").trim();
+    const adminKey = String(appState.adminKey || "").trim();
     try {
       setStatus("Loading route override...");
       const payload = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "GET", adminKey });
       if (payload && payload.override) {
-        els.routeCitySlug.value = payload.override.city_slug || "";
-        els.routePayload.value = JSON.stringify(payload.override.payload || {}, null, 2);
+        dom.routeCitySlug.value = payload.override.city_slug || "";
+        dom.routePayload.value = JSON.stringify(payload.override.payload || {}, null, 2);
         setStatus("Loaded route override.");
       } else {
-        els.routePayload.value = "";
+        dom.routePayload.value = "";
         setStatus("No override found.");
       }
     } catch (err) {
@@ -485,20 +485,20 @@ function bindEvents() {
     }
   });
 
-  els.saveRouteBtn.addEventListener("click", async () => {
-    const lineKey = String(els.routeLineKey.value || "").trim();
+  dom.saveRouteBtn.addEventListener("click", async () => {
+    const lineKey = String(dom.routeLineKey.value || "").trim();
     if (!lineKey) return setStatus("lineKey is required to save.", true);
-    const adminKey = String(state.adminKey || "").trim();
+    const adminKey = String(appState.adminKey || "").trim();
     let parsed = null;
     try {
-      parsed = JSON.parse(String(els.routePayload.value || "{}"));
+      parsed = JSON.parse(String(dom.routePayload.value || "{}"));
     } catch (e) {
       return setStatus("Payload must be valid JSON.", true);
     }
 
     try {
       setStatus("Saving route override...");
-      const body = { lineKey, citySlug: String(els.routeCitySlug.value || "").trim(), payload: parsed };
+      const body = { lineKey, citySlug: String(dom.routeCitySlug.value || "").trim(), payload: parsed };
       const result = await apiRequest("/api/admin/overrides/route", { method: "POST", adminKey, body });
       setStatus("Route override saved.");
       appendLog("Saved route override", result);
@@ -509,10 +509,10 @@ function bindEvents() {
     }
   });
 
-  els.deleteRouteBtn.addEventListener("click", async () => {
-    const lineKey = String(els.routeLineKey.value || "").trim();
+  dom.deleteRouteBtn.addEventListener("click", async () => {
+    const lineKey = String(dom.routeLineKey.value || "").trim();
     if (!lineKey) return setStatus("lineKey is required to delete.", true);
-    const adminKey = String(state.adminKey || "").trim();
+    const adminKey = String(appState.adminKey || "").trim();
     try {
       setStatus("Deleting route override...");
       const result = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "DELETE", adminKey });
@@ -527,12 +527,12 @@ function bindEvents() {
 }
 
 async function init() {
-  els.adminKeyInput.value = "";
-  els.overrideKeyInput.value = "";
+  dom.adminKeyInput.value = "";
+  dom.overrideKeyInput.value = "";
   bindEvents();
   await refreshCities();
 
-  if (state.adminKey) {
+  if (appState.adminKey) {
     try {
       await apiRequest("/api/admin/session");
       setAdminLocked(false);

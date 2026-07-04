@@ -1,15 +1,15 @@
-﻿function logTiming(label) {
+function logTiming(label) {
   const entry = { label, at: performance.now() };
-  state.loadTimings.push(entry);
+  appState.loadTimings.push(entry);
   return entry;
 }
 
 function scheduleBatchRender() {
-  if (state.renderBatchTimer) return;
-  const token = ++state.renderBatchToken;
-  state.renderBatchTimer = setTimeout(() => {
-    if (token !== state.renderBatchToken) return;
-    state.renderBatchTimer = null;
+  if (appState.renderBatchTimer) return;
+  const token = ++appState.renderBatchToken;
+  appState.renderBatchTimer = setTimeout(() => {
+    if (token !== appState.renderBatchToken) return;
+    appState.renderBatchTimer = null;
     logTiming('batch-render-start');
     rebuildCombinedTransit();
     refreshUiFromState();
@@ -18,11 +18,11 @@ function scheduleBatchRender() {
 }
 
 function flushBatchRender() {
-  if (state.renderBatchTimer) {
-    clearTimeout(state.renderBatchTimer);
-    state.renderBatchTimer = null;
+  if (appState.renderBatchTimer) {
+    clearTimeout(appState.renderBatchTimer);
+    appState.renderBatchTimer = null;
   }
-  state.renderBatchToken += 1;
+  appState.renderBatchToken += 1;
   logTiming('flush-render-start');
   rebuildCombinedTransit();
   refreshUiFromState();
@@ -30,16 +30,16 @@ function flushBatchRender() {
 }
 
 function updateLoadingStatus() {
-  const areaLoadingCount = state.inFlightAreaKeys.size;
-  const queuedCount = state.fetchQueue.length;
-  const routeStopLoadingCount = state.inFlightLineStopKeys.size;
-  const hasRoutes = Array.isArray(state.lineSummaries) && state.lineSummaries.some((line) => {
+  const areaLoadingCount = appState.inFlightAreaKeys.size;
+  const queuedCount = appState.fetchQueue.length;
+  const routeStopLoadingCount = appState.inFlightLineStopKeys.size;
+  const hasRoutes = Array.isArray(appState.lineSummaries) && appState.lineSummaries.some((line) => {
     if (typeof lineIsVisible === "function") {
       return lineIsVisible(line);
     }
     return true;
   });
-  const visibleAreaCount = state.visibleAreaKeys.size;
+  const visibleAreaCount = appState.visibleAreaKeys.size;
   const hasLoading = areaLoadingCount > 0 || queuedCount > 0 || routeStopLoadingCount > 0;
 
   if (hasLoading) {
@@ -57,7 +57,7 @@ function updateLoadingStatus() {
 
   // Not loading at this point
   if (hasRoutes) {
-    const focusLabel = state.focusedLineKey ? "Focused route stop view." : "Select a route to load stops.";
+    const focusLabel = appState.focusedLineKey ? "Focused route stop view." : "Select a route to load stops.";
     hideMapLoadingBadge();
     clearMapNotice();
     setBackendStatus(`${visibleAreaCount} on-screen cached areas visible. ${focusLabel}`);
@@ -67,8 +67,8 @@ function updateLoadingStatus() {
   // If we've requested area data, are zoomed in enough to have triggered
   // Transitland, but no routes were returned (even successful empty responses),
   // show the explicit "No stops found" error rather than the generic zoom hint.
-  const mapZoom = state.map ? Number(state.map.getZoom()) : 0;
-  if (state.lastLoadStats?.requested > 0 && Array.isArray(state.lineSummaries) && state.lineSummaries.length === 0 && mapZoom >= MIN_VIEWPORT_FETCH_ZOOM) {
+  const mapZoom = appState.map ? Number(appState.map.getZoom()) : 0;
+  if (appState.lastLoadStats?.requested > 0 && Array.isArray(appState.lineSummaries) && appState.lineSummaries.length === 0 && mapZoom >= MIN_VIEWPORT_FETCH_ZOOM) {
     const transitlandLink = `Check <a href="https://www.transit.land/map" target="_blank" rel="noopener noreferrer">this map</a> for supported routes.`;
     setMapNotice(
       "No stops found",
@@ -83,8 +83,8 @@ function updateLoadingStatus() {
     return;
   }
 
-  if (state.lastLoadStats.failed > 0) {
-    const mapZoom = state.map ? Number(state.map.getZoom()) : 0;
+  if (appState.lastLoadStats.failed > 0) {
+    const mapZoom = appState.map ? Number(appState.map.getZoom()) : 0;
     if (mapZoom < MIN_VIEWPORT_FETCH_ZOOM) {
       hideMapLoadingBadge();
       setMapNotice("Zoom in to see stops", "Pan or zoom the map to load transit.", "neutral", "center");
@@ -101,14 +101,14 @@ function updateLoadingStatus() {
       true
     );
     setBackendStatus(
-      `Failed to fetch transit for this map area. Reload or check the advanced information panel. ${state.lastLoadStats.failed} area request${state.lastLoadStats.failed === 1 ? "" : "s"} failed.`
+      `Failed to fetch transit for this map area. Reload or check the advanced information panel. ${appState.lastLoadStats.failed} area request${appState.lastLoadStats.failed === 1 ? "" : "s"} failed.`
     );
     return;
   }
 
-  if (state.lastLoadStats.requested > 0 && state.lastLoadStats.successful === 0) {
-    if (state.lastLoadStats.failed > 0) {
-      const mapZoom = state.map ? Number(state.map.getZoom()) : 0;
+  if (appState.lastLoadStats.requested > 0 && appState.lastLoadStats.successful === 0) {
+    if (appState.lastLoadStats.failed > 0) {
+      const mapZoom = appState.map ? Number(appState.map.getZoom()) : 0;
       if (mapZoom < MIN_VIEWPORT_FETCH_ZOOM) {
         hideMapLoadingBadge();
         setMapNotice("Zoom in to see stops", "Pan or zoom the map to load transit.", "neutral", "center");
@@ -122,14 +122,14 @@ function updateLoadingStatus() {
         "error",
         "center"
       );
-      setBackendStatus(`Failed to fetch transit for this map area. ${state.lastLoadStats.failed} area request${state.lastLoadStats.failed === 1 ? "" : "s"} failed.`);
+      setBackendStatus(`Failed to fetch transit for this map area. ${appState.lastLoadStats.failed} area request${appState.lastLoadStats.failed === 1 ? "" : "s"} failed.`);
       return;
     }
 
     // Only show "no stops found" if we're zoomed in enough to have tried Transitland,
     // or if sufficient time has passed to confirm Postgres has nothing.
     // At low zoom, Postgres-only queries might legitimately return empty.
-    const mapZoom = state.map ? Number(state.map.getZoom()) : 0;
+    const mapZoom = appState.map ? Number(appState.map.getZoom()) : 0;
     if (mapZoom < MIN_VIEWPORT_FETCH_ZOOM) {
       // Low zoom: Transitland not called yet, just waiting for Postgres. Don't error.
       hideMapLoadingBadge();
@@ -163,25 +163,25 @@ function queueTileFetches(tileRequests, options = {}) {
 
   for (const request of tileRequests) {
     const cacheKey = request.areaKey;
-    if (!options.forceRefresh && state.areaCache.has(cacheKey)) {
+    if (!options.forceRefresh && appState.areaCache.has(cacheKey)) {
       continue;
     }
 
-    if (state.queuedAreaKeys.has(cacheKey) || state.inFlightAreaKeys.has(cacheKey)) {
+    if (appState.queuedAreaKeys.has(cacheKey) || appState.inFlightAreaKeys.has(cacheKey)) {
       continue;
     }
 
-    state.fetchQueue.push({
+    appState.fetchQueue.push({
       cacheKey,
       bbox: request.bbox,
       zoom: request.zoom,
       cacheOnly: Boolean(options.cacheOnly),
       routeTypes: Array.isArray(request.routeTypes) ? request.routeTypes : [],
-      epoch: state.loadEpoch,
+      epoch: appState.loadEpoch,
       forceRefresh: Boolean(options.forceRefresh)
     });
 
-    state.queuedAreaKeys.add(cacheKey);
+    appState.queuedAreaKeys.add(cacheKey);
     queued += 1;
   }
 
@@ -193,35 +193,35 @@ function queueTileFetches(tileRequests, options = {}) {
 }
 
 function trimQueuedFetchesToCurrentView() {
-  if (!state.fetchQueue.length) {
+  if (!appState.fetchQueue.length) {
     return;
   }
 
   const nextQueue = [];
   const nextQueuedKeys = new Set();
 
-  for (const job of state.fetchQueue) {
-    if (!state.requestedAreaKeys.has(job.cacheKey)) {
+  for (const job of appState.fetchQueue) {
+    if (!appState.requestedAreaKeys.has(job.cacheKey)) {
       continue;
     }
     nextQueue.push(job);
     nextQueuedKeys.add(job.cacheKey);
   }
 
-  state.fetchQueue = nextQueue;
-  state.queuedAreaKeys = nextQueuedKeys;
+  appState.fetchQueue = nextQueue;
+  appState.queuedAreaKeys = nextQueuedKeys;
 }
 
 // Track progressive follow-up attempts for partial cache hits so we can
 // repeatedly try Transitland until coverage stabilizes or we hit a limit.
-if (!state.partialFetchAttempts) {
-  state.partialFetchAttempts = new Map();
+if (!appState.partialFetchAttempts) {
+  appState.partialFetchAttempts = new Map();
 }
 
 async function fetchTile(job) {
   const fetchLabel = `fetch-tile:${job.cacheKey.slice(0, 40)}`;
   logTiming(`${fetchLabel}:start`);
-  state.inFlightAreaKeys.add(job.cacheKey);
+  appState.inFlightAreaKeys.add(job.cacheKey);
   updateLoadingStatus();
 
   try {
@@ -253,7 +253,7 @@ async function fetchTile(job) {
       console.warn(`[perf] Slow server response for ${job.cacheKey}: ${serverTiming}ms`);
     }
 
-    if (job.epoch !== state.loadEpoch) {
+    if (job.epoch !== appState.loadEpoch) {
       return;
     }
 
@@ -263,15 +263,15 @@ async function fetchTile(job) {
     if (hasRoutes || isHit) {
       cacheAreaPayload(job.cacheKey, payload, payload.cacheStatus || "miss");
     }
-    state.lastLoadStats.successful += 1;
+    appState.lastLoadStats.successful += 1;
 
-    state.viewportRequestCount += 1;
+    appState.viewportRequestCount += 1;
     if (cacheStatus === "hit" || cacheStatus === "partial-hit" || cacheStatus === "stale-hit") {
-      state.postgresViewportHitCount += 1;
+      appState.postgresViewportHitCount += 1;
     } else if (cacheStatus === "miss" && job.cacheOnly) {
-      state.postgresViewportMissCount += 1;
+      appState.postgresViewportMissCount += 1;
     } else if (cacheStatus === "miss" || !cacheStatus) {
-      state.transitlandViewportFetchCount += 1;
+      appState.transitlandViewportFetchCount += 1;
     }
     renderApiCounter();
 
@@ -281,47 +281,47 @@ async function fetchTile(job) {
     scheduleBatchRender();
     logTiming(`${fetchLabel}:cached`);
   } catch (error) {
-    if (job.epoch !== state.loadEpoch) {
+    if (job.epoch !== appState.loadEpoch) {
       return;
     }
-    state.lastLoadStats.failed += 1;
+    appState.lastLoadStats.failed += 1;
     setBackendStatus(`Fetch failed for ${job.cacheKey}: ${error.message}`);
   } finally {
-    state.inFlightAreaKeys.delete(job.cacheKey);
+    appState.inFlightAreaKeys.delete(job.cacheKey);
   }
 }
 
 function drainFetchQueue() {
-  if (state.queueDrainRunning) {
+  if (appState.queueDrainRunning) {
     updateLoadingStatus();
     return;
   }
 
-  state.queueDrainRunning = true;
+  appState.queueDrainRunning = true;
   logTiming('queue-drain-start');
 
   const launch = () => {
-    while (state.inFlightAreaKeys.size < MAX_PARALLEL_FETCHES && state.fetchQueue.length > 0) {
-      const job = state.fetchQueue.shift();
-      state.queuedAreaKeys.delete(job.cacheKey);
+    while (appState.inFlightAreaKeys.size < MAX_PARALLEL_FETCHES && appState.fetchQueue.length > 0) {
+      const job = appState.fetchQueue.shift();
+      appState.queuedAreaKeys.delete(job.cacheKey);
       fetchTile(job)
         .catch(() => {})
         .finally(() => {
-          if (state.fetchQueue.length > 0 || state.inFlightAreaKeys.size > 0) {
+          if (appState.fetchQueue.length > 0 || appState.inFlightAreaKeys.size > 0) {
             launch();
           } else {
-            state.queueDrainRunning = false;
+            appState.queueDrainRunning = false;
             logTiming('queue-drain-end');
             flushBatchRender();
             updateLoadingStatus();
-            const timings = state.loadTimings;
+            const timings = appState.loadTimings;
             if (timings.length > 2) {
               const started = timings[0].at;
               const ended = timings[timings.length - 1].at;
               const totalMs = (ended - started).toFixed(1);
-              const lineCount = state.lineSummaries.length;
-              const cachedAreas = state.visibleAreaKeys.size;
-              const hitSummary = `Pg:${state.postgresViewportHitCount} miss:${state.postgresViewportMissCount} Tld:${state.transitlandViewportFetchCount}`;
+              const lineCount = appState.lineSummaries.length;
+              const cachedAreas = appState.visibleAreaKeys.size;
+              const hitSummary = `Pg:${appState.postgresViewportHitCount} miss:${appState.postgresViewportMissCount} Tld:${appState.transitlandViewportFetchCount}`;
               console.log(`[perf] Load cycle: ${totalMs}ms, ${lineCount} routes, ${cachedAreas} areas, ${hitSummary}`);
               if (Number(totalMs) > 3000) {
                 console.warn(`[perf] SLOW load cycle: ${totalMs}ms (${cachedAreas} tile(s), ${hitSummary})`);
@@ -332,8 +332,8 @@ function drainFetchQueue() {
         });
     }
 
-    if (state.fetchQueue.length === 0 && state.inFlightAreaKeys.size === 0) {
-      state.queueDrainRunning = false;
+    if (appState.fetchQueue.length === 0 && appState.inFlightAreaKeys.size === 0) {
+      appState.queueDrainRunning = false;
     }
 
     updateLoadingStatus();
@@ -343,24 +343,24 @@ function drainFetchQueue() {
 }
 
 async function loadVisibleTransit(options = {}) {
-  if (!state.mapReady || !state.map) {
+  if (!appState.mapReady || !appState.map) {
     return;
   }
 
-  state.loadTimings = [];
+  appState.loadTimings = [];
   logTiming('load-visible-transit-start');
   const loadReason = String(options.reason || '').trim() || 'unknown';
-  const zoom = state.map.getZoom();
+  const zoom = appState.map.getZoom();
   const rawBbox = mapBoundsToBbox();
-  state.currentViewportBbox = rawBbox ? [...rawBbox] : null;
+  appState.currentViewportBbox = rawBbox ? [...rawBbox] : null;
   if (rawBbox) {
-    state.lastViewportFetchBbox = [...rawBbox];
-    state.lastViewportFetchZoom = Number(zoom || 0);
+    appState.lastViewportFetchBbox = [...rawBbox];
+    appState.lastViewportFetchZoom = Number(zoom || 0);
   }
   if (!rawBbox) {
-    state.viewportSummaryLineSummaries = [];
-    state.viewportSummaryRequestToken += 1;
-    const allCachedKeys = new Set(state.areaCache.keys());
+    appState.viewportSummaryLineSummaries = [];
+    appState.viewportSummaryRequestToken += 1;
+    const allCachedKeys = new Set(appState.areaCache.keys());
     if (allCachedKeys.size === 0) {
       setStatus(
         "This view crosses the 180-degree line and cannot be loaded yet.",
@@ -370,15 +370,15 @@ async function loadVisibleTransit(options = {}) {
       return;
     }
 
-    state.requestedAreaKeys = allCachedKeys;
-    state.currentViewportBbox = null;
+    appState.requestedAreaKeys = allCachedKeys;
+    appState.currentViewportBbox = null;
     syncActiveAreaKeys({
       fallbackToAllCached: true
     });
     rebuildCombinedTransit();
     refreshUiFromState();
 
-    state.lastLoadStats = {
+    appState.lastLoadStats = {
       requested: 0,
       cached: allCachedKeys.size,
       queued: 0,
@@ -409,20 +409,20 @@ async function loadVisibleTransit(options = {}) {
     requests = requests.slice(0, 8);
   }
 
-  state.viewportSummaryLineSummaries = [];
-  state.viewportSummaryRequestToken += 1;
+  appState.viewportSummaryLineSummaries = [];
+  appState.viewportSummaryRequestToken += 1;
 
   // No low-zoom short-circuit: always generate requests for the full viewport
   // so that the server can return Postgres-backed cached payloads for any zoom.
 
-  const cachedRequestCount = requests.filter((request) => state.areaCache.has(request.areaKey)).length;
+  const cachedRequestCount = requests.filter((request) => appState.areaCache.has(request.areaKey)).length;
   const missingRequests = requests.filter(
-    (request) => options.forceRefresh || !state.areaCache.has(request.areaKey)
+    (request) => options.forceRefresh || !appState.areaCache.has(request.areaKey)
   );
 
   const cachedInView = visibleCachedAreaKeysForViewport(rawBbox, modeRouteTypes);
 
-  state.requestedAreaKeys = new Set([
+  appState.requestedAreaKeys = new Set([
     ...requests.map((request) => request.areaKey),
     ...Array.from(cachedInView)
   ]);
@@ -443,7 +443,7 @@ async function loadVisibleTransit(options = {}) {
   const missing = missingRequests;
   const nextBatch = missing.slice(0, MAX_NEW_FETCHES_PER_VIEW);
 
-  state.lastLoadStats = {
+  appState.lastLoadStats = {
     requested: requests.length,
     cached,
     queued: 0,
@@ -459,23 +459,23 @@ async function loadVisibleTransit(options = {}) {
     cacheOnly: true,
     forceRefresh: Boolean(options.forceRefresh)
   });
-  state.lastLoadStats.queued = queuedCacheOnly;
+  appState.lastLoadStats.queued = queuedCacheOnly;
 
   if (Number(zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM) {
     setTimeout(() => {
-      const stillMissing = missing.filter((r) => !state.areaCache.has(r.areaKey));
+      const stillMissing = missing.filter((r) => !appState.areaCache.has(r.areaKey));
       if (!stillMissing.length) return;
       const nextFull = stillMissing.slice(0, MAX_NEW_FETCHES_PER_VIEW);
       const queuedFull = queueTileFetches(nextFull, {
         cacheOnly: false,
         forceRefresh: Boolean(options.forceRefresh)
       });
-      state.lastLoadStats.queued += queuedFull;
+      appState.lastLoadStats.queued += queuedFull;
     }, 100);
   }
 
   if (!nextBatch.length) {
-    if (state.lineSummaries.length > 0) {
+    if (appState.lineSummaries.length > 0) {
       clearMapNotice();
       setBackendStatus(`${cached}/${requests.length} on-screen areas loaded from cache. Select a route to load stops.`);
     } else {
@@ -497,11 +497,11 @@ async function loadVisibleTransit(options = {}) {
     return;
   }
 
-  if (state.lineSummaries.length > 0) {
+  if (appState.lineSummaries.length > 0) {
     clearMapNotice();
     setBackendStatus(
       `Loading more routes for the current map view... ${cached} cached - ${queuedCacheOnly} loading${
-        state.lastLoadStats.deferred > 0 ? ` - ${state.lastLoadStats.deferred} deferred` : ""
+        appState.lastLoadStats.deferred > 0 ? ` - ${appState.lastLoadStats.deferred} deferred` : ""
       }`
     );
   } else {
@@ -535,8 +535,8 @@ async function loadViewportCountSummary(rawBbox, zoom) {
     return false;
   }
 
-  const requestToken = state.viewportSummaryRequestToken + 1;
-  state.viewportSummaryRequestToken = requestToken;
+  const requestToken = appState.viewportSummaryRequestToken + 1;
+  appState.viewportSummaryRequestToken = requestToken;
 
   try {
     const params = new URLSearchParams({
@@ -550,7 +550,7 @@ async function loadViewportCountSummary(rawBbox, zoom) {
       method: "GET"
     });
 
-    if (requestToken !== state.viewportSummaryRequestToken) {
+    if (requestToken !== appState.viewportSummaryRequestToken) {
       return false;
     }
 
@@ -567,11 +567,11 @@ async function loadViewportCountSummary(rawBbox, zoom) {
           .filter((line) => line.lineKey)
       : [];
 
-    state.viewportSummaryTransit = {
+    appState.viewportSummaryTransit = {
       routesGeoJson,
       lineSummaries
     };
-    state.viewportSummaryLineSummaries = lineSummaries;
+    appState.viewportSummaryLineSummaries = lineSummaries;
 
     if (typeof renderModeFilterBar === "function") {
       renderModeFilterBar();
@@ -582,23 +582,23 @@ async function loadViewportCountSummary(rawBbox, zoom) {
 
     return true;
   } catch {
-    if (requestToken === state.viewportSummaryRequestToken) {
-      state.viewportSummaryTransit = null;
-      state.viewportSummaryLineSummaries = [];
+    if (requestToken === appState.viewportSummaryRequestToken) {
+      appState.viewportSummaryTransit = null;
+      appState.viewportSummaryLineSummaries = [];
     }
     return false;
   }
 }
 
 function onMapMoveEnd() {
-  if (!state.mapReady) {
+  if (!appState.mapReady) {
     return;
   }
 
   const rawBbox = mapBoundsToBbox();
-  const zoom = state.map ? Number(state.map.getZoom()) : 0;
-  const lastViewportBbox = normalizeBboxArray(state.lastViewportFetchBbox);
-  const lastViewportZoom = Number(state.lastViewportFetchZoom);
+  const zoom = appState.map ? Number(appState.map.getZoom()) : 0;
+  const lastViewportBbox = normalizeBboxArray(appState.lastViewportFetchBbox);
+  const lastViewportZoom = Number(appState.lastViewportFetchZoom);
 
   if (
     rawBbox &&
@@ -614,7 +614,7 @@ function onMapMoveEnd() {
       rawBbox[3] <= bufferedViewport[3];
 
     if (withinBufferedViewport) {
-      state.currentViewportBbox = [...rawBbox];
+      appState.currentViewportBbox = [...rawBbox];
       syncActiveAreaKeys({
         fallbackToAllCached: false
       });
@@ -626,10 +626,10 @@ function onMapMoveEnd() {
   }
 
   const now = Date.now();
-  if (now - state.lastMoveFetchAt < MIN_MOVE_FETCH_INTERVAL_MS) {
+  if (now - appState.lastMoveFetchAt < MIN_MOVE_FETCH_INTERVAL_MS) {
     return;
   }
-  state.lastMoveFetchAt = now;
+  appState.lastMoveFetchAt = now;
 
   loadVisibleTransit({ forceRefresh: false, reason: "move" }).catch((error) => {
     setBackendStatus(`Auto-load failed: ${error.message}`);
@@ -637,7 +637,7 @@ function onMapMoveEnd() {
 }
 
 function fitToArea(area) {
-  if (!state.map || !state.mapReady || !area?.bbox) {
+  if (!appState.map || !appState.mapReady || !area?.bbox) {
     return;
   }
 
@@ -651,7 +651,7 @@ function fitToArea(area) {
   }
 
   const [minLon, minLat, maxLon, maxLat] = area.bbox;
-  state.map.fitBounds(
+  appState.map.fitBounds(
     [
       [minLon, minLat],
       [maxLon, maxLat]
@@ -664,26 +664,26 @@ function fitToArea(area) {
 }
 
 function selectedCityPreset() {
-  if (!state.cities.length) {
+  if (!appState.cities.length) {
     return null;
   }
 
-  return state.cities.find((city) => city.slug === state.initialCitySlug) || state.cities[0] || null;
+  return appState.cities.find((city) => city.slug === appState.initialCitySlug) || appState.cities[0] || null;
 }
 
 async function loadCities() {
   const payload = await apiRequest("/api/catalog/cities", { method: "GET" });
-  state.cities = Array.isArray(payload.cities) ? payload.cities : [];
+  appState.cities = Array.isArray(payload.cities) ? payload.cities : [];
 
-  if (!state.cities.length) {
+  if (!appState.cities.length) {
     return;
   }
 
-  const exists = state.cities.some((city) => city.slug === state.initialCitySlug);
+  const exists = appState.cities.some((city) => city.slug === appState.initialCitySlug);
   if (!exists) {
-    state.initialCitySlug = state.cities[0].slug;
+    appState.initialCitySlug = appState.cities[0].slug;
     if (typeof saveUserPreferences === "function") {
-      saveUserPreferences({ initialCitySlug: state.initialCitySlug }).catch(() => {});
+      saveUserPreferences({ initialCitySlug: appState.initialCitySlug }).catch(() => {});
     }
   }
 }
@@ -691,15 +691,15 @@ async function loadCities() {
 
 
 function rebuildVisitedMap(items) {
-  state.visitedByLine = new Map();
+  appState.visitedByLine = new Map();
   for (const item of items) {
     getVisitedSetForLine(item.lineKey).add(item.stationKey);
   }
 }
 
 async function loadProgress() {
-  if (!state.user) {
-    state.visitedByLine = new Map();
+  if (!appState.user) {
+    appState.visitedByLine = new Map();
     renderMapData();
     renderProgress();
     renderLineView({ forceStopRefresh: true });
@@ -719,12 +719,12 @@ async function clearRouteProgress(lineKey) {
     return;
   }
 
-  if (!state.user) {
+  if (!appState.user) {
     setStatus("Sign in first to clear route progress.", "error");
     return;
   }
 
-  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  const line = appState.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
   const lineName = line ? lineDisplayName(line) : normalizedLineKey;
 
   resetClearRouteProgressConfirmation();
@@ -735,11 +735,11 @@ async function clearRouteProgress(lineKey) {
       body: JSON.stringify({ lineKey: normalizedLineKey })
     });
 
-    state.visitedByLine.set(normalizedLineKey, new Set());
+    appState.visitedByLine.set(normalizedLineKey, new Set());
     renderMapData();
     renderProgress();
     renderLineView({ forceStopRefresh: true });
-    if (line && state.focusedLineKey === normalizedLineKey) {
+    if (line && appState.focusedLineKey === normalizedLineKey) {
       setUserStatusFromLine(line);
     } else {
       restoreUserStatusFromFocus();

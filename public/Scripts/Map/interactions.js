@@ -1,4 +1,4 @@
-﻿async function onStopClicked(event) {
+async function onStopClicked(event) {
   const feature = event.features && event.features[0];
   if (!feature) {
     return;
@@ -11,7 +11,7 @@
   closeRouteSelectionPopup();
   onRouteHoverLeave();
 
-  state.lastStopClickAt = Date.now();
+  appState.lastStopClickAt = Date.now();
   resetClearRouteProgressConfirmation();
 
   await toggleVisitedForStation(feature.properties || {}, feature.geometry?.coordinates || []);
@@ -24,7 +24,7 @@ function onStopHoverMove(event) {
   }
 
   const feature = event.features && event.features[0];
-  if (!feature || !state.hoverPopup) {
+  if (!feature || !appState.hoverPopup) {
     return;
   }
 
@@ -33,33 +33,33 @@ function onStopHoverMove(event) {
     return;
   }
 
-  if (state.routeHoverPopup) {
-    state.routeHoverPopup.remove();
+  if (appState.routeHoverPopup) {
+    appState.routeHoverPopup.remove();
   }
 
-  state.hoverPopup
+  appState.hoverPopup
     .setLngLat(event.lngLat)
     .setHTML(stopHoverHtml(feature.properties || {}))
-    .addTo(state.map);
+    .addTo(appState.map);
 }
 
 function onStopHoverLeave() {
-  if (state.hoverPopup) {
-    state.hoverPopup.remove();
+  if (appState.hoverPopup) {
+    appState.hoverPopup.remove();
   }
 
-  if (state.userStatusPinnedKind !== "station") {
+  if (appState.userStatusPinnedKind !== "station") {
     restoreUserStatusFromFocus();
   }
 }
 
 function stopFeatureState(feature) {
   const featureId = String(feature?.id || feature?.properties?.feature_id || "").trim();
-  if (!featureId || !state.map || typeof state.map.getFeatureState !== "function") {
+  if (!featureId || !appState.map || typeof appState.map.getFeatureState !== "function") {
     return {};
   }
 
-  return state.map.getFeatureState({ source: "stops", id: featureId }) || {};
+  return appState.map.getFeatureState({ source: "stops", id: featureId }) || {};
 }
 
 function lineFromRouteFeature(feature) {
@@ -68,7 +68,7 @@ function lineFromRouteFeature(feature) {
     return null;
   }
 
-  const fromSummary = state.lineSummaries.find((line) => line.lineKey === lineKey);
+  const fromSummary = appState.lineSummaries.find((line) => line.lineKey === lineKey);
   if (fromSummary) {
     return fromSummary;
   }
@@ -88,15 +88,15 @@ function onRouteHoverMove(event) {
     return;
   }
 
-  if (!state.routeHoverPopup || !state.map) {
+  if (!appState.routeHoverPopup || !appState.map) {
     return;
   }
 
-  if (state.hoverPopup) {
-    state.hoverPopup.remove();
+  if (appState.hoverPopup) {
+    appState.hoverPopup.remove();
   }
 
-  const features = state.map.queryRenderedFeatures(event.point, {
+  const features = appState.map.queryRenderedFeatures(event.point, {
     layers: ["routes-main", "routes-background-main"]
   });
 
@@ -116,24 +116,24 @@ function onRouteHoverMove(event) {
     return;
   }
 
-  state.routeHoverPopup
+  appState.routeHoverPopup
     .setLngLat(event.lngLat)
     .setHTML(lineHoverHtml(lines, allLines.length))
-    .addTo(state.map);
+    .addTo(appState.map);
 }
 
 function onRouteHoverLeave() {
-  if (state.routeHoverPopup) {
-    state.routeHoverPopup.remove();
+  if (appState.routeHoverPopup) {
+    appState.routeHoverPopup.remove();
   }
 
-  if (state.userStatusPinnedKind !== "station") {
+  if (appState.userStatusPinnedKind !== "station") {
     restoreUserStatusFromFocus();
   }
 }
 
 function initializeMap() {
-  state.map = new maplibregl.Map({
+  appState.map = new maplibregl.Map({
     container: "map",
     style: createMapStyle(),
     center: [-122.335, 47.608],
@@ -142,18 +142,18 @@ function initializeMap() {
     antialias: true
   });
 
-  state.map.addControl(new maplibregl.NavigationControl(), "bottom-right");
-  state.hoverPopup = new maplibregl.Popup({
+  appState.map.addControl(new maplibregl.NavigationControl(), "bottom-right");
+  appState.hoverPopup = new maplibregl.Popup({
     closeButton: false,
     closeOnClick: false,
     offset: 12
   });
-  state.routeHoverPopup = new maplibregl.Popup({
+  appState.routeHoverPopup = new maplibregl.Popup({
     closeButton: false,
     closeOnClick: false,
     offset: 10
   });
-  state.routeSelectPopup = new maplibregl.Popup({
+  appState.routeSelectPopup = new maplibregl.Popup({
     closeButton: true,
     closeOnClick: true,
     closeOnMove: true,
@@ -161,9 +161,9 @@ function initializeMap() {
     maxWidth: "340px"
   });
 
-  state.map.on("style.load", () => {
-    state.map.setProjection({ type: "globe" });
-    state.map.setFog({
+  appState.map.on("style.load", () => {
+    appState.map.setProjection({ type: "globe" });
+    appState.map.setFog({
       color: "#dce4e7",
       "high-color": "#f5f8ff",
       "horizon-blend": 0.05,
@@ -172,25 +172,25 @@ function initializeMap() {
     });
   });
 
-  state.map.on("load", () => {
-    state.map.addSource("routes", {
+  appState.map.on("load", () => {
+    appState.map.addSource("routes", {
       type: "geojson",
       promoteId: "feature_id",
       data: emptyFeatureCollection()
     });
 
-    state.map.addSource("stops", {
+    appState.map.addSource("stops", {
       type: "geojson",
       promoteId: "feature_id",
       data: emptyFeatureCollection()
     });
 
-    state.map.addSource("focus-mask", {
+    appState.map.addSource("focus-mask", {
       type: "geojson",
       data: focusMaskFeatureCollection(false)
     });
 
-    state.map.addLayer({
+    appState.map.addLayer({
       id: "routes-background-casing",
       type: "line",
       source: "routes",
@@ -228,7 +228,7 @@ function initializeMap() {
       }
     });
 
-    state.map.addLayer({
+    appState.map.addLayer({
       id: "routes-background-main",
       type: "line",
       source: "routes",
@@ -266,7 +266,7 @@ function initializeMap() {
       }
     });
 
-    state.map.addLayer({
+    appState.map.addLayer({
       id: "focus-dim-layer",
       type: "fill",
       source: "focus-mask",
@@ -276,7 +276,7 @@ function initializeMap() {
       }
     });
 
-    state.map.addLayer({
+    appState.map.addLayer({
       id: "routes-casing",
       type: "line",
       source: "routes",
@@ -314,7 +314,7 @@ function initializeMap() {
       }
     });
 
-    state.map.addLayer({
+    appState.map.addLayer({
       id: "routes-main",
       type: "line",
       source: "routes",
@@ -352,7 +352,7 @@ function initializeMap() {
       }
     });
 
-    state.map.addLayer({
+    appState.map.addLayer({
       id: "routes-hit",
       type: "line",
       source: "routes",
@@ -380,7 +380,7 @@ function initializeMap() {
       }
     });
 
-    state.map.addLayer({
+    appState.map.addLayer({
       id: "stops-layer",
       type: "circle",
       source: "stops",
@@ -437,16 +437,16 @@ function initializeMap() {
       const routeClickLayers = ["routes-hit"];
 
       for (const layerId of routeClickLayers) {
-        state.map.on("click", layerId, (event) => {
+        appState.map.on("click", layerId, (event) => {
           const now = Date.now();
-          if (now - state.lastStopClickAt < 260) {
+          if (now - appState.lastStopClickAt < 260) {
             return;
           }
-          if (now - state.lastRouteClickAt < 160) {
+          if (now - appState.lastRouteClickAt < 160) {
             return;
           }
 
-          const stopHits = state.map
+          const stopHits = appState.map
             .queryRenderedFeatures(event.point, {
               layers: ["stops-layer"]
             })
@@ -454,12 +454,12 @@ function initializeMap() {
           if (
             Array.isArray(stopHits) &&
             stopHits.length > 0 &&
-            state.userStatusPinnedKind !== "station"
+            appState.userStatusPinnedKind !== "station"
           ) {
             return;
           }
 
-          const routeHits = state.map.queryRenderedFeatures(event.point, {
+          const routeHits = appState.map.queryRenderedFeatures(event.point, {
             layers: routeClickLayers
           });
 
@@ -481,7 +481,7 @@ function initializeMap() {
           }
 
           overlappedLines.sort((a, b) => lineDisplayName(a).localeCompare(lineDisplayName(b)));
-          state.lastRouteClickAt = now;
+          appState.lastRouteClickAt = now;
 
           if (overlappedLines.length === 1) {
             closeRouteSelectionPopup();
@@ -502,52 +502,52 @@ function initializeMap() {
       }
 
       for (const layerId of routeHoverLayers) {
-        state.map.on("mouseenter", layerId, () => {
+        appState.map.on("mouseenter", layerId, () => {
           if (hoverInteractionsEnabled()) {
-            state.map.getCanvas().style.cursor = "pointer";
+            appState.map.getCanvas().style.cursor = "pointer";
           }
         });
 
-        state.map.on("mousemove", layerId, (event) => {
+        appState.map.on("mousemove", layerId, (event) => {
           if (hoverInteractionsEnabled()) {
             onRouteHoverMove(event);
           }
         });
 
-        state.map.on("mouseleave", layerId, () => {
-          state.map.getCanvas().style.cursor = "";
+        appState.map.on("mouseleave", layerId, () => {
+          appState.map.getCanvas().style.cursor = "";
           onRouteHoverLeave();
         });
       }
 
-      state.map.on("click", "stops-layer", onStopClicked);
-      state.map.on("mouseenter", "stops-layer", (event) => {
+      appState.map.on("click", "stops-layer", onStopClicked);
+      appState.map.on("mouseenter", "stops-layer", (event) => {
         const feature = event.features && event.features[0];
         if (hoverInteractionsEnabled() && Number(stopFeatureState(feature)?.interactive || 0) === 1) {
-          state.map.getCanvas().style.cursor = "pointer";
+          appState.map.getCanvas().style.cursor = "pointer";
         }
       });
-      state.map.on("mousemove", "stops-layer", (event) => {
+      appState.map.on("mousemove", "stops-layer", (event) => {
         if (hoverInteractionsEnabled()) {
           onStopHoverMove(event);
         }
       });
-      state.map.on("mouseleave", "stops-layer", () => {
-        state.map.getCanvas().style.cursor = "";
+      appState.map.on("mouseleave", "stops-layer", () => {
+        appState.map.getCanvas().style.cursor = "";
         onStopHoverLeave();
       });
 
-      state.map.on("click", (event) => {
+      appState.map.on("click", (event) => {
         const now = Date.now();
-        if (now - state.lastStopClickAt < 260 || now - state.lastRouteClickAt < 220) {
+        if (now - appState.lastStopClickAt < 260 || now - appState.lastRouteClickAt < 220) {
           return;
         }
 
         const point = event.point;
         const closePadding = 14;
 
-        if (state.routeSelectPopup) {
-          const nearbyRoutes = state.map.queryRenderedFeatures(
+        if (appState.routeSelectPopup) {
+          const nearbyRoutes = appState.map.queryRenderedFeatures(
             [
               [point.x - closePadding, point.y - closePadding],
               [point.x + closePadding, point.y + closePadding]
@@ -562,11 +562,11 @@ function initializeMap() {
           }
         }
 
-        if (!state.focusedLineKey) {
+        if (!appState.focusedLineKey) {
           return;
         }
 
-        const nearby = state.map.queryRenderedFeatures(
+        const nearby = appState.map.queryRenderedFeatures(
           [
             [point.x - closePadding, point.y - closePadding],
             [point.x + closePadding, point.y + closePadding]
@@ -597,13 +597,13 @@ function initializeMap() {
         );
       });
 
-      state.map.on("touchstart", () => {
+      appState.map.on("touchstart", () => {
         onStopHoverLeave();
         onRouteHoverLeave();
         closeRouteSelectionPopup();
       });
 
-      state.map.on("movestart", () => {
+      appState.map.on("movestart", () => {
         closeRouteSelectionPopup();
         if (!hoverInteractionsEnabled()) {
           onStopHoverLeave();
@@ -611,25 +611,16 @@ function initializeMap() {
         }
       });
 
-      state.map.on("moveend", onMapMoveEnd);
+      appState.map.on("moveend", onMapMoveEnd);
 
-      state.mapReady = true;
+      appState.mapReady = true;
       updateMapModeButtons();
       renderMapData();
 
-      if (typeof state.mapReadyResolver === "function") {
-        state.mapReadyResolver();
-        state.mapReadyResolver = null;
+      if (typeof appState.mapReadyResolver === "function") {
+        appState.mapReadyResolver();
+        appState.mapReadyResolver = null;
       }
     });
-  }
-
-  function stopFeatureState(feature) {
-    const featureId = String(feature?.id || feature?.properties?.feature_id || "").trim();
-    if (!featureId || !state.map || typeof state.map.getFeatureState !== "function") {
-      return {};
-    }
-
-    return state.map.getFeatureState({ source: "stops", id: featureId }) || {};
   }
 

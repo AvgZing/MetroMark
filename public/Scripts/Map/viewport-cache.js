@@ -1,4 +1,4 @@
-﻿function createMapStyle() {
+function createMapStyle() {
   return {
     version: 8,
     projection: {
@@ -39,27 +39,27 @@
 }
 
 function updateMapModeButtons() {
-  const streetsActive = state.mapMode === "streets";
-  els.streetsModeBtn.classList.toggle("btn-primary", streetsActive);
-  els.satelliteModeBtn.classList.toggle("btn-primary", !streetsActive);
+  const streetsActive = appState.mapMode === "streets";
+  dom.streetsModeBtn.classList.toggle("btn-primary", streetsActive);
+  dom.satelliteModeBtn.classList.toggle("btn-primary", !streetsActive);
 }
 
 function setMapMode(mode) {
-  state.mapMode = mode;
-  if (!state.map || !state.map.getLayer("satellite-base")) {
+  appState.mapMode = mode;
+  if (!appState.map || !appState.map.getLayer("satellite-base")) {
     return;
   }
 
-  state.map.setLayoutProperty("satellite-base", "visibility", mode === "satellite" ? "visible" : "none");
+  appState.map.setLayoutProperty("satellite-base", "visibility", mode === "satellite" ? "visible" : "none");
   updateMapModeButtons();
 }
 
 function mapBoundsToBbox() {
-  if (!state.map) {
+  if (!appState.map) {
     return null;
   }
 
-  const bounds = state.map.getBounds();
+  const bounds = appState.map.getBounds();
   const west = bounds.getWest();
   const east = bounds.getEast();
   const south = clamp(bounds.getSouth(), -85, 85);
@@ -178,7 +178,7 @@ function visibleCachedAreaKeysForViewport(rawBbox, routeTypes = []) {
   }
   const visible = new Set();
 
-  for (const [cacheKey, entry] of state.areaCache.entries()) {
+  for (const [cacheKey, entry] of appState.areaCache.entries()) {
     const cachedBbox = cacheEntryBbox(cacheKey, entry);
     if (!cachedBbox) {
       continue;
@@ -257,7 +257,7 @@ function bboxQueryText(bbox) {
 }
 
 function buildViewportTileRequests(rawBbox, zoom) {
-  // Use tiles all the way down to zoom 5 — each tile's exact key matches Postgres
+  // Use tiles all the way down to zoom 5 â€” each tile's exact key matches Postgres
   // directly without needing spatial overlap. Only at extreme zoom-out (world view)
   // do we fall back to a single viewport request.
   if (Number(zoom || 0) < 5) {
@@ -356,7 +356,7 @@ function mergeStopFeature(existing, incoming) {
 }
 
 function cacheAreaPayload(cacheKey, payload, cacheStatus) {
-  state.areaCache.set(cacheKey, {
+  appState.areaCache.set(cacheKey, {
     cacheKey,
     payload,
     cacheStatus,
@@ -367,28 +367,28 @@ function cacheAreaPayload(cacheKey, payload, cacheStatus) {
 }
 
 function pruneAreaCache() {
-  if (state.areaCache.size <= MAX_SESSION_AREAS) {
+  if (appState.areaCache.size <= MAX_SESSION_AREAS) {
     return;
   }
 
   const protectedKeys = new Set([
-    ...state.requestedAreaKeys,
-    ...state.inFlightAreaKeys,
-    ...state.queuedAreaKeys
+    ...appState.requestedAreaKeys,
+    ...appState.inFlightAreaKeys,
+    ...appState.queuedAreaKeys
   ]);
 
-  const sorted = Array.from(state.areaCache.entries()).sort(
+  const sorted = Array.from(appState.areaCache.entries()).sort(
     (a, b) => Number(a[1].lastUsedAt || 0) - Number(b[1].lastUsedAt || 0)
   );
 
   for (const [key] of sorted) {
-    if (state.areaCache.size <= MAX_SESSION_AREAS) {
+    if (appState.areaCache.size <= MAX_SESSION_AREAS) {
       break;
     }
     if (protectedKeys.has(key)) {
       continue;
     }
-    state.areaCache.delete(key);
+    appState.areaCache.delete(key);
   }
 }
 
@@ -397,85 +397,85 @@ function routeStopCacheKey(lineKey) {
 }
 
 function pruneLineStopsCache() {
-  if (state.lineStopsCache.size <= MAX_SESSION_ROUTE_STOP_PAYLOADS) {
+  if (appState.lineStopsCache.size <= MAX_SESSION_ROUTE_STOP_PAYLOADS) {
     return;
   }
 
-  const focusedCacheKey = state.focusedLineKey ? routeStopCacheKey(state.focusedLineKey) : "";
+  const focusedCacheKey = appState.focusedLineKey ? routeStopCacheKey(appState.focusedLineKey) : "";
 
-  const sorted = Array.from(state.lineStopsCache.entries()).sort(
+  const sorted = Array.from(appState.lineStopsCache.entries()).sort(
     (a, b) => Number(a[1]?.lastUsedAt || 0) - Number(b[1]?.lastUsedAt || 0)
   );
 
   for (const [cacheKey] of sorted) {
-    if (state.lineStopsCache.size <= MAX_SESSION_ROUTE_STOP_PAYLOADS) {
+    if (appState.lineStopsCache.size <= MAX_SESSION_ROUTE_STOP_PAYLOADS) {
       break;
     }
-    if (cacheKey === focusedCacheKey || state.inFlightLineStopKeys.has(cacheKey)) {
+    if (cacheKey === focusedCacheKey || appState.inFlightLineStopKeys.has(cacheKey)) {
       continue;
     }
-    state.lineStopsCache.delete(cacheKey);
+    appState.lineStopsCache.delete(cacheKey);
   }
 }
 
 function syncActiveAreaKeys(options = {}) {
   const now = Date.now();
-  const previousActiveAreaKeys = new Set(state.activeAreaKeys);
+  const previousActiveAreaKeys = new Set(appState.activeAreaKeys);
   const retainedVisibleKeys = options.retainVisibleKeys || null;
   const allowRetainOutsideRequested = Boolean(options.allowRetainOutsideRequested);
 
-  state.visibleAreaKeys = new Set();
+  appState.visibleAreaKeys = new Set();
 
-  for (const key of state.requestedAreaKeys) {
-    const entry = state.areaCache.get(key);
+  for (const key of appState.requestedAreaKeys) {
+    const entry = appState.areaCache.get(key);
     if (!entry) {
       continue;
     }
 
     entry.lastUsedAt = now;
-    state.visibleAreaKeys.add(key);
+    appState.visibleAreaKeys.add(key);
   }
 
   if (retainedVisibleKeys instanceof Set && options.mergeRetainedVisibleKeys) {
     for (const key of retainedVisibleKeys) {
-      if (!state.areaCache.has(key)) {
+      if (!appState.areaCache.has(key)) {
         continue;
       }
-      if (allowRetainOutsideRequested || state.requestedAreaKeys.has(key)) {
-        state.visibleAreaKeys.add(key);
+      if (allowRetainOutsideRequested || appState.requestedAreaKeys.has(key)) {
+        appState.visibleAreaKeys.add(key);
       }
     }
-  } else if (state.visibleAreaKeys.size === 0 && retainedVisibleKeys instanceof Set) {
+  } else if (appState.visibleAreaKeys.size === 0 && retainedVisibleKeys instanceof Set) {
     for (const key of retainedVisibleKeys) {
-      if (!state.areaCache.has(key)) {
+      if (!appState.areaCache.has(key)) {
         continue;
       }
-      if (allowRetainOutsideRequested || state.requestedAreaKeys.has(key)) {
-        state.visibleAreaKeys.add(key);
+      if (allowRetainOutsideRequested || appState.requestedAreaKeys.has(key)) {
+        appState.visibleAreaKeys.add(key);
       }
     }
   }
 
-  if (state.visibleAreaKeys.size === 0 && options.fallbackToAllCached) {
-    state.visibleAreaKeys = new Set(state.activeAreaKeys);
+  if (appState.visibleAreaKeys.size === 0 && options.fallbackToAllCached) {
+    appState.visibleAreaKeys = new Set(appState.activeAreaKeys);
   }
 
-  if (state.visibleAreaKeys.size > 0) {
-    state.activeAreaKeys = new Set(state.visibleAreaKeys);
+  if (appState.visibleAreaKeys.size > 0) {
+    appState.activeAreaKeys = new Set(appState.visibleAreaKeys);
   } else {
-    state.activeAreaKeys = previousActiveAreaKeys;
+    appState.activeAreaKeys = previousActiveAreaKeys;
   }
 }
 
 function resetViewAggregation() {
-  state.loadEpoch += 1;
-  state.requestedAreaKeys = new Set();
-  state.visibleAreaKeys = new Set();
-  state.activeAreaKeys = new Set();
-  state.fetchQueue = [];
-  state.queuedAreaKeys.clear();
-  state.focusedLineKey = "";
-  state.lastLoadStats = {
+  appState.loadEpoch += 1;
+  appState.requestedAreaKeys = new Set();
+  appState.visibleAreaKeys = new Set();
+  appState.activeAreaKeys = new Set();
+  appState.fetchQueue = [];
+  appState.queuedAreaKeys.clear();
+  appState.focusedLineKey = "";
+  appState.lastLoadStats = {
     requested: 0,
     cached: 0,
     queued: 0,
@@ -487,11 +487,11 @@ function resetViewAggregation() {
 
 function rebuildCombinedTransit() {
   const rebuildStart = performance.now();
-  if (state.activeAreaKeys.size === 0) {
-    state.transit = null;
-    state.lineSummaries = [];
-    state.loadedLineSummaries = [];
-    state.focusedLineKey = "";
+  if (appState.activeAreaKeys.size === 0) {
+    appState.transit = null;
+    appState.lineSummaries = [];
+    appState.loadedLineSummaries = [];
+    appState.focusedLineKey = "";
     return;
   }
 
@@ -545,7 +545,7 @@ function rebuildCombinedTransit() {
   const routeByLine = new Map();
   const lineByKeyAll = new Map();
   const visibleLineKeys = new Set();
-  const viewportBbox = normalizeBboxArray(state.currentViewportBbox);
+  const viewportBbox = normalizeBboxArray(appState.currentViewportBbox);
   const routeIntersectsViewport = (feature) => {
     if (!viewportBbox) {
       return true;
@@ -554,8 +554,8 @@ function rebuildCombinedTransit() {
     return geometryIntersectsBbox(feature?.geometry, viewportBbox);
   };
 
-  for (const cacheKey of state.activeAreaKeys) {
-    const payload = state.areaCache.get(cacheKey)?.payload;
+  for (const cacheKey of appState.activeAreaKeys) {
+    const payload = appState.areaCache.get(cacheKey)?.payload;
     if (!payload) {
       continue;
     }
@@ -584,7 +584,7 @@ function rebuildCombinedTransit() {
 
       const merged = mergeLineEntries(lineByKeyAll.get(lineKey), line);
       lineByKeyAll.set(lineKey, merged);
-      if (state.visibleAreaKeys.has(cacheKey)) {
+      if (appState.visibleAreaKeys.has(cacheKey)) {
         visibleLineKeys.add(lineKey);
       }
     }
@@ -594,7 +594,7 @@ function rebuildCombinedTransit() {
   for (const [lineKey, routeFeature] of routeByLine) {
     const stopCacheKey = typeof routeStopCacheKey === "function" ? routeStopCacheKey(lineKey) : null;
     if (!stopCacheKey) continue;
-    const stopEntry = state.lineStopsCache.get(stopCacheKey);
+    const stopEntry = appState.lineStopsCache.get(stopCacheKey);
     const fullGeo = stopEntry?.payload?.routesGeoJson?.features?.[0]?.geometry;
     if (fullGeo && fullGeo.coordinates && fullGeo.type) {
       routeByLine.set(lineKey, { ...routeFeature, geometry: fullGeo });
@@ -611,18 +611,18 @@ function rebuildCombinedTransit() {
     }
   }
 
-  if (state.focusedLineKey && !lineByKeyAll.has(state.focusedLineKey)) {
-    state.focusedLineKey = "";
+  if (appState.focusedLineKey && !lineByKeyAll.has(appState.focusedLineKey)) {
+    appState.focusedLineKey = "";
   }
 
   const effectiveVisibleLineKeys = new Set(visibleLineKeys);
 
-  for (const [lineKey, override] of state.manualLineVisibility.entries()) {
+  for (const [lineKey, override] of appState.manualLineVisibility.entries()) {
     const normalizedOverride = String(override || "").trim().toLowerCase();
     if (normalizedOverride === "on" && lineByKeyAll.has(lineKey)) {
       // Only include manual override if route geometry intersects current viewport
       const line = lineByKeyAll.get(lineKey);
-      if (line && geometryIntersectsBbox(line.geometry, state.currentViewportBbox)) {
+      if (line && geometryIntersectsBbox(line.geometry, appState.currentViewportBbox)) {
         effectiveVisibleLineKeys.add(lineKey);
       }
     } else if (normalizedOverride === "off") {
@@ -632,9 +632,9 @@ function rebuildCombinedTransit() {
   }
 
   const includeStopLineKeys = new Set();
-  if (state.focusedLineKey && lineByKeyAll.has(state.focusedLineKey)) {
-    includeStopLineKeys.add(state.focusedLineKey);
-  } else if (Boolean(state.showAllStops)) {
+  if (appState.focusedLineKey && lineByKeyAll.has(appState.focusedLineKey)) {
+    includeStopLineKeys.add(appState.focusedLineKey);
+  } else if (Boolean(appState.showAllStops)) {
     for (const lineKey of effectiveVisibleLineKeys) {
       includeStopLineKeys.add(lineKey);
     }
@@ -645,7 +645,7 @@ function rebuildCombinedTransit() {
   const activeStopTypeKey = ROUTE_STOP_TYPES_KEY;
   const now = Date.now();
 
-  for (const entry of state.lineStopsCache.values()) {
+  for (const entry of appState.lineStopsCache.values()) {
     if (!entry || entry.stopTypesKey !== activeStopTypeKey) {
       continue;
     }
@@ -755,7 +755,7 @@ function rebuildCombinedTransit() {
     return lineDisplayName(a).localeCompare(lineDisplayName(b));
   });
 
-  state.transit = {
+  appState.transit = {
     routesGeoJson: {
       type: "FeatureCollection",
       features: Array.from(routeByLine.values())
@@ -765,11 +765,11 @@ function rebuildCombinedTransit() {
       features: Array.from(stopByLineAndStation.values())
     }
   };
-  state.lineSummaries = lineSummaries;
-  state.loadedLineSummaries = loadedLineSummaries;
+  appState.lineSummaries = lineSummaries;
+  appState.loadedLineSummaries = loadedLineSummaries;
   const rebuildElapsed = performance.now() - rebuildStart;
   if (rebuildElapsed > 30) {
-    console.log(`[perf] rebuildCombinedTransit: ${rebuildElapsed.toFixed(1)}ms, ${state.activeAreaKeys.size} areas, ${lineSummaries.length} lines`);
+    console.log(`[perf] rebuildCombinedTransit: ${rebuildElapsed.toFixed(1)}ms, ${appState.activeAreaKeys.size} areas, ${lineSummaries.length} lines`);
   }
 }
 

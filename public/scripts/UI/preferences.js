@@ -149,32 +149,32 @@ function applyUserPreferences(preferences = {}) {
   const normalized = normalizePreferencePatch(preferences);
 
   if (Object.prototype.hasOwnProperty.call(normalized, "theme")) {
-    state.theme = normalized.theme;
-    document.body.setAttribute("data-theme", state.theme);
+    appState.theme = normalized.theme;
+    document.body.setAttribute("data-theme", appState.theme);
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "initialCitySlug")) {
-    state.initialCitySlug = normalized.initialCitySlug || state.initialCitySlug;
+    appState.initialCitySlug = normalized.initialCitySlug || appState.initialCitySlug;
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "lineViewAutoOpenEnabled")) {
-    state.lineViewAutoOpenEnabled = Boolean(normalized.lineViewAutoOpenEnabled);
+    appState.lineViewAutoOpenEnabled = Boolean(normalized.lineViewAutoOpenEnabled);
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "showAllStops")) {
-    state.showAllStops = Boolean(normalized.showAllStops);
+    appState.showAllStops = Boolean(normalized.showAllStops);
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "showPrivateOperators")) {
-    state.showPrivateOperators = Boolean(normalized.showPrivateOperators);
+    appState.showPrivateOperators = Boolean(normalized.showPrivateOperators);
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "showProblematicGeometries")) {
-    state.showProblematicGeometries = Boolean(normalized.showProblematicGeometries);
+    appState.showProblematicGeometries = Boolean(normalized.showProblematicGeometries);
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "activeModeKeys")) {
-    state.activeModeKeys = new Set(normalized.activeModeKeys);
+    appState.activeModeKeys = new Set(normalized.activeModeKeys);
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "activeFrequencyKeys")) {
-    state.activeFrequencyKeys = new Set(normalized.activeFrequencyKeys);
+    appState.activeFrequencyKeys = new Set(normalized.activeFrequencyKeys);
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "manualLineVisibility")) {
-    state.manualLineVisibility = new Map(Object.entries(normalized.manualLineVisibility));
+    appState.manualLineVisibility = new Map(Object.entries(normalized.manualLineVisibility));
   }
 
   renderModeFilterBar();
@@ -192,7 +192,7 @@ async function saveUserPreferences(patch = {}) {
     return null;
   }
 
-  if (!state.user) {
+  if (!appState.user) {
     for (const [key, value] of Object.entries(normalized)) {
       writeStoredPreference(key, value);
     }
@@ -205,7 +205,7 @@ async function saveUserPreferences(patch = {}) {
     body: JSON.stringify({ preferences: normalized })
   });
 
-  state.user = payload.user;
+  appState.user = payload.user;
   applyUserPreferences(payload.user?.preferences || {});
   return payload.user?.preferences || normalized;
 }

@@ -1,10 +1,10 @@
-﻿function getShownLines(options = {}) {
-  const query = String(state.lineSearchQuery || "").trim().toLowerCase();
+function getShownLines(options = {}) {
+  const query = String(appState.lineSearchQuery || "").trim().toLowerCase();
   const ignoreFrequency = Boolean(options.ignoreFrequency);
   const ignoreSearch = options.ignoreSearch === undefined ? true : Boolean(options.ignoreSearch);
   const hasQuery = Boolean(query) && !ignoreSearch;
 
-  const filtered = state.lineSummaries.filter((line) => {
+  const filtered = appState.lineSummaries.filter((line) => {
     if (!lineIsVisible(line, { ignoreFrequency })) {
       return false;
     }
@@ -47,18 +47,18 @@ function lineHasCachedStopCount(line) {
 }
 
 function getLoadedLines() {
-  if (Array.isArray(state.loadedLineSummaries) && state.loadedLineSummaries.length > 0) {
-    return state.loadedLineSummaries;
+  if (Array.isArray(appState.loadedLineSummaries) && appState.loadedLineSummaries.length > 0) {
+    return appState.loadedLineSummaries;
   }
 
-  return Array.isArray(state.lineSummaries) ? state.lineSummaries : [];
+  return Array.isArray(appState.lineSummaries) ? appState.lineSummaries : [];
 }
 
 function getToggleCountLines() {
-  const summaryLines = Array.isArray(state.viewportSummaryTransit?.lineSummaries)
-    ? state.viewportSummaryTransit.lineSummaries
-    : Array.isArray(state.viewportSummaryLineSummaries)
-      ? state.viewportSummaryLineSummaries
+  const summaryLines = Array.isArray(appState.viewportSummaryTransit?.lineSummaries)
+    ? appState.viewportSummaryTransit.lineSummaries
+    : Array.isArray(appState.viewportSummaryLineSummaries)
+      ? appState.viewportSummaryLineSummaries
       : [];
   const sourceLines = summaryLines.length > 0 ? summaryLines : getLoadedLines();
   const deduped = new Map();
@@ -83,15 +83,15 @@ function lineEligibleForToggleCounts(line, options = {}) {
     return false;
   }
 
-  if (!state.showProblematicGeometries && line?.lineKey) {
-    const routeReview = state.routeReviewsByCity.get(line.lineKey);
+  if (!appState.showProblematicGeometries && line?.lineKey) {
+    const routeReview = appState.routeReviewsByCity.get(line.lineKey);
     if (routeReview?.problematic_override === true) {
       return false;
     }
   }
 
-  if (!state.showPrivateOperators && line?.operatorName) {
-    const agencyReview = state.agencyReviewsByCity.get(line.operatorName);
+  if (!appState.showPrivateOperators && line?.operatorName) {
+    const agencyReview = appState.agencyReviewsByCity.get(line.operatorName);
     if (agencyReview?.allowed_override === false) {
       return false;
     }
@@ -113,14 +113,14 @@ function getVisibleLineKeys(shownLines) {
 }
 
 function getMapFeatureVisibilityState() {
-  if (!state.transit) {
+  if (!appState.transit) {
     return null;
   }
 
   const shownLines = getShownLines();
   const visibleLineKeys = getVisibleLineKeys(shownLines);
-  const hasFocus = Boolean(state.focusedLineKey) && visibleLineKeys.has(state.focusedLineKey);
-  const showAllStops = Boolean(state.showAllStops) && !hasFocus;
+  const hasFocus = Boolean(appState.focusedLineKey) && visibleLineKeys.has(appState.focusedLineKey);
+  const showAllStops = Boolean(appState.showAllStops) && !hasFocus;
 
   return {
     shownLines,
@@ -136,13 +136,13 @@ function buildMapFeatureStateSignature(visibility) {
   }
 
   const visibleLineKeys = Array.from(visibility.visibleLineKeys || []).sort().join("|");
-  const visitedSignature = Array.from(state.visitedByLine.entries())
+  const visitedSignature = Array.from(appState.visitedByLine.entries())
     .map(([lineKey, set]) => `${String(lineKey || "").trim()}:${Number(set?.size || 0)}`)
     .sort()
     .join("|");
 
   return [
-    visibility.hasFocus ? state.focusedLineKey : "",
+    visibility.hasFocus ? appState.focusedLineKey : "",
     visibility.showAllStops ? "1" : "0",
     visibleLineKeys,
     visitedSignature
@@ -150,12 +150,12 @@ function buildMapFeatureStateSignature(visibility) {
 }
 
 function syncMapSourceData() {
-  if (!state.mapReady || !state.map) {
+  if (!appState.mapReady || !appState.map) {
     return;
   }
 
-  const routesSource = state.map.getSource("routes");
-  const stopsSource = state.map.getSource("stops");
+  const routesSource = appState.map.getSource("routes");
+  const stopsSource = appState.map.getSource("stops");
 
   const normalizeRouteFeature = (feature) => {
     const lineKey = String(feature?.properties?.line_key || feature?.id || "").trim();
@@ -190,39 +190,39 @@ function syncMapSourceData() {
     };
   };
 
-  if (!state.transit) {
+  if (!appState.transit) {
     if (routesSource) {
       routesSource.setData(emptyFeatureCollection());
     }
     if (stopsSource) {
       stopsSource.setData(emptyFeatureCollection());
     }
-    state.mapRenderedTransit = null;
-    state.lastMapFeatureStateSignature = "";
-    state.mapRouteFeatureStateCache = new Map();
-    state.mapStopFeatureStateCache = new Map();
+    appState.mapRenderedTransit = null;
+    appState.lastMapFeatureStateSignature = "";
+    appState.mapRouteFeatureStateCache = new Map();
+    appState.mapStopFeatureStateCache = new Map();
     return;
   }
 
-  if (state.transit !== state.mapRenderedTransit) {
-    state.lastMapFeatureStateSignature = "";
-    state.mapRouteFeatureStateCache = new Map();
-    state.mapStopFeatureStateCache = new Map();
+  if (appState.transit !== appState.mapRenderedTransit) {
+    appState.lastMapFeatureStateSignature = "";
+    appState.mapRouteFeatureStateCache = new Map();
+    appState.mapStopFeatureStateCache = new Map();
 
-    const routes = Array.isArray(state.transit?.routesGeoJson?.features)
+    const routes = Array.isArray(appState.transit?.routesGeoJson?.features)
       ? {
-          ...state.transit.routesGeoJson,
-          features: state.transit.routesGeoJson.features.map(normalizeRouteFeature)
+          ...appState.transit.routesGeoJson,
+          features: appState.transit.routesGeoJson.features.map(normalizeRouteFeature)
         }
       : emptyFeatureCollection();
 
     // Replace focused route's geometry with full-detail version from route-stops cache
-    if (state.focusedLineKey && routes.features.length > 0) {
-      const stopCacheKey = routeStopCacheKey(state.focusedLineKey);
-      const stopCache = state.lineStopsCache.get(stopCacheKey);
+    if (appState.focusedLineKey && routes.features.length > 0) {
+      const stopCacheKey = routeStopCacheKey(appState.focusedLineKey);
+      const stopCache = appState.lineStopsCache.get(stopCacheKey);
       const fullGeo = stopCache?.payload?.routesGeoJson?.features?.[0]?.geometry;
       if (fullGeo) {
-        const idx = routes.features.findIndex((f) => f?.properties?.line_key === state.focusedLineKey);
+        const idx = routes.features.findIndex((f) => f?.properties?.line_key === appState.focusedLineKey);
         if (idx >= 0) {
           const orig = routes.features[idx];
           routes.features[idx] = { ...orig, geometry: fullGeo };
@@ -230,17 +230,17 @@ function syncMapSourceData() {
       }
     }
 
-    const stops = Array.isArray(state.transit?.stopsGeoJson?.features)
+    const stops = Array.isArray(appState.transit?.stopsGeoJson?.features)
       ? {
-          ...state.transit.stopsGeoJson,
-          features: state.transit.stopsGeoJson.features.map(normalizeStopFeature)
+          ...appState.transit.stopsGeoJson,
+          features: appState.transit.stopsGeoJson.features.map(normalizeStopFeature)
         }
       : emptyFeatureCollection();
 
   if (routesSource) {
       routesSource.setData(routes);
-      if (state.focusedLineKey) {
-        const focused = routes.features.find((f) => f?.properties?.line_key === state.focusedLineKey);
+      if (appState.focusedLineKey) {
+        const focused = routes.features.find((f) => f?.properties?.line_key === appState.focusedLineKey);
         if (focused?.geometry?.coordinates) {
           const coords = focused.geometry.coordinates;
           const coordCount = Array.isArray(coords[0]?.[0]) ? coords.reduce((sum, seg) => sum + seg.length, 0) : coords.length;
@@ -254,12 +254,12 @@ function syncMapSourceData() {
       stopsSource.setData(stops);
     }
 
-    state.mapRenderedTransit = state.transit || null;
+    appState.mapRenderedTransit = appState.transit || null;
   }
 }
 
 function syncMapFeatureStates() {
-  if (!state.mapReady || !state.map || !state.transit) {
+  if (!appState.mapReady || !appState.map || !appState.transit) {
     return;
   }
 
@@ -269,20 +269,20 @@ function syncMapFeatureStates() {
   }
 
   const signature = buildMapFeatureStateSignature(visibility);
-  if (signature === state.lastMapFeatureStateSignature) {
+  if (signature === appState.lastMapFeatureStateSignature) {
     return;
   }
-  state.lastMapFeatureStateSignature = signature;
+  appState.lastMapFeatureStateSignature = signature;
 
-  const routeStateCache = state.mapRouteFeatureStateCache instanceof Map
-    ? state.mapRouteFeatureStateCache
+  const routeStateCache = appState.mapRouteFeatureStateCache instanceof Map
+    ? appState.mapRouteFeatureStateCache
     : new Map();
-  const stopStateCache = state.mapStopFeatureStateCache instanceof Map
-    ? state.mapStopFeatureStateCache
+  const stopStateCache = appState.mapStopFeatureStateCache instanceof Map
+    ? appState.mapStopFeatureStateCache
     : new Map();
 
-  const routeFeatures = Array.isArray(state.transit.routesGeoJson?.features)
-    ? state.transit.routesGeoJson.features
+  const routeFeatures = Array.isArray(appState.transit.routesGeoJson?.features)
+    ? appState.transit.routesGeoJson.features
     : [];
   const seenRouteIds = new Set();
   for (const feature of routeFeatures) {
@@ -294,7 +294,7 @@ function syncMapFeatureStates() {
     seenRouteIds.add(featureId);
 
     const visible = visibility.visibleLineKeys.has(lineKey) ? 1 : 0;
-    const focused = visible && (!visibility.hasFocus || lineKey === state.focusedLineKey) ? 1 : 0;
+    const focused = visible && (!visibility.hasFocus || lineKey === appState.focusedLineKey) ? 1 : 0;
     const nextState = {
       visible,
       focused,
@@ -311,7 +311,7 @@ function syncMapFeatureStates() {
       continue;
     }
 
-    state.map.setFeatureState(
+    appState.map.setFeatureState(
       { source: "routes", id: featureId },
       nextState
     );
@@ -324,8 +324,8 @@ function syncMapFeatureStates() {
     }
   }
 
-  const stopFeatures = Array.isArray(state.transit.stopsGeoJson?.features)
-    ? state.transit.stopsGeoJson.features
+  const stopFeatures = Array.isArray(appState.transit.stopsGeoJson?.features)
+    ? appState.transit.stopsGeoJson.features
     : [];
   const seenStopIds = new Set();
   for (const feature of stopFeatures) {
@@ -339,7 +339,7 @@ function syncMapFeatureStates() {
     seenStopIds.add(featureId);
 
     const visible = visibility.hasFocus
-      ? lineKey === state.focusedLineKey
+      ? lineKey === appState.focusedLineKey
       : visibility.showAllStops && visibility.visibleLineKeys.has(lineKey)
         ? 1
         : 0;
@@ -363,7 +363,7 @@ function syncMapFeatureStates() {
       continue;
     }
 
-    state.map.setFeatureState(
+    appState.map.setFeatureState(
       { source: "stops", id: featureId },
       nextState
     );
@@ -376,22 +376,22 @@ function syncMapFeatureStates() {
     }
   }
 
-  state.mapRouteFeatureStateCache = routeStateCache;
-  state.mapStopFeatureStateCache = stopStateCache;
+  appState.mapRouteFeatureStateCache = routeStateCache;
+  appState.mapStopFeatureStateCache = stopStateCache;
 }
 
 function renderMapData() {
   const t0 = performance.now();
-  if (!state.mapReady || !state.map) {
+  if (!appState.mapReady || !appState.map) {
     return;
   }
 
   syncMapSourceData();
   syncMapFeatureStates();
 
-  const focusMaskSource = state.map.getSource("focus-mask");
+  const focusMaskSource = appState.map.getSource("focus-mask");
   if (focusMaskSource) {
-    focusMaskSource.setData(focusMaskFeatureCollection(Boolean(state.focusedLineKey)));
+    focusMaskSource.setData(focusMaskFeatureCollection(Boolean(appState.focusedLineKey)));
   }
   const elapsed = performance.now() - t0;
   if (elapsed > 30) {
@@ -400,19 +400,19 @@ function renderMapData() {
 }
 
 function updateShowAllStopsUi() {
-  if (!els.showAllStopsBtn) {
+  if (!dom.showAllStopsBtn) {
     return;
   }
 
-  const active = Boolean(state.showAllStops);
-  els.showAllStopsBtn.classList.toggle("is-active", active);
-  els.showAllStopsBtn.setAttribute("aria-pressed", active ? "true" : "false");
-  els.showAllStopsBtn.textContent = active ? "All Stops On" : "Show All Stops";
+  const active = Boolean(appState.showAllStops);
+  dom.showAllStopsBtn.classList.toggle("is-active", active);
+  dom.showAllStopsBtn.setAttribute("aria-pressed", active ? "true" : "false");
+  dom.showAllStopsBtn.textContent = active ? "All Stops On" : "Show All Stops";
 }
 
 function setShowAllStops(enabled, options = {}) {
-  state.showAllStops = Boolean(enabled);
-  persistBooleanToStorage(SHOW_ALL_STOPS_STORAGE_KEY, state.showAllStops);
+  appState.showAllStops = Boolean(enabled);
+  persistBooleanToStorage(SHOW_ALL_STOPS_STORAGE_KEY, appState.showAllStops);
   updateShowAllStopsUi();
   renderMapData();
 
@@ -421,197 +421,9 @@ function setShowAllStops(enabled, options = {}) {
   }
 
   setStatus(
-    state.showAllStops ? "Showing all stops." : "Showing route-linked stops only.",
+    appState.showAllStops ? "Showing all stops." : "Showing route-linked stops only.",
     "ok"
   );
-}
-
-function lineSummaryByKey() {
-  return new Map(state.lineSummaries.map((line) => [line.lineKey, line]));
-}
-
-function renderModeFilterBar() {
-  els.modeFilterBar.innerHTML = "";
-
-  const linesForCounts = getToggleCountLines().filter((line) => lineEligibleForToggleCounts(line));
-  const counts = new Map(MODE_DEFS.map((mode) => [mode.key, 0]));
-
-  for (const line of linesForCounts) {
-    const modeKey = lineModeKey(line);
-    counts.set(modeKey, (counts.get(modeKey) || 0) + 1);
-  }
-
-  const chips = MODE_DEFS.map((modeDef) => ({
-    key: modeDef.key,
-    label: modeDef.label,
-    count: modeDef.key === MODE_FILTER_ALL ? linesForCounts.length : counts.get(modeDef.key) || 0
-  }));
-  const uncertainCounts = areFilterCountsUncertain();
-
-  for (const chip of chips) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "mode-chip";
-    button.textContent = `${chip.label} (${filterChipCountLabel(chip.count, uncertainCounts)})`;
-    if (uncertainCounts) {
-      button.title = "Route totals are still loading for this view.";
-    }
-
-    if (state.activeModeKeys.has(chip.key)) {
-      button.classList.add("is-active");
-    }
-
-    button.addEventListener("click", () => {
-      if (chip.key === MODE_FILTER_ALL) {
-        state.activeModeKeys = new Set([MODE_FILTER_ALL]);
-      } else {
-        if (state.activeModeKeys.has(chip.key)) {
-          state.activeModeKeys.delete(chip.key);
-        } else {
-          state.activeModeKeys.delete(MODE_FILTER_ALL);
-          state.activeModeKeys.add(chip.key);
-        }
-
-        if (!state.activeModeKeys.size) {
-          state.activeModeKeys.add(MODE_FILTER_ALL);
-        }
-      }
-
-      normalizeModeSelection();
-      clearStatusPin();
-      resetClearRouteProgressConfirmation();
-
-      const shown = getShownLines();
-      if (state.focusedLineKey && !shown.some((line) => line.lineKey === state.focusedLineKey)) {
-        state.focusedLineKey = "";
-      }
-
-      renderModeFilterBar();
-      renderLineList();
-      renderMapData();
-      renderProgress();
-      restoreUserStatusFromFocus();
-
-      const selectedLabels = MODE_DEFS.filter((modeDef) => state.activeModeKeys.has(modeDef.key)).map(
-        (modeDef) => modeDef.label
-      );
-
-      setStatus("Mode filter updated.", "ok", `Showing: ${selectedLabels.join(", ")}.`);
-
-      loadVisibleTransit({ forceRefresh: false, reason: "mode-filter-change" }).catch((error) => {
-        setBackendStatus(`Mode-filter fetch failed: ${error.message}`);
-      });
-      if (typeof saveDefaultPresetDebounced === "function") {
-        try { saveDefaultPresetDebounced(); } catch (e) {}
-      }
-    });
-
-    els.modeFilterBar.append(button);
-  }
-}
-
-function renderFrequencyFilterBar() {
-  els.frequencyFilterBar.innerHTML = "";
-
-  const baseLines = getToggleCountLines().filter((line) =>
-    lineEligibleForToggleCounts(line, {
-      requireModeMatch: true
-    })
-  );
-
-  const buckets = new Map([
-    [FREQUENCY_FILTER_FREQUENT, 0],
-    [FREQUENCY_FILTER_REGULAR, 0],
-    [FREQUENCY_FILTER_LOCAL, 0],
-    [FREQUENCY_FILTER_UNKNOWN, 0]
-  ]);
-
-  for (const line of baseLines) {
-    const bucket = lineFrequencyBucket(line);
-    buckets.set(bucket, (buckets.get(bucket) || 0) + 1);
-  }
-
-  const chips = [
-    {
-      key: FREQUENCY_FILTER_ALL,
-      label: frequencyBucketLabel(FREQUENCY_FILTER_ALL),
-      count: baseLines.length
-    },
-    {
-      key: FREQUENCY_FILTER_FREQUENT,
-      label: frequencyBucketLabel(FREQUENCY_FILTER_FREQUENT),
-      count: buckets.get(FREQUENCY_FILTER_FREQUENT) || 0
-    },
-    {
-      key: FREQUENCY_FILTER_REGULAR,
-      label: frequencyBucketLabel(FREQUENCY_FILTER_REGULAR),
-      count: buckets.get(FREQUENCY_FILTER_REGULAR) || 0
-    },
-    {
-      key: FREQUENCY_FILTER_LOCAL,
-      label: frequencyBucketLabel(FREQUENCY_FILTER_LOCAL),
-      count: buckets.get(FREQUENCY_FILTER_LOCAL) || 0
-    },
-    {
-      key: FREQUENCY_FILTER_UNKNOWN,
-      label: "Unknown",
-      count: buckets.get(FREQUENCY_FILTER_UNKNOWN) || 0
-    }
-  ];
-
-  for (const chip of chips) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "mode-chip";
-    button.textContent = `${chip.label} (${chip.count})`;
-
-    if (state.activeFrequencyKeys.has(chip.key)) {
-      button.classList.add("is-active");
-    }
-
-    button.addEventListener("click", () => {
-      if (chip.key === FREQUENCY_FILTER_ALL) {
-        state.activeFrequencyKeys = new Set([FREQUENCY_FILTER_ALL]);
-      } else {
-        if (state.activeFrequencyKeys.has(chip.key)) {
-          state.activeFrequencyKeys.delete(chip.key);
-        } else {
-          state.activeFrequencyKeys.delete(FREQUENCY_FILTER_ALL);
-          state.activeFrequencyKeys.add(chip.key);
-        }
-
-        if (!state.activeFrequencyKeys.size) {
-          state.activeFrequencyKeys.add(FREQUENCY_FILTER_ALL);
-        }
-      }
-
-      normalizeFrequencySelection();
-      clearStatusPin();
-      resetClearRouteProgressConfirmation();
-
-      const shown = getShownLines();
-      if (state.focusedLineKey && !shown.some((line) => line.lineKey === state.focusedLineKey)) {
-        state.focusedLineKey = "";
-      }
-
-      renderFrequencyFilterBar();
-      renderLineList();
-      renderMapData();
-      renderProgress();
-      restoreUserStatusFromFocus();
-
-      const selected = Array.from(state.activeFrequencyKeys)
-        .map((value) => frequencyBucketLabel(value))
-        .join(", ");
-
-      setStatus("Frequency filter updated.", "ok", `Active frequencies: ${selected}.`);
-      if (typeof saveDefaultPresetDebounced === "function") {
-        try { saveDefaultPresetDebounced(); } catch (e) {}
-      }
-    });
-
-    els.frequencyFilterBar.append(button);
-  }
 }
 
 function compactRouteStopsPayload(payload) {
@@ -662,7 +474,7 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
   }
 
   const cacheKey = routeStopCacheKey(normalizedLineKey);
-  const existing = state.lineStopsCache.get(cacheKey);
+  const existing = appState.lineStopsCache.get(cacheKey);
   const requestOptions = { ...options };
   if (existing && !requestOptions.forceRefresh) {
     if (requestOptions.cacheOnly) {
@@ -672,8 +484,8 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
 
     const needsPatternRefresh = !existing.payload?.directionStopPatterns && !existing.patternsRefreshAttempted;
     if (!needsPatternRefresh) {
-      if (state.routeStopsAutoLoadAttempts) {
-        state.routeStopsAutoLoadAttempts.delete(cacheKey);
+      if (appState.routeStopsAutoLoadAttempts) {
+        appState.routeStopsAutoLoadAttempts.delete(cacheKey);
       }
       existing.lastUsedAt = Date.now();
       refreshRouteStopDependentUi({
@@ -686,15 +498,15 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
     requestOptions.silent = true;
   }
 
-  if (state.inFlightLineStopKeys.has(cacheKey)) {
+  if (appState.inFlightLineStopKeys.has(cacheKey)) {
     return false;
   }
 
-  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  const line = appState.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
   const lineLabel = line ? lineDisplayName(line) : normalizedLineKey;
   const routeStopLookupKey = String(line?.routeOnestopId || normalizedLineKey).trim();
 
-  state.inFlightLineStopKeys.add(cacheKey);
+  appState.inFlightLineStopKeys.add(cacheKey);
   updateLoadingStatus();
 
   if (!requestOptions.silent) {
@@ -726,7 +538,7 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
 
     const compactPayload = compactRouteStopsPayload(payload);
 
-    state.lineStopsCache.set(cacheKey, {
+    appState.lineStopsCache.set(cacheKey, {
       lineKey: normalizedLineKey,
       stopTypesKey: ROUTE_STOP_TYPES_KEY,
       payload: compactPayload,
@@ -734,8 +546,8 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
       lastUsedAt: Date.now()
     });
 
-    if (state.routeStopsAutoLoadAttempts) {
-      state.routeStopsAutoLoadAttempts.delete(cacheKey);
+    if (appState.routeStopsAutoLoadAttempts) {
+      appState.routeStopsAutoLoadAttempts.delete(cacheKey);
     }
 
     pruneLineStopsCache();
@@ -761,7 +573,7 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
     }
     return false;
   } finally {
-    state.inFlightLineStopKeys.delete(cacheKey);
+    appState.inFlightLineStopKeys.delete(cacheKey);
     updateLoadingStatus();
   }
 }
@@ -809,7 +621,7 @@ function applyHeadwayUpdateToCachedTransit(lineKey, headwayUpdate) {
 
   let updated = false;
 
-  state.lineSummaries = state.lineSummaries.map((line) => {
+  appState.lineSummaries = appState.lineSummaries.map((line) => {
     if (line.lineKey !== normalizedLineKey) {
       return line;
     }
@@ -821,8 +633,8 @@ function applyHeadwayUpdateToCachedTransit(lineKey, headwayUpdate) {
     };
   });
 
-  if (state.transit?.routesGeoJson?.features) {
-    for (const feature of state.transit.routesGeoJson.features) {
+  if (appState.transit?.routesGeoJson?.features) {
+    for (const feature of appState.transit.routesGeoJson.features) {
       const featureLineKey = String(feature?.properties?.line_key || "").trim();
       if (featureLineKey !== normalizedLineKey) {
         continue;
@@ -838,7 +650,7 @@ function applyHeadwayUpdateToCachedTransit(lineKey, headwayUpdate) {
     }
   }
 
-  for (const cacheEntry of state.areaCache.values()) {
+  for (const cacheEntry of appState.areaCache.values()) {
     const payload = cacheEntry?.payload;
     if (!payload) {
       continue;
@@ -906,14 +718,14 @@ function applyRouteStopCountSummaryToCachedTransit(lineKey, stopCount) {
     };
   };
 
-  state.lineSummaries = state.lineSummaries.map(updateLine);
+  appState.lineSummaries = appState.lineSummaries.map(updateLine);
 
-  if (Array.isArray(state.loadedLineSummaries) && state.loadedLineSummaries.length > 0) {
-    state.loadedLineSummaries = state.loadedLineSummaries.map(updateLine);
+  if (Array.isArray(appState.loadedLineSummaries) && appState.loadedLineSummaries.length > 0) {
+    appState.loadedLineSummaries = appState.loadedLineSummaries.map(updateLine);
   }
 
-  if (state.transit?.routesGeoJson?.features) {
-    state.transit.routesGeoJson.features = state.transit.routesGeoJson.features.map((feature) => {
+  if (appState.transit?.routesGeoJson?.features) {
+    appState.transit.routesGeoJson.features = appState.transit.routesGeoJson.features.map((feature) => {
       const featureLineKey = String(feature?.properties?.line_key || "").trim();
       if (featureLineKey !== normalizedLineKey) {
         return feature;
@@ -930,7 +742,7 @@ function applyRouteStopCountSummaryToCachedTransit(lineKey, stopCount) {
     });
   }
 
-  for (const cacheEntry of state.areaCache.values()) {
+  for (const cacheEntry of appState.areaCache.values()) {
     const payload = cacheEntry?.payload;
     if (!payload) {
       continue;
@@ -981,7 +793,7 @@ async function loadRouteStopCountSummary(lineKey, options = {}) {
     return false;
   }
 
-  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  const line = appState.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
   if (!line) {
     return false;
   }
@@ -990,12 +802,12 @@ async function loadRouteStopCountSummary(lineKey, options = {}) {
     return true;
   }
 
-  if (state.routeStopCountLoadAttempts.has(normalizedLineKey) || state.inFlightRouteStopCountKeys.has(normalizedLineKey)) {
+  if (appState.routeStopCountLoadAttempts.has(normalizedLineKey) || appState.inFlightRouteStopCountKeys.has(normalizedLineKey)) {
     return false;
   }
 
-  state.routeStopCountLoadAttempts.add(normalizedLineKey);
-  state.inFlightRouteStopCountKeys.add(normalizedLineKey);
+  appState.routeStopCountLoadAttempts.add(normalizedLineKey);
+  appState.inFlightRouteStopCountKeys.add(normalizedLineKey);
 
   try {
     const routeLookupKey = String(line.routeOnestopId || normalizedLineKey).trim();
@@ -1023,12 +835,12 @@ async function loadRouteStopCountSummary(lineKey, options = {}) {
     }
     return false;
   } finally {
-    state.inFlightRouteStopCountKeys.delete(normalizedLineKey);
+    appState.inFlightRouteStopCountKeys.delete(normalizedLineKey);
   }
 }
 
 async function loadVisibleRouteStopCounts() {
-  if (!state.lineSummaries.length) {
+  if (!appState.lineSummaries.length) {
     return false;
   }
 
@@ -1049,19 +861,19 @@ async function loadVisibleRouteStopCounts() {
       return false;
     }
 
-    if (state.routeStopCountLoadAttempts.has(line.lineKey)) {
+    if (appState.routeStopCountLoadAttempts.has(line.lineKey)) {
       return false;
     }
 
-    if (state.inFlightRouteStopCountKeys.has(line.lineKey)) {
+    if (appState.inFlightRouteStopCountKeys.has(line.lineKey)) {
       return false;
     }
 
-    if (state.focusedLineKey === line.lineKey) {
+    if (appState.focusedLineKey === line.lineKey) {
       return false;
     }
 
-    if (state.lineViewOpen && state.lineViewLineKey === line.lineKey) {
+    if (appState.lineViewOpen && appState.lineViewLineKey === line.lineKey) {
       return false;
     }
 
@@ -1080,7 +892,7 @@ async function loadVisibleRouteStopCounts() {
   if (results.some(Boolean)) {
     renderLineList();
     renderProgress();
-    if (typeof renderLineView === "function" && state.lineViewOpen) {
+    if (typeof renderLineView === "function" && appState.lineViewOpen) {
       renderLineView();
     }
     if (typeof updateLoadingStatus === "function") {
@@ -1097,7 +909,7 @@ async function ensureLineHeadwayLoaded(lineKey, options = {}) {
     return false;
   }
 
-  const line = state.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
+  const line = appState.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
   if (!line) {
     return false;
   }
@@ -1106,14 +918,14 @@ async function ensureLineHeadwayLoaded(lineKey, options = {}) {
     return false;
   }
 
-  if (state.inFlightHeadwayLineKeys.has(normalizedLineKey)) {
+  if (appState.inFlightHeadwayLineKeys.has(normalizedLineKey)) {
     return false;
   }
 
   const lineLabel = lineDisplayName(line);
   const routeLookupKey = String(line.routeOnestopId || normalizedLineKey).trim();
 
-  state.inFlightHeadwayLineKeys.add(normalizedLineKey);
+  appState.inFlightHeadwayLineKeys.add(normalizedLineKey);
 
   try {
     const params = new URLSearchParams({
@@ -1147,7 +959,7 @@ async function ensureLineHeadwayLoaded(lineKey, options = {}) {
     }
     return false;
   } finally {
-    state.inFlightHeadwayLineKeys.delete(normalizedLineKey);
+    appState.inFlightHeadwayLineKeys.delete(normalizedLineKey);
   }
 }
 
@@ -1166,8 +978,8 @@ function applyLineVisibilityPreference(line, targetVisibility) {
   resetClearRouteProgressConfirmation();
 
   const shown = getShownLines({ ignoreSearch: true });
-  if (state.focusedLineKey && !shown.some((entry) => entry.lineKey === state.focusedLineKey)) {
-    state.focusedLineKey = "";
+  if (appState.focusedLineKey && !shown.some((entry) => entry.lineKey === appState.focusedLineKey)) {
+    appState.focusedLineKey = "";
   }
 
   refreshUiFromState();

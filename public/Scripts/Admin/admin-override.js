@@ -39,20 +39,20 @@ const els = {
 };
 
 async function getAdminKey() {
-  state.adminKey = String(sessionStorage.getItem(SESSION_KEY) || "").trim();
+  appState.adminKey = String(sessionStorage.getItem(SESSION_KEY) || "").trim();
 
-  if (!state.adminKey) {
+  if (!appState.adminKey) {
     setStatus("Please log in at /admin first.");
     return null;
   }
 
-  return state.adminKey;
+  return appState.adminKey;
 }
 
 function setStatus(message, kind = "neutral") {
-  if (els.overrideStatus) {
-    els.overrideStatus.textContent = message;
-    els.overrideStatus.className = `override-status status-${kind}`;
+  if (dom.overrideStatus) {
+    dom.overrideStatus.textContent = message;
+    dom.overrideStatus.className = `override-status status-${kind}`;
   }
   console.log(`[Override] ${message}`);
 }
@@ -81,41 +81,41 @@ async function apiRequest(path, options = {}) {
 }
 
 function initializeMap() {
-  if (state.mapReady) return;
+  if (appState.mapReady) return;
 
-  state.map = new maplibregl.Map({
-    container: els.overrideMap,
+  appState.map = new maplibregl.Map({
+    container: dom.overrideMap,
     style: "https://demotiles.maplibre.org/style.json",
     center: [-122.33, 47.6],
     zoom: 11,
     attributionControl: true
   });
 
-  state.map.on("load", () => {
-    state.mapReady = true;
+  appState.map.on("load", () => {
+    appState.mapReady = true;
     setStatus("Map ready");
     renderRouteMap();
   });
 
-  state.map.on("style.load", () => {
+  appState.map.on("style.load", () => {
     renderRouteMap();
   });
 
-  state.map.on("error", (err) => {
+  appState.map.on("error", (err) => {
     console.error("Map error:", err);
   });
 
   // Map mode buttons
-  els.overrideStreetsModeBtn?.addEventListener("click", () => {
-    state.mapMode = "streets";
-    state.map.setStyle("https://demotiles.maplibre.org/style.json");
+  dom.overrideStreetsModeBtn?.addEventListener("click", () => {
+    appState.mapMode = "streets";
+    appState.map.setStyle("https://demotiles.maplibre.org/style.json");
   });
 
-  els.overrideSatelliteModeBtn?.addEventListener("click", () => {
-    state.mapMode = "satellite";
-    state.map.setStyle("https://demotiles.maplibre.org/styles/osm-bright-gl-style/style-cdn.json").catch(() => {
+  dom.overrideSatelliteModeBtn?.addEventListener("click", () => {
+    appState.mapMode = "satellite";
+    appState.map.setStyle("https://demotiles.maplibre.org/styles/osm-bright-gl-style/style-cdn.json").catch(() => {
       // Fallback to streets if satellite unavailable
-      state.map.setStyle("https://demotiles.maplibre.org/style.json");
+      appState.map.setStyle("https://demotiles.maplibre.org/style.json");
     });
   });
 }
@@ -135,15 +135,15 @@ function routeStopsFromTransitPayload(payload) {
 }
 
 function renderRouteMap() {
-  if (!state.map || !state.mapReady || !state.currentRouteTransit) {
+  if (!appState.map || !appState.mapReady || !appState.currentRouteTransit) {
     return;
   }
 
-  const routesGeoJson = state.currentRouteTransit.routesGeoJson || { type: "FeatureCollection", features: [] };
-  const stopsGeoJson = state.currentRouteTransit.stopsGeoJson || { type: "FeatureCollection", features: [] };
+  const routesGeoJson = appState.currentRouteTransit.routesGeoJson || { type: "FeatureCollection", features: [] };
+  const stopsGeoJson = appState.currentRouteTransit.stopsGeoJson || { type: "FeatureCollection", features: [] };
 
   const updateSource = (sourceId, data) => {
-    const source = state.map.getSource(sourceId);
+    const source = appState.map.getSource(sourceId);
     if (source && typeof source.setData === "function") {
       source.setData(data);
       return true;
@@ -152,13 +152,13 @@ function renderRouteMap() {
   };
 
   if (!updateSource("override-route-source", routesGeoJson)) {
-    if (!state.map.getSource("override-route-source")) {
-      state.map.addSource("override-route-source", {
+    if (!appState.map.getSource("override-route-source")) {
+      appState.map.addSource("override-route-source", {
         type: "geojson",
         data: routesGeoJson
       });
-      if (!state.map.getLayer("override-route-line")) {
-        state.map.addLayer({
+      if (!appState.map.getLayer("override-route-line")) {
+        appState.map.addLayer({
           id: "override-route-line",
           type: "line",
           source: "override-route-source",
@@ -173,13 +173,13 @@ function renderRouteMap() {
   }
 
   if (!updateSource("override-stop-source", stopsGeoJson)) {
-    if (!state.map.getSource("override-stop-source")) {
-      state.map.addSource("override-stop-source", {
+    if (!appState.map.getSource("override-stop-source")) {
+      appState.map.addSource("override-stop-source", {
         type: "geojson",
         data: stopsGeoJson
       });
-      if (!state.map.getLayer("override-stop-circles")) {
-        state.map.addLayer({
+      if (!appState.map.getLayer("override-stop-circles")) {
+        appState.map.addLayer({
           id: "override-stop-circles",
           type: "circle",
           source: "override-stop-source",
@@ -220,16 +220,16 @@ function renderRouteMap() {
   }
 
   if (hasBounds) {
-    state.map.fitBounds(bounds, { padding: 70, duration: 250, maxZoom: 14 });
+    appState.map.fitBounds(bounds, { padding: 70, duration: 250, maxZoom: 14 });
   }
 }
 
 function syncRouteFieldsFromSelection(lineKey) {
-  if (els.overrideLineKey) {
-    els.overrideLineKey.value = lineKey;
+  if (dom.overrideLineKey) {
+    dom.overrideLineKey.value = lineKey;
   }
-  if (els.overrideRouteSelect && els.overrideRouteSelect.value !== lineKey) {
-    els.overrideRouteSelect.value = lineKey;
+  if (dom.overrideRouteSelect && dom.overrideRouteSelect.value !== lineKey) {
+    dom.overrideRouteSelect.value = lineKey;
   }
 }
 
@@ -241,13 +241,13 @@ async function loadTransitRoute(lineKey) {
 
   setStatus("Loading route geometry...");
   const data = await apiRequest(`/api/transit/route-stops?lineKey=${encodeURIComponent(normalizedLineKey)}`);
-  state.currentRouteTransit = data || null;
+  appState.currentRouteTransit = data || null;
   renderRouteMap();
   return data;
 }
 
 function replaceEditedStops(nextStops) {
-  state.editedStops = Array.isArray(nextStops) ? nextStops.map((stop, index) => ({
+  appState.editedStops = Array.isArray(nextStops) ? nextStops.map((stop, index) => ({
     key: String(stop?.key || stop?.station_key || stop?.stop_id || `manual-${index}`).trim(),
     name: String(stop?.name || stop?.station_name || stop?.stop_name || `Stop ${index + 1}`).trim(),
     lat: Number(stop?.lat),
@@ -256,9 +256,9 @@ function replaceEditedStops(nextStops) {
 }
 
 function addEditedStop() {
-  state.editedStops.push({
-    key: `manual-${Date.now()}-${state.editedStops.length + 1}`,
-    name: `Stop ${state.editedStops.length + 1}`,
+  appState.editedStops.push({
+    key: `manual-${Date.now()}-${appState.editedStops.length + 1}`,
+    name: `Stop ${appState.editedStops.length + 1}`,
     lat: null,
     lon: null
   });
@@ -267,12 +267,12 @@ function addEditedStop() {
 
 function moveEditedStop(index, direction) {
   const targetIndex = index + direction;
-  if (targetIndex < 0 || targetIndex >= state.editedStops.length) {
+  if (targetIndex < 0 || targetIndex >= appState.editedStops.length) {
     return;
   }
 
-  const [item] = state.editedStops.splice(index, 1);
-  state.editedStops.splice(targetIndex, 0, item);
+  const [item] = appState.editedStops.splice(index, 1);
+  appState.editedStops.splice(targetIndex, 0, item);
   renderStopsList();
 }
 
@@ -280,29 +280,29 @@ async function loadRoutes() {
   try {
     setStatus("Loading routes...");
     const data = await apiRequest("/api/admin/overrides/route");
-    state.routes = Array.isArray(data.overrides) ? data.overrides : [];
+    appState.routes = Array.isArray(data.overrides) ? data.overrides : [];
     renderRouteSelect();
-    setStatus(`Loaded ${state.routes.length} routes`);
+    setStatus(`Loaded ${appState.routes.length} routes`);
   } catch (err) {
-    setStatus(`⚠ Failed to load routes: ${err.message}`, "error");
+    setStatus(`Ã¢Å¡Â  Failed to load routes: ${err.message}`, "error");
   }
 }
 
 function renderRouteSelect() {
-  if (!els.overrideRouteSelect) return;
+  if (!dom.overrideRouteSelect) return;
 
-  const selected = els.overrideRouteSelect.value;
-  els.overrideRouteSelect.innerHTML = '<option value="">Select a route to edit...</option>';
+  const selected = dom.overrideRouteSelect.value;
+  dom.overrideRouteSelect.innerHTML = '<option value="">Select a route to edit...</option>';
 
-  state.routes.forEach((route) => {
+  appState.routes.forEach((route) => {
     const option = document.createElement("option");
     option.value = route.line_key;
     option.textContent = `${route.line_key} (${route.city_slug})`;
-    els.overrideRouteSelect.appendChild(option);
+    dom.overrideRouteSelect.appendChild(option);
   });
 
   if (selected) {
-    els.overrideRouteSelect.value = selected;
+    dom.overrideRouteSelect.value = selected;
   }
 }
 
@@ -312,49 +312,49 @@ async function loadReviews(citySlug) {
     
     // Load route review
     const routeReviews = Array.isArray(data.routeReviews) ? data.routeReviews : [];
-    state.currentRouteReview = routeReviews.find((r) => r.line_key === state.selectedLineKey) || null;
+    appState.currentRouteReview = routeReviews.find((r) => r.line_key === appState.selectedLineKey) || null;
     
     // Load operator reviews
-    state.operatorReviews.clear();
+    appState.operatorReviews.clear();
     const agencyReviews = Array.isArray(data.agencyReviews) ? data.agencyReviews : [];
     agencyReviews.forEach((review) => {
-      state.operatorReviews.set(review.operator_name, review);
+      appState.operatorReviews.set(review.operator_name, review);
     });
     
     // Collect all operators from the current override to build operator list
-    state.cityOperators.clear();
-    if (state.currentOverride?.payload?.agency) {
-      state.cityOperators.add(state.currentOverride.payload.agency);
+    appState.cityOperators.clear();
+    if (appState.currentOverride?.payload?.agency) {
+      appState.cityOperators.add(appState.currentOverride.payload.agency);
     }
     // Also add operators from all reviews for this city
     agencyReviews.forEach((review) => {
-      state.cityOperators.add(review.operator_name);
+      appState.cityOperators.add(review.operator_name);
     });
   } catch (err) {
     console.warn("Failed to load reviews:", err);
-    state.currentRouteReview = null;
-    state.operatorReviews.clear();
+    appState.currentRouteReview = null;
+    appState.operatorReviews.clear();
   }
 }
 
 function renderReviews() {
   // Render problematic geometry checkbox
-  if (els.problematicGeometryCheckbox) {
-    els.problematicGeometryCheckbox.checked = state.currentRouteReview?.problematic_override === true;
+  if (dom.problematicGeometryCheckbox) {
+    dom.problematicGeometryCheckbox.checked = appState.currentRouteReview?.problematic_override === true;
   }
 
   // Render operator list
-  if (els.operatorReviewList) {
-    if (state.cityOperators.size === 0) {
-      els.operatorReviewList.innerHTML = '<p class="microcopy">No operators for this city yet.</p>';
+  if (dom.operatorReviewList) {
+    if (appState.cityOperators.size === 0) {
+      dom.operatorReviewList.innerHTML = '<p class="microcopy">No operators for this city yet.</p>';
       return;
     }
 
-    els.operatorReviewList.innerHTML = "";
-    const sortedOperators = Array.from(state.cityOperators).sort();
+    dom.operatorReviewList.innerHTML = "";
+    const sortedOperators = Array.from(appState.cityOperators).sort();
     
     sortedOperators.forEach((operatorName) => {
-      const review = state.operatorReviews.get(operatorName);
+      const review = appState.operatorReviews.get(operatorName);
       const allowedOverride = review?.allowed_override;
       
       const item = document.createElement("div");
@@ -374,11 +374,11 @@ function renderReviews() {
       if (allowedOverride === true) {
         allowBtn.classList.add("allowed");
       }
-      allowBtn.textContent = allowedOverride === true ? "✓" : "•";
+      allowBtn.textContent = allowedOverride === true ? "Ã¢Å“â€œ" : "Ã¢â‚¬Â¢";
       allowBtn.title = "Allow operator";
       allowBtn.addEventListener("click", () => {
         const newState = allowedOverride === true ? null : true;
-        state.operatorReviews.set(operatorName, { operator_name: operatorName, allowed_override: newState });
+        appState.operatorReviews.set(operatorName, { operator_name: operatorName, allowed_override: newState });
         renderReviews();
       });
       
@@ -389,27 +389,27 @@ function renderReviews() {
       if (allowedOverride === false) {
         blockBtn.classList.add("blocked");
       }
-      blockBtn.textContent = allowedOverride === false ? "✕" : "•";
+      blockBtn.textContent = allowedOverride === false ? "Ã¢Å“â€¢" : "Ã¢â‚¬Â¢";
       blockBtn.title = "Block operator";
       blockBtn.addEventListener("click", () => {
         const newState = allowedOverride === false ? null : false;
-        state.operatorReviews.set(operatorName, { operator_name: operatorName, allowed_override: newState });
+        appState.operatorReviews.set(operatorName, { operator_name: operatorName, allowed_override: newState });
         renderReviews();
       });
       
       togglesDiv.append(allowBtn, blockBtn);
       item.append(nameSpan, togglesDiv);
-      els.operatorReviewList.appendChild(item);
+      dom.operatorReviewList.appendChild(item);
     });
   }
 }
 
 async function selectRoute(lineKey) {
   if (!lineKey) {
-    state.selectedLineKey = "";
-    state.currentOverride = null;
-    state.currentRouteTransit = null;
-    els.overrideEditPanel.hidden = true;
+    appState.selectedLineKey = "";
+    appState.currentOverride = null;
+    appState.currentRouteTransit = null;
+    dom.overrideEditPanel.hidden = true;
     renderRouteMap();
     setStatus("Route deselected");
     return;
@@ -418,55 +418,55 @@ async function selectRoute(lineKey) {
   try {
     setStatus("Loading route...");
     const data = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`);
-    state.selectedLineKey = lineKey;
-    state.currentOverride = data.override || null;
-    state.selectedCitySlug = state.currentOverride?.city_slug || "";
+    appState.selectedLineKey = lineKey;
+    appState.currentOverride = data.override || null;
+    appState.selectedCitySlug = appState.currentOverride?.city_slug || "";
 
     const transitData = await loadTransitRoute(lineKey);
     
-    if (state.currentOverride && state.currentOverride.payload) {
-      const payload = state.currentOverride.payload;
-      els.overrideAgency.value = payload.agency || "";
-      els.overrideMode.value = String(payload.mode || "");
-      els.overrideFrequency.value = payload.frequency || "";
-      if (els.overrideOrderingMode) {
-        els.overrideOrderingMode.value = String(payload.orderingMode || "");
+    if (appState.currentOverride && appState.currentOverride.payload) {
+      const payload = appState.currentOverride.payload;
+      dom.overrideAgency.value = payload.agency || "";
+      dom.overrideMode.value = String(payload.mode || "");
+      dom.overrideFrequency.value = payload.frequency || "";
+      if (dom.overrideOrderingMode) {
+        dom.overrideOrderingMode.value = String(payload.orderingMode || "");
       }
       replaceEditedStops(payload.stops);
     } else {
       // No override yet - load base route data if available
-      els.overrideAgency.value = "";
-      els.overrideMode.value = "";
-      els.overrideFrequency.value = "";
-      if (els.overrideOrderingMode) {
-        els.overrideOrderingMode.value = "";
+      dom.overrideAgency.value = "";
+      dom.overrideMode.value = "";
+      dom.overrideFrequency.value = "";
+      if (dom.overrideOrderingMode) {
+        dom.overrideOrderingMode.value = "";
       }
       replaceEditedStops(routeStopsFromTransitPayload(transitData));
     }
 
-    if (!state.editedStops.length) {
+    if (!appState.editedStops.length) {
       replaceEditedStops(routeStopsFromTransitPayload(transitData));
     }
 
     // Load reviews for this city
-    if (state.selectedCitySlug) {
-      await loadReviews(state.selectedCitySlug);
+    if (appState.selectedCitySlug) {
+      await loadReviews(appState.selectedCitySlug);
     }
 
     syncRouteFieldsFromSelection(lineKey);
     renderStopsList();
     renderReviews();
-    els.overrideEditPanel.hidden = false;
+    dom.overrideEditPanel.hidden = false;
     setStatus(`Editing: ${lineKey}`);
   } catch (err) {
-    setStatus(`⚠ Failed to load route: ${err.message}`, "error");
+    setStatus(`Ã¢Å¡Â  Failed to load route: ${err.message}`, "error");
   }
 }
 
 function renderStopsList() {
-  if (!els.overrideStopsList) return;
+  if (!dom.overrideStopsList) return;
 
-  els.overrideStopsList.innerHTML = "";
+  dom.overrideStopsList.innerHTML = "";
 
   const toolbar = document.createElement("div");
   toolbar.className = "override-stops-toolbar";
@@ -482,31 +482,31 @@ function renderStopsList() {
   resetBtn.className = "btn btn-subtle";
   resetBtn.textContent = "Reset from route";
   resetBtn.addEventListener("click", () => {
-    replaceEditedStops(routeStopsFromTransitPayload(state.currentRouteTransit));
+    replaceEditedStops(routeStopsFromTransitPayload(appState.currentRouteTransit));
     renderStopsList();
   });
 
   toolbar.append(addBtn, resetBtn);
-  els.overrideStopsList.appendChild(toolbar);
+  dom.overrideStopsList.appendChild(toolbar);
 
-  state.editedStops.forEach((stop, index) => {
+  appState.editedStops.forEach((stop, index) => {
     const item = document.createElement("div");
     item.className = "override-stop-item";
-    if (state.draggingStopIndex === index) {
+    if (appState.draggingStopIndex === index) {
       item.classList.add("is-dragging");
     }
 
     const handle = document.createElement("div");
     handle.className = "override-stop-drag-handle";
-    handle.textContent = "⋮";
+    handle.textContent = "Ã¢â€¹Â®";
     handle.draggable = true;
     handle.addEventListener("dragstart", (e) => {
-      state.draggingStopIndex = index;
+      appState.draggingStopIndex = index;
       e.dataTransfer.effectAllowed = "move";
       renderStopsList();
     });
     handle.addEventListener("dragend", () => {
-      state.draggingStopIndex = null;
+      appState.draggingStopIndex = null;
       renderStopsList();
     });
 
@@ -518,7 +518,7 @@ function renderStopsList() {
     nameInput.className = "override-stop-name-input";
     nameInput.value = stop.name || `Stop ${index + 1}`;
     nameInput.addEventListener("input", () => {
-      state.editedStops[index].name = String(nameInput.value || "").trim();
+      appState.editedStops[index].name = String(nameInput.value || "").trim();
     });
 
     const latInput = document.createElement("input");
@@ -529,7 +529,7 @@ function renderStopsList() {
     latInput.value = Number.isFinite(Number(stop.lat)) ? String(stop.lat) : "";
     latInput.addEventListener("input", () => {
       const value = latInput.value === "" ? null : Number(latInput.value);
-      state.editedStops[index].lat = Number.isFinite(value) ? value : null;
+      appState.editedStops[index].lat = Number.isFinite(value) ? value : null;
     });
 
     const lonInput = document.createElement("input");
@@ -540,7 +540,7 @@ function renderStopsList() {
     lonInput.value = Number.isFinite(Number(stop.lon)) ? String(stop.lon) : "";
     lonInput.addEventListener("input", () => {
       const value = lonInput.value === "" ? null : Number(lonInput.value);
-      state.editedStops[index].lon = Number.isFinite(value) ? value : null;
+      appState.editedStops[index].lon = Number.isFinite(value) ? value : null;
     });
 
     const orderControls = document.createElement("div");
@@ -557,7 +557,7 @@ function renderStopsList() {
     downBtn.type = "button";
     downBtn.className = "override-stop-order-btn";
     downBtn.textContent = "Down";
-    downBtn.disabled = index === state.editedStops.length - 1;
+    downBtn.disabled = index === appState.editedStops.length - 1;
     downBtn.addEventListener("click", () => moveEditedStop(index, 1));
 
     orderControls.append(upBtn, downBtn);
@@ -567,7 +567,7 @@ function renderStopsList() {
     deleteBtn.type = "button";
     deleteBtn.textContent = "Delete";
     deleteBtn.addEventListener("click", () => {
-      state.editedStops.splice(index, 1);
+      appState.editedStops.splice(index, 1);
       renderStopsList();
     });
 
@@ -578,59 +578,59 @@ function renderStopsList() {
 
     item.addEventListener("drop", (e) => {
       e.preventDefault();
-      if (state.draggingStopIndex !== null && state.draggingStopIndex !== index) {
-        const [dragged] = state.editedStops.splice(state.draggingStopIndex, 1);
-        const insertIndex = index > state.draggingStopIndex ? index - 1 : index;
-        state.editedStops.splice(insertIndex, 0, dragged);
-        state.draggingStopIndex = null;
+      if (appState.draggingStopIndex !== null && appState.draggingStopIndex !== index) {
+        const [dragged] = appState.editedStops.splice(appState.draggingStopIndex, 1);
+        const insertIndex = index > appState.draggingStopIndex ? index - 1 : index;
+        appState.editedStops.splice(insertIndex, 0, dragged);
+        appState.draggingStopIndex = null;
         renderStopsList();
       }
     });
 
     fields.append(nameInput, latInput, lonInput, orderControls);
     item.append(handle, fields, deleteBtn);
-    els.overrideStopsList.appendChild(item);
+    dom.overrideStopsList.appendChild(item);
   });
 }
 
 async function saveOverride() {
-  if (!state.selectedLineKey) {
-    setStatus("⚠ No route selected", "error");
+  if (!appState.selectedLineKey) {
+    setStatus("Ã¢Å¡Â  No route selected", "error");
     return;
   }
 
   try {
     setStatus("Saving...");
     const payload = {
-      agency: els.overrideAgency.value || null,
-      mode: els.overrideMode.value ? Number(els.overrideMode.value) : null,
-      frequency: els.overrideFrequency.value ? Number(els.overrideFrequency.value) : null,
-      orderingMode: els.overrideOrderingMode ? String(els.overrideOrderingMode.value || "").trim() || null : null,
-      stops: state.editedStops
+      agency: dom.overrideAgency.value || null,
+      mode: dom.overrideMode.value ? Number(dom.overrideMode.value) : null,
+      frequency: dom.overrideFrequency.value ? Number(dom.overrideFrequency.value) : null,
+      orderingMode: dom.overrideOrderingMode ? String(dom.overrideOrderingMode.value || "").trim() || null : null,
+      stops: appState.editedStops
     };
 
     const result = await apiRequest("/api/admin/overrides/route", {
       method: "POST",
       body: {
-        lineKey: state.selectedLineKey,
-        citySlug: state.currentOverride?.city_slug || "",
+        lineKey: appState.selectedLineKey,
+        citySlug: appState.currentOverride?.city_slug || "",
         payload
       }
     });
 
     // Save problematic geometry review
-    const problematicOverride = els.problematicGeometryCheckbox?.checked === true ? true : false;
+    const problematicOverride = dom.problematicGeometryCheckbox?.checked === true ? true : false;
     await apiRequest("/api/admin/reviews/route", {
       method: "POST",
       body: {
-        lineKey: state.selectedLineKey,
-        citySlug: state.selectedCitySlug,
+        lineKey: appState.selectedLineKey,
+        citySlug: appState.selectedCitySlug,
         problematicOverride
       }
     }).catch((err) => console.warn("Failed to save route review:", err));
 
     // Save operator allow/deny reviews
-    const agencyReviewsToSave = Array.from(state.operatorReviews.values()).filter(
+    const agencyReviewsToSave = Array.from(appState.operatorReviews.values()).filter(
       (review) => review.allowed_override !== null
     );
     
@@ -638,49 +638,49 @@ async function saveOverride() {
       await apiRequest("/api/admin/reviews/agencies", {
         method: "POST",
         body: {
-          citySlug: state.selectedCitySlug,
+          citySlug: appState.selectedCitySlug,
           operatorName: agencyReview.operator_name,
           allowedOverride: agencyReview.allowed_override
         }
       }).catch((err) => console.warn(`Failed to save agency review for ${agencyReview.operator_name}:`, err));
     }
 
-    setStatus("✓ Override and reviews saved successfully");
-    state.currentOverride = result.override;
+    setStatus("Ã¢Å“â€œ Override and reviews saved successfully");
+    appState.currentOverride = result.override;
     await loadRoutes();
   } catch (err) {
-    setStatus(`⚠ Failed to save: ${err.message}`, "error");
+    setStatus(`Ã¢Å¡Â  Failed to save: ${err.message}`, "error");
   }
 }
 
 function discardChanges() {
-  selectRoute(state.selectedLineKey).catch((err) => {
-    setStatus(`⚠ Failed to reload: ${err.message}`, "error");
+  selectRoute(appState.selectedLineKey).catch((err) => {
+    setStatus(`Ã¢Å¡Â  Failed to reload: ${err.message}`, "error");
   });
 }
 
 function bindEvents() {
-  els.loadOverrideRouteBtn?.addEventListener("click", () => {
-    const lineKey = String(els.overrideLineKey?.value || "").trim();
+  dom.loadOverrideRouteBtn?.addEventListener("click", () => {
+    const lineKey = String(dom.overrideLineKey?.value || "").trim();
     if (!lineKey) {
       setStatus("Enter a route lineKey first.", "error");
       return;
     }
     selectRoute(lineKey).catch((err) => {
-      setStatus(`⚠ Failed to load route: ${err.message}`, "error");
+      setStatus(`Ã¢Å¡Â  Failed to load route: ${err.message}`, "error");
     });
   });
 
-  els.overrideRouteSelect?.addEventListener("change", (e) => {
+  dom.overrideRouteSelect?.addEventListener("change", (e) => {
     const lineKey = String(e.target.value || "").trim();
-    if (els.overrideLineKey) {
-      els.overrideLineKey.value = lineKey;
+    if (dom.overrideLineKey) {
+      dom.overrideLineKey.value = lineKey;
     }
     selectRoute(lineKey);
   });
 
-  els.saveOverrideBtn?.addEventListener("click", saveOverride);
-  els.discardOverrideBtn?.addEventListener("click", discardChanges);
+  dom.saveOverrideBtn?.addEventListener("click", saveOverride);
+  dom.discardOverrideBtn?.addEventListener("click", discardChanges);
 }
 
 async function init() {
@@ -695,7 +695,7 @@ async function init() {
       await apiRequest("/api/admin/session");
     } catch {
       sessionStorage.removeItem(SESSION_KEY);
-      state.adminKey = "";
+      appState.adminKey = "";
       setStatus("Admin session expired. Log in again at /admin.", "error");
       return;
     }
@@ -704,10 +704,10 @@ async function init() {
     initializeMap();
 
     // Wait for map to be ready before loading routes
-    if (!state.mapReady) {
+    if (!appState.mapReady) {
       await new Promise((resolve) => {
         const checkReady = setInterval(() => {
-          if (state.mapReady) {
+          if (appState.mapReady) {
             clearInterval(checkReady);
             resolve();
           }
@@ -721,7 +721,7 @@ async function init() {
 
     await loadRoutes();
   } catch (err) {
-    setStatus(`⚠ Initialization failed: ${err.message}`, "error");
+    setStatus(`Ã¢Å¡Â  Initialization failed: ${err.message}`, "error");
     console.error(err);
   }
 }

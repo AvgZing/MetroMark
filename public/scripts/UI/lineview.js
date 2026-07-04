@@ -43,14 +43,14 @@ function lineViewOrderingTechnicalLabel(mode) {
 }
 
 function lineViewOrderingStatusLabel() {
-  var mode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
-  var resolvedMode = normalizeLineViewOrderingMode(state.lineViewOrderingResolved || mode);
+  var mode = normalizeLineViewOrderingMode(appState.lineViewOrderingMode);
+  var resolvedMode = normalizeLineViewOrderingMode(appState.lineViewOrderingResolved || mode);
   var activeMode = mode === "auto" ? resolvedMode : mode;
 
-  var focusedLineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
+  var focusedLineKey = String(appState.lineViewLineKey || appState.focusedLineKey || "").trim();
   var focusedLine = null;
-  if (focusedLineKey && Array.isArray(state.lineSummaries)) {
-    focusedLine = state.lineSummaries.find(function(l) { return String(l.lineKey || "").trim() === focusedLineKey; }) || null;
+  if (focusedLineKey && Array.isArray(appState.lineSummaries)) {
+    focusedLine = appState.lineSummaries.find(function(l) { return String(l.lineKey || "").trim() === focusedLineKey; }) || null;
   }
 
   var adminMode = focusedLine ? String(focusedLine.lineViewOrderingAdminMode || "").trim() : "";
@@ -68,7 +68,7 @@ function lineViewOrderingStatusLabel() {
     voteSuffix = " (" + count + ")";
   }
 
-  if (state.lineViewOrderingReversed) {
+  if (appState.lineViewOrderingReversed) {
     label = label + " \u00B7 Reversed Route";
   }
   return label + voteSuffix;
@@ -83,7 +83,7 @@ function getLineViewOrderingPreference(lineKey) {
     };
   }
 
-  const stored = state.lineViewOrderingPreferencesByLineKey.get(normalizedLineKey);
+  const stored = appState.lineViewOrderingPreferencesByLineKey.get(normalizedLineKey);
   if (!stored) {
     return {
       mode: "auto",
@@ -116,10 +116,10 @@ function setLineViewOrderingPreference(lineKey, preference = {}) {
       : Boolean(current.reversed)
   };
 
-  state.lineViewOrderingPreferencesByLineKey.set(normalizedLineKey, nextPreference);
+  appState.lineViewOrderingPreferencesByLineKey.set(normalizedLineKey, nextPreference);
   persistLineViewOrderingPreferencesToStorage(
     LINE_VIEW_ORDERING_PREFERENCES_STORAGE_KEY,
-    state.lineViewOrderingPreferencesByLineKey
+    appState.lineViewOrderingPreferencesByLineKey
   );
 
   return nextPreference;
@@ -127,18 +127,18 @@ function setLineViewOrderingPreference(lineKey, preference = {}) {
 
 function applyLineViewOrderingPreference(lineKey) {
   const preference = getLineViewOrderingPreference(lineKey);
-  state.lineViewOrderingMode = preference.mode;
-  state.lineViewOrderingReversed = Boolean(preference.reversed);
+  appState.lineViewOrderingMode = preference.mode;
+  appState.lineViewOrderingReversed = Boolean(preference.reversed);
   return preference;
 }
 
 function lineViewOrderingVoteModeForCurrentState() {
-  const selectedMode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
+  const selectedMode = normalizeLineViewOrderingMode(appState.lineViewOrderingMode);
   if (selectedMode !== "auto") {
     return selectedMode;
   }
 
-  return normalizeLineViewOrderingMode(state.lineViewOrderingResolved || "geometry-revised");
+  return normalizeLineViewOrderingMode(appState.lineViewOrderingResolved || "geometry-revised");
 }
 
 function updateRouteOrderingMetadataForLine(lineKey, metadata = {}) {
@@ -147,7 +147,7 @@ function updateRouteOrderingMetadataForLine(lineKey, metadata = {}) {
     return;
   }
 
-  const nextLineSummaries = state.lineSummaries.map((line) => {
+  const nextLineSummaries = appState.lineSummaries.map((line) => {
     if (String(line?.lineKey || "").trim() !== normalizedLineKey) {
       return line;
     }
@@ -162,10 +162,10 @@ function updateRouteOrderingMetadataForLine(lineKey, metadata = {}) {
     };
   });
 
-  state.lineSummaries = nextLineSummaries;
+  appState.lineSummaries = nextLineSummaries;
 
-  if (Array.isArray(state.loadedLineSummaries) && state.loadedLineSummaries.length > 0) {
-    state.loadedLineSummaries = state.loadedLineSummaries.map((line) => {
+  if (Array.isArray(appState.loadedLineSummaries) && appState.loadedLineSummaries.length > 0) {
+    appState.loadedLineSummaries = appState.loadedLineSummaries.map((line) => {
       if (String(line?.lineKey || "").trim() !== normalizedLineKey) {
         return line;
       }
@@ -181,8 +181,8 @@ function updateRouteOrderingMetadataForLine(lineKey, metadata = {}) {
     });
   }
 
-  if (state.transit?.routesGeoJson?.features) {
-    state.transit.routesGeoJson.features = state.transit.routesGeoJson.features.map((feature) => {
+  if (appState.transit?.routesGeoJson?.features) {
+    appState.transit.routesGeoJson.features = appState.transit.routesGeoJson.features.map((feature) => {
       if (String(feature?.properties?.line_key || "").trim() !== normalizedLineKey) {
         return feature;
       }
@@ -205,7 +205,7 @@ function updateRouteOrderingMetadataForLine(lineKey, metadata = {}) {
 async function submitLineViewOrderingVote(lineKey, orderingMode) {
   const normalizedLineKey = String(lineKey || "").trim();
   const normalizedMode = normalizeLineViewOrderingMode(orderingMode);
-  if (!normalizedLineKey || normalizedMode === "auto" || !state.user) {
+  if (!normalizedLineKey || normalizedMode === "auto" || !appState.user) {
     return null;
   }
 
@@ -213,7 +213,7 @@ async function submitLineViewOrderingVote(lineKey, orderingMode) {
     method: "POST",
     body: {
       lineKey: normalizedLineKey,
-      citySlug: String(state.initialCitySlug || "").trim(),
+      citySlug: String(appState.initialCitySlug || "").trim(),
       orderingMode: normalizedMode
     }
   });
@@ -222,7 +222,7 @@ async function submitLineViewOrderingVote(lineKey, orderingMode) {
     updateRouteOrderingMetadataForLine(normalizedLineKey, payload.metadata);
   }
 
-  if (state.lineViewOpen && String(state.lineViewLineKey || "").trim() === normalizedLineKey) {
+  if (appState.lineViewOpen && String(appState.lineViewLineKey || "").trim() === normalizedLineKey) {
     renderLineView();
   }
 
@@ -232,14 +232,14 @@ async function submitLineViewOrderingVote(lineKey, orderingMode) {
 function noteLineViewOrderingVoteClick(lineKey, stopKey) {
   const normalizedLineKey = String(lineKey || "").trim();
   const normalizedStopKey = String(stopKey || "").trim();
-  if (!normalizedLineKey || !normalizedStopKey || !state.user) {
+  if (!normalizedLineKey || !normalizedStopKey || !appState.user) {
     return;
   }
 
-  let clickSet = state.lineViewOrderingVoteClickSetsByLineKey.get(normalizedLineKey);
+  let clickSet = appState.lineViewOrderingVoteClickSetsByLineKey.get(normalizedLineKey);
   if (!clickSet) {
     clickSet = new Set();
-    state.lineViewOrderingVoteClickSetsByLineKey.set(normalizedLineKey, clickSet);
+    appState.lineViewOrderingVoteClickSetsByLineKey.set(normalizedLineKey, clickSet);
   }
 
   if (clickSet.has(normalizedStopKey)) {
@@ -262,16 +262,16 @@ function noteLineViewOrderingVoteClick(lineKey, stopKey) {
   });
 }
 
-/** Sync the route ordering mode buttons and reversed toggle with current state. */
+/** Sync the route ordering mode buttons and reversed toggle with current appState. */
 function syncLineViewOrderingControls() {
-  const mode = normalizeLineViewOrderingMode(state.lineViewOrderingMode);
-  state.lineViewOrderingMode = mode;
+  const mode = normalizeLineViewOrderingMode(appState.lineViewOrderingMode);
+  appState.lineViewOrderingMode = mode;
 
   const buttonByMode = {
-    auto: els.lineViewOrderingAutoBtn,
-    "geometry-revised": els.lineViewOrderingGeometryRevisedBtn,
-    "legacy-geometry": els.lineViewOrderingGeometryBtn,
-    fractions: els.lineViewOrderingFractionsBtn
+    auto: dom.lineViewOrderingAutoBtn,
+    "geometry-revised": dom.lineViewOrderingGeometryRevisedBtn,
+    "legacy-geometry": dom.lineViewOrderingGeometryBtn,
+    fractions: dom.lineViewOrderingFractionsBtn
   };
 
   const buttonLabelByMode = {
@@ -300,32 +300,32 @@ function syncLineViewOrderingControls() {
     button.setAttribute("aria-pressed", isActive ? "true" : "false");
   }
 
-  if (els.lineViewOrderingReverseBtn) {
-    const isActive = Boolean(state.lineViewOrderingReversed);
-    els.lineViewOrderingReverseBtn.textContent = "Reverse Route";
-    els.lineViewOrderingReverseBtn.title = "Reverse the current stop order";
-    els.lineViewOrderingReverseBtn.classList.toggle("is-active", isActive);
-    els.lineViewOrderingReverseBtn.setAttribute("aria-pressed", isActive ? "true" : "false");
+  if (dom.lineViewOrderingReverseBtn) {
+    const isActive = Boolean(appState.lineViewOrderingReversed);
+    dom.lineViewOrderingReverseBtn.textContent = "Reverse Route";
+    dom.lineViewOrderingReverseBtn.title = "Reverse the current stop order";
+    dom.lineViewOrderingReverseBtn.classList.toggle("is-active", isActive);
+    dom.lineViewOrderingReverseBtn.setAttribute("aria-pressed", isActive ? "true" : "false");
   }
 
-  if (els.lineViewOrderingResolved) {
-    els.lineViewOrderingResolved.textContent = lineViewOrderingStatusLabel();
+  if (dom.lineViewOrderingResolved) {
+    dom.lineViewOrderingResolved.textContent = lineViewOrderingStatusLabel();
   }
 }
 
 /** Render the ordered stop list for a line inside the line view panel. */
 async function renderLineViewStops(lineKey, lineColor, options = {}) {
-  if (!els.lineViewStops) {
+  if (!dom.lineViewStops) {
     return;
   }
 
-  els.lineViewStops.style.setProperty("--line-color", lineColor || "#177ca2");
+  dom.lineViewStops.style.setProperty("--line-color", lineColor || "#177ca2");
 
   const cacheKey = routeStopCacheKey(lineKey);
-  const isLoading = state.inFlightLineStopKeys.has(cacheKey);
-  const sameLine = String(els.lineViewStops.dataset.lineKey || "") === String(lineKey || "");
+  const isLoading = appState.inFlightLineStopKeys.has(cacheKey);
+  const sameLine = String(dom.lineViewStops.dataset.lineKey || "") === String(lineKey || "");
   const stopFeatures = uniqueStopFeaturesForLine(lineKey);
-  const hasRenderedStopRows = !!els.lineViewStops.querySelector('.line-view-stop-row');
+  const hasRenderedStopRows = !!dom.lineViewStops.querySelector('.line-view-stop-row');
   const forceRefresh = Boolean(options?.forceRefresh);
 
   syncLineViewOrderingControls();
@@ -335,12 +335,12 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
       return;
     }
 
-    els.lineViewStops.innerHTML = "";
-    els.lineViewStops.dataset.lineKey = String(lineKey || "");
+    dom.lineViewStops.innerHTML = "";
+    dom.lineViewStops.dataset.lineKey = String(lineKey || "");
     const empty = document.createElement("p");
     empty.className = "microcopy";
     empty.textContent = isLoading ? "Loading stops..." : "Stops are not loaded yet.";
-    els.lineViewStops.append(empty);
+    dom.lineViewStops.append(empty);
     return;
   }
 
@@ -348,9 +348,9 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     return;
   }
 
-  if (forceRefresh || String(els.lineViewStops.dataset.lineKey || "") !== String(lineKey || "") || !hasRenderedStopRows) {
-    els.lineViewStops.innerHTML = "";
-    els.lineViewStops.dataset.lineKey = String(lineKey || "");
+  if (forceRefresh || String(dom.lineViewStops.dataset.lineKey || "") !== String(lineKey || "") || !hasRenderedStopRows) {
+    dom.lineViewStops.innerHTML = "";
+    dom.lineViewStops.dataset.lineKey = String(lineKey || "");
   } else {
     return;
   }
@@ -358,14 +358,14 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
   const visitedSet = getVisitedSetForLine(lineKey);
 
   // Get direction sequences from cache payload if available
-  const cacheEntry = state.lineStopsCache.get(routeStopCacheKey(lineKey));
-  const line = state.lineSummaries.find((entry) => entry.lineKey === lineKey);
+  const cacheEntry = appState.lineStopsCache.get(routeStopCacheKey(lineKey));
+  const line = appState.lineSummaries.find((entry) => entry.lineKey === lineKey);
   const routeLookupKey = String(line?.routeOnestopId || lineKey || "").trim();
   const directionSequences = cacheEntry?.payload?.directionStopSequences || null;
   const directionPatterns = cacheEntry?.payload?.directionStopPatterns || directionSequences?.patterns || null;
   const orderingMode = String(
     options?.orderingMode ||
-    state.lineViewOrderingMode ||
+    appState.lineViewOrderingMode ||
     'geometry-revised'
   ).trim() || 'geometry-revised';
 
@@ -381,7 +381,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     directionPatterns
   );
 
-  if (state.lineViewOrderingReversed) {
+  if (appState.lineViewOrderingReversed) {
     featuresToRender.reverse();
   }
 
@@ -407,7 +407,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
       row.classList.add("is-visited");
     }
 
-    if (!state.user) {
+    if (!appState.user) {
       row.disabled = true;
     }
 
@@ -426,7 +426,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
 
     const status = document.createElement("p");
     status.className = "line-view-stop-status";
-    status.textContent = state.user
+    status.textContent = appState.user
       ? visited
         ? "Visited"
         : "Not visited"
@@ -435,7 +435,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     content.append(name, status);
     row.append(marker, content);
 
-    if (state.user) {
+    if (appState.user) {
       row.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -444,7 +444,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
       });
     }
 
-    els.lineViewStops.append(row);
+    dom.lineViewStops.append(row);
   });
 
   createLineConnector(lineColor);
@@ -452,22 +452,22 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
 
 /** Render or update the line view panel with the focused line's metadata and progress. */
 function renderLineView(options = {}) {
-  if (!els.lineViewPanel) {
+  if (!dom.lineViewPanel) {
     return;
   }
 
-  if (!state.lineViewOpen) {
-    els.lineViewPanel.hidden = true;
+  if (!appState.lineViewOpen) {
+    dom.lineViewPanel.hidden = true;
     return;
   }
 
-  const lineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
+  const lineKey = String(appState.lineViewLineKey || appState.focusedLineKey || "").trim();
   if (!lineKey) {
-    els.lineViewPanel.hidden = true;
+    dom.lineViewPanel.hidden = true;
     return;
   }
 
-  const line = state.lineSummaries.find((entry) => entry.lineKey === lineKey);
+  const line = appState.lineSummaries.find((entry) => entry.lineKey === lineKey);
   const lineColor = line?.color || "#177ca2";
   const lineLabel = line ? lineDisplayName(line) : "Selected Route";
   const forceStopRefresh = Boolean(options?.forceStopRefresh);
@@ -475,71 +475,71 @@ function renderLineView(options = {}) {
   applyLineViewOrderingPreference(lineKey);
 
   // Ensure panel is visible and not hidden
-  if (els.lineViewPanel) {
-    els.lineViewPanel.hidden = false;
-    els.lineViewPanel.removeAttribute("hidden");
+  if (dom.lineViewPanel) {
+    dom.lineViewPanel.hidden = false;
+    dom.lineViewPanel.removeAttribute("hidden");
   }
 
-  if (els.lineViewColor) {
-    els.lineViewColor.style.backgroundColor = lineColor;
+  if (dom.lineViewColor) {
+    dom.lineViewColor.style.backgroundColor = lineColor;
   }
 
-  if (els.lineViewName) {
-    els.lineViewName.textContent = lineLabel;
+  if (dom.lineViewName) {
+    dom.lineViewName.textContent = lineLabel;
   }
 
-  if (els.lineViewMeta) {
-    els.lineViewMeta.textContent = line
+  if (dom.lineViewMeta) {
+    dom.lineViewMeta.textContent = line
       ? `${lineMode(line)} | ${lineOperatorLabel(line)}`
       : "Route details";
   }
 
   const progress = line ? lineProgressMetrics(lineKey, Number(line.stopCount || 0)) : null;
-  const fullStopsLoaded = state.lineStopsCache.has(routeStopCacheKey(lineKey));
+  const fullStopsLoaded = appState.lineStopsCache.has(routeStopCacheKey(lineKey));
   const hasStopTotals = Number(line?.stopCount || 0) > 0;
   const stopsLoaded = fullStopsLoaded || hasStopTotals;
-  const stopsLoading = state.inFlightLineStopKeys.has(routeStopCacheKey(lineKey));
+  const stopsLoading = appState.inFlightLineStopKeys.has(routeStopCacheKey(lineKey));
 
-  if (els.lineViewStatus) {
+  if (dom.lineViewStatus) {
     if (!stopsLoaded && stopsLoading) {
-      els.lineViewStatus.textContent = "Loading stops...";
+      dom.lineViewStatus.textContent = "Loading stops...";
     } else if (!stopsLoaded) {
-      els.lineViewStatus.textContent = "Stops not loaded yet.";
+      dom.lineViewStatus.textContent = "Stops not loaded yet.";
     } else if (!fullStopsLoaded) {
-      els.lineViewStatus.textContent = "Stop totals loaded. Tap to load full stops.";
-    } else if (!state.user) {
-      els.lineViewStatus.textContent = "Sign in to track visited stops.";
+      dom.lineViewStatus.textContent = "Stop totals loaded. Tap to load full stops.";
+    } else if (!appState.user) {
+      dom.lineViewStatus.textContent = "Sign in to track visited stops.";
     } else if (progress && progress.total > 0) {
-      els.lineViewStatus.textContent = `Visited ${progress.visited} of ${progress.total} stations.`;
+      dom.lineViewStatus.textContent = `Visited ${progress.visited} of ${progress.total} stations.`;
     } else {
-      els.lineViewStatus.textContent = "Stops loaded. Tap to mark visited.";
+      dom.lineViewStatus.textContent = "Stops loaded. Tap to mark visited.";
     }
   }
 
-  if (els.lineViewProgress && els.lineViewProgressText && els.lineViewProgressFill) {
-    const hasProgress = Boolean(state.user) && Boolean(progress) && Number(progress?.total || 0) > 0;
+  if (dom.lineViewProgress && dom.lineViewProgressText && dom.lineViewProgressFill) {
+    const hasProgress = Boolean(appState.user) && Boolean(progress) && Number(progress?.total || 0) > 0;
     if (hasProgress) {
       const visited = Number(progress.visited || 0);
       const total = Number(progress.total || 0);
       const percent = total > 0 ? Math.round((visited / total) * 100) : 0;
-      els.lineViewProgress.hidden = false;
-      els.lineViewProgressText.textContent = `${visited}/${total} stations visited (${percent}%)`;
-      els.lineViewProgressFill.style.width = `${percent}%`;
+      dom.lineViewProgress.hidden = false;
+      dom.lineViewProgressText.textContent = `${visited}/${total} stations visited (${percent}%)`;
+      dom.lineViewProgressFill.style.width = `${percent}%`;
     } else {
-      els.lineViewProgress.hidden = true;
-      els.lineViewProgressText.textContent = "";
-      els.lineViewProgressFill.style.width = "0%";
+      dom.lineViewProgress.hidden = true;
+      dom.lineViewProgressText.textContent = "";
+      dom.lineViewProgressFill.style.width = "0%";
     }
   }
 
   // Update button labels based on layout
   const isMobileLayout = isPortraitMobileLayout();
-  if (els.lineViewReturnBtn) {
-    els.lineViewReturnBtn.textContent = isMobileLayout ? "←" : "Close";
-    els.lineViewReturnBtn.classList.toggle("mobile-icon-only", isMobileLayout);
+  if (dom.lineViewReturnBtn) {
+    dom.lineViewReturnBtn.textContent = isMobileLayout ? "Ã¢â€ Â" : "Close";
+    dom.lineViewReturnBtn.classList.toggle("mobile-icon-only", isMobileLayout);
   }
-  if (els.lineViewMapBtn) {
-    els.lineViewMapBtn.textContent = isMobileLayout ? "Map" : "Zoom";
+  if (dom.lineViewMapBtn) {
+    dom.lineViewMapBtn.textContent = isMobileLayout ? "Map" : "Zoom";
   }
 
   // renderLineViewStops will manage dataset.lineKey itself to detect line changes
@@ -553,17 +553,17 @@ async function openLineView(lineKey) {
     return;
   }
 
-  if (!state.lineViewOpen) {
-    state.lineViewReturn = {
-      focusedLineKey: state.focusedLineKey,
+  if (!appState.lineViewOpen) {
+    appState.lineViewReturn = {
+      focusedLineKey: appState.focusedLineKey,
       mapView: captureMapView(),
-      mobilePanelsOpen: state.mobilePanelsOpen,
-      activePopup: state.activePopup
+      mobilePanelsOpen: appState.mobilePanelsOpen,
+      activePopup: appState.activePopup
     };
   }
 
-  state.lineViewOpen = true;
-  state.lineViewLineKey = normalizedLineKey;
+  appState.lineViewOpen = true;
+  appState.lineViewLineKey = normalizedLineKey;
   document.body.classList.toggle("line-view-open", true);
   closeRouteSelectionPopup();
 
@@ -571,7 +571,7 @@ async function openLineView(lineKey) {
     setMobilePanelsOpen(false);
   }
 
-  if (normalizedLineKey !== state.focusedLineKey) {
+  if (normalizedLineKey !== appState.focusedLineKey) {
     setFocusedLine(normalizedLineKey, { forceRefresh: false }).catch((error) => {
       setStatus(error.message, "error");
     });
@@ -589,7 +589,7 @@ async function openLineView(lineKey) {
 }
 
 function restoreLineViewReturnState() {
-  const saved = state.lineViewReturn;
+  const saved = appState.lineViewReturn;
   if (!saved) {
     return;
   }
@@ -602,7 +602,7 @@ function restoreLineViewReturnState() {
     setFocusedLine(saved.focusedLineKey, { forceRefresh: false }).catch((error) => {
       setStatus(error.message, "error");
     });
-  } else if (state.focusedLineKey) {
+  } else if (appState.focusedLineKey) {
     clearFocusedLine("Route focus cleared.", "Returning to previous view.");
   }
 
@@ -617,28 +617,28 @@ function restoreLineViewReturnState() {
   }
 }
 
-/** Close the line view panel and optionally restore the prior map and focus state. */
+/** Close the line view panel and optionally restore the prior map and focus appState. */
 function closeLineView(options = {}) {
   const shouldRestore = options.restore !== false;
 
-  state.lineViewOpen = false;
-  state.lineViewLineKey = "";
+  appState.lineViewOpen = false;
+  appState.lineViewLineKey = "";
   document.body.classList.toggle("line-view-open", false);
 
-  if (els.lineViewPanel) {
-    els.lineViewPanel.hidden = true;
+  if (dom.lineViewPanel) {
+    dom.lineViewPanel.hidden = true;
   }
 
   if (shouldRestore) {
     restoreLineViewReturnState();
   }
 
-  state.lineViewReturn = null;
+  appState.lineViewReturn = null;
   renderUserStatus();
 }
 
 async function openLineViewMap() {
-  const lineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
+  const lineKey = String(appState.lineViewLineKey || appState.focusedLineKey || "").trim();
   if (!lineKey) {
     closeLineView({ restore: true });
     return;

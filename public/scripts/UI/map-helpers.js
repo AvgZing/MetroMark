@@ -66,7 +66,7 @@ function collectCoordsFromGeometry(geometry, bbox) {
 }
 
 function buildLineBboxFromStops(lineKey) {
-  const cacheEntry = state.lineStopsCache.get(routeStopCacheKey(lineKey));
+  const cacheEntry = appState.lineStopsCache.get(routeStopCacheKey(lineKey));
   const stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
     ? cacheEntry.payload.stopsGeoJson.features
     : [];
@@ -104,8 +104,8 @@ function buildLineBboxFromStops(lineKey) {
 }
 
 function buildLineBboxFromRoutes(lineKey) {
-  const features = Array.isArray(state.transit?.routesGeoJson?.features)
-    ? state.transit.routesGeoJson.features
+  const features = Array.isArray(appState.transit?.routesGeoJson?.features)
+    ? appState.transit.routesGeoJson.features
     : [];
 
   if (!features.length) {
@@ -143,11 +143,11 @@ function mapSafeAreaPadding(extraPadding = 24) {
     left: extraPadding
   };
 
-  if (!state.map || typeof state.map.getContainer !== "function") {
+  if (!appState.map || typeof appState.map.getContainer !== "function") {
     return basePadding;
   }
 
-  const mapContainer = state.map.getContainer();
+  const mapContainer = appState.map.getContainer();
   if (!mapContainer) {
     return basePadding;
   }
@@ -157,21 +157,21 @@ function mapSafeAreaPadding(extraPadding = 24) {
     return basePadding;
   }
 
-  const isDesktopLineView = Boolean(els.lineViewPanel) && !isPortraitMobileLayout();
-  if (isDesktopLineView && !els.lineViewPanel.hidden) {
-    const style = window.getComputedStyle(els.lineViewPanel);
+  const isDesktopLineView = Boolean(dom.lineViewPanel) && !isPortraitMobileLayout();
+  if (isDesktopLineView && !dom.lineViewPanel.hidden) {
+    const style = window.getComputedStyle(dom.lineViewPanel);
     if (style.display !== "none" && style.visibility !== "hidden") {
-      const rect = els.lineViewPanel.getBoundingClientRect();
+      const rect = dom.lineViewPanel.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0 && rect.right > mapRect.left && rect.left < mapRect.right) {
         basePadding.right = Math.max(basePadding.right, Math.ceil(rect.width) + extraPadding);
       }
     }
   }
 
-  if (Boolean(els.routeSelectPanel) && !els.routeSelectPanel.hidden) {
-    const style = window.getComputedStyle(els.routeSelectPanel);
+  if (Boolean(dom.routeSelectPanel) && !dom.routeSelectPanel.hidden) {
+    const style = window.getComputedStyle(dom.routeSelectPanel);
     if (style.display !== "none" && style.visibility !== "hidden") {
-      const rect = els.routeSelectPanel.getBoundingClientRect();
+      const rect = dom.routeSelectPanel.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0 && rect.bottom > mapRect.top && rect.top < mapRect.bottom) {
         basePadding.bottom = Math.max(basePadding.bottom, Math.ceil(rect.height) + extraPadding);
       }
@@ -182,7 +182,7 @@ function mapSafeAreaPadding(extraPadding = 24) {
 }
 
 function fitMapToBbox(bbox, options = {}) {
-  if (!state.map || !bbox || bbox.length !== 4) {
+  if (!appState.map || !bbox || bbox.length !== 4) {
     return;
   }
 
@@ -198,7 +198,7 @@ function fitMapToBbox(bbox, options = {}) {
       }
     : mapSafeAreaPadding(extraPadding);
 
-  state.map.fitBounds(
+  appState.map.fitBounds(
     [
       [bbox[0], bbox[1]],
       [bbox[2], bbox[3]]
@@ -212,7 +212,7 @@ function fitMapToBbox(bbox, options = {}) {
 }
 
 function fitMapToLine(lineKey) {
-  if (!state.map || !lineKey) {
+  if (!appState.map || !lineKey) {
     return;
   }
 
@@ -234,7 +234,7 @@ function stopKeyForFeature(feature) {
 }
 
 function uniqueStopFeaturesForLine(lineKey) {
-  const cacheEntry = state.lineStopsCache.get(routeStopCacheKey(lineKey));
+  const cacheEntry = appState.lineStopsCache.get(routeStopCacheKey(lineKey));
   const stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
     ? cacheEntry.payload.stopsGeoJson.features
     : [];
@@ -262,7 +262,7 @@ async function toggleVisitedForStation(properties, coords) {
     return;
   }
 
-  if (!state.user) {
+  if (!appState.user) {
     setUserStatusFromStation(properties || {}, "Sign in to mark this station as visited.");
     setStatus("Sign in first to mark stations.", "error");
     return;
@@ -306,23 +306,23 @@ async function toggleVisitedForStation(properties, coords) {
 }
 
 function createLineConnector(lineColor) {
-  if (!els.lineViewStops) {
+  if (!dom.lineViewStops) {
     return;
   }
 
-  const existingSvg = els.lineViewStops.querySelector("#lineViewConnectorSvg");
+  const existingSvg = dom.lineViewStops.querySelector("#lineViewConnectorSvg");
   if (existingSvg) {
     existingSvg.remove();
   }
 
-  const stopRows = Array.from(els.lineViewStops.querySelectorAll(".line-view-stop-row"));
+  const stopRows = Array.from(dom.lineViewStops.querySelectorAll(".line-view-stop-row"));
   if (stopRows.length < 2) {
     return;
   }
 
-  const containerRect = els.lineViewStops.getBoundingClientRect();
-  const scrollTop = els.lineViewStops.scrollTop;
-  const scrollLeft = els.lineViewStops.scrollLeft;
+  const containerRect = dom.lineViewStops.getBoundingClientRect();
+  const scrollTop = dom.lineViewStops.scrollTop;
+  const scrollLeft = dom.lineViewStops.scrollLeft;
   const dotPositions = stopRows.map((row) => {
     const dot = row.querySelector(".line-view-stop-dot");
     if (!dot) {
@@ -346,8 +346,8 @@ function createLineConnector(lineColor) {
   }
 
   const maxY = Math.max(...validPositions.map((p) => p.y));
-  const containerWidth = els.lineViewStops.offsetWidth;
-  const containerHeight = Math.max(els.lineViewStops.scrollHeight, maxY + 20);
+  const containerWidth = dom.lineViewStops.offsetWidth;
+  const containerHeight = Math.max(dom.lineViewStops.scrollHeight, maxY + 20);
 
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.id = "lineViewConnectorSvg";
@@ -380,7 +380,7 @@ function createLineConnector(lineColor) {
   path.setAttribute("opacity", "0.85");
 
   svg.append(path);
-  els.lineViewStops.insertBefore(svg, els.lineViewStops.firstChild);
+  dom.lineViewStops.insertBefore(svg, dom.lineViewStops.firstChild);
 }
 
 function hoverInteractionsEnabled() {
@@ -393,15 +393,15 @@ function isPortraitMobileLayout() {
 
 function setMobilePanelsOpen(open) {
   const nextOpen = Boolean(open) && isPortraitMobileLayout();
-  state.mobilePanelsOpen = nextOpen;
+  appState.mobilePanelsOpen = nextOpen;
 
   document.body.classList.toggle("mobile-panels-open", nextOpen);
 
-  if (els.mobileDrawerTab) {
-    els.mobileDrawerTab.setAttribute("aria-expanded", nextOpen ? "true" : "false");
-    els.mobileDrawerTab.setAttribute("aria-label", nextOpen ? "Close panels" : "Open panels");
-    els.mobileDrawerTab.classList.toggle("is-open", nextOpen);
-    els.mobileDrawerTab.textContent = nextOpen ? "<" : ">";
+  if (dom.mobileDrawerTab) {
+    dom.mobileDrawerTab.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+    dom.mobileDrawerTab.setAttribute("aria-label", nextOpen ? "Close panels" : "Open panels");
+    dom.mobileDrawerTab.classList.toggle("is-open", nextOpen);
+    dom.mobileDrawerTab.textContent = nextOpen ? "<" : ">";
   }
 }
 
@@ -411,20 +411,20 @@ function syncMobilePanelLayout() {
     return;
   }
 
-  setMobilePanelsOpen(state.mobilePanelsOpen);
+  setMobilePanelsOpen(appState.mobilePanelsOpen);
 }
 
 function setActivePopup(name) {
-  const next = state.activePopup === name ? "" : name;
-  state.activePopup = next;
+  const next = appState.activePopup === name ? "" : name;
+  appState.activePopup = next;
 
   if (next === "account" && isPortraitMobileLayout()) {
     setMobilePanelsOpen(false);
   }
 
-  els.authPopup.hidden = next !== "account";
-  els.accountPopupBtn.classList.toggle("btn-primary", next === "account");
-  els.accountPopupBtn.setAttribute("aria-expanded", next === "account" ? "true" : "false");
+  dom.authPopup.hidden = next !== "account";
+  dom.accountPopupBtn.classList.toggle("btn-primary", next === "account");
+  dom.accountPopupBtn.setAttribute("aria-expanded", next === "account" ? "true" : "false");
 }
 
 function closePopups() {

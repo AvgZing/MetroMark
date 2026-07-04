@@ -1,15 +1,15 @@
-/** Restore the user session from a stored token and refresh auth-dependent UI state. */
+/** Restore the user session from a stored token and refresh auth-dependent UI appState. */
 async function hydrateSession() {
-  if (!state.token) {
+  if (!appState.token) {
     updateAuthUi();
     return;
   }
 
   try {
     const me = await apiRequest("/api/auth/me", { method: "GET" });
-    state.user = me.user;
-    if (state.lineViewOrderingVoteClickSetsByLineKey) {
-      state.lineViewOrderingVoteClickSetsByLineKey.clear();
+    appState.user = me.user;
+    if (appState.lineViewOrderingVoteClickSetsByLineKey) {
+      appState.lineViewOrderingVoteClickSetsByLineKey.clear();
     }
     if (typeof applyUserPreferences === "function") {
       applyUserPreferences(me.user?.preferences || {});
@@ -17,9 +17,9 @@ async function hydrateSession() {
     updateAuthUi();
   } catch {
     setToken("");
-    state.user = null;
-    if (state.lineViewOrderingVoteClickSetsByLineKey) {
-      state.lineViewOrderingVoteClickSetsByLineKey.clear();
+    appState.user = null;
+    if (appState.lineViewOrderingVoteClickSetsByLineKey) {
+      appState.lineViewOrderingVoteClickSetsByLineKey.clear();
     }
     updateAuthUi();
   }
@@ -27,10 +27,10 @@ async function hydrateSession() {
 
 /** Sync the auth panel DOM to reflect the current login state and user identity. */
 function updateAuthUi() {
-  const loggedIn = Boolean(state.user);
-  els.authLoggedOut.hidden = loggedIn;
-  els.authLoggedIn.hidden = !loggedIn;
-  els.currentUserLabel.textContent = loggedIn ? `${state.user.displayName} (${state.user.email})` : "-";
+  const loggedIn = Boolean(appState.user);
+  dom.authLoggedOut.hidden = loggedIn;
+  dom.authLoggedIn.hidden = !loggedIn;
+  dom.currentUserLabel.textContent = loggedIn ? `${appState.user.displayName} (${appState.user.email})` : "-";
   if (typeof window.updateFilterPresetAuthState === "function") {
     window.updateFilterPresetAuthState();
   }
@@ -41,7 +41,7 @@ function updateAuthUi() {
   renderLineView({ forceStopRefresh: true });
 }
 
-/** Complete a login flow using a payload promise, then refresh UI and apply user state. */
+/** Complete a login flow using a payload promise, then refresh UI and apply user appState. */
 async function loginWithPayload(payloadPromise, options) {
   options = options || {};
   const payload = await payloadPromise;
@@ -49,9 +49,9 @@ async function loginWithPayload(payloadPromise, options) {
     setAuthFeedback();
   }
   setToken(payload.token, Boolean(options.remember));
-  state.user = payload.user;
-  if (state.lineViewOrderingVoteClickSetsByLineKey) {
-    state.lineViewOrderingVoteClickSetsByLineKey.clear();
+  appState.user = payload.user;
+  if (appState.lineViewOrderingVoteClickSetsByLineKey) {
+    appState.lineViewOrderingVoteClickSetsByLineKey.clear();
   }
   if (typeof applyUserPreferences === "function") {
     applyUserPreferences(payload.user?.preferences || {});

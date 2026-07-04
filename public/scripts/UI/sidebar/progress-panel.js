@@ -1,22 +1,22 @@
 function getVisitedSetForLine(lineKey) {
-  const set = state.visitedByLine.get(lineKey);
+  const set = appState.visitedByLine.get(lineKey);
   if (set) {
     return set;
   }
   const fresh = new Set();
-  state.visitedByLine.set(lineKey, fresh);
+  appState.visitedByLine.set(lineKey, fresh);
   return fresh;
 }
 
 function renderProgress() {
-  if (!state.user) {
-    els.progressSummary.textContent = "Sign in to track progress.";
-    els.lineProgressList.innerHTML = "";
+  if (!appState.user) {
+    dom.progressSummary.textContent = "Sign in to track progress.";
+    dom.lineProgressList.innerHTML = "";
     const overallProgressCard = document.getElementById("overallProgressCard");
     if (overallProgressCard) {
       overallProgressCard.hidden = true;
     }
-    els.lineProgressList.hidden = true;
+    dom.lineProgressList.hidden = true;
     return;
   }
 
@@ -24,18 +24,18 @@ function renderProgress() {
   if (overallProgressCard) {
     overallProgressCard.hidden = false;
   }
-  els.lineProgressList.hidden = false;
+  dom.lineProgressList.hidden = false;
 
-  if (!state.transit) {
-    els.progressSummary.textContent = "Pan or zoom the map and routes will load automatically.";
-    els.lineProgressList.innerHTML = "";
+  if (!appState.transit) {
+    dom.progressSummary.textContent = "Pan or zoom the map and routes will load automatically.";
+    dom.lineProgressList.innerHTML = "";
     return;
   }
 
   const visibleLines = getShownLines();
   if (!visibleLines.length) {
-    els.progressSummary.textContent = "No routes are visible for the active mode/frequency filters.";
-    els.lineProgressList.innerHTML = "";
+    dom.progressSummary.textContent = "No routes are visible for the active mode/frequency filters.";
+    dom.lineProgressList.innerHTML = "";
     return;
   }
 
@@ -66,7 +66,7 @@ function renderProgress() {
     });
 
   const withKnownStops = rows.filter((row) => row.total > 0).length;
-  els.progressSummary.textContent = `${visibleLines.length} visible routes. ${withKnownStops} with loaded stop totals.`;
+  dom.progressSummary.textContent = `${visibleLines.length} visible routes. ${withKnownStops} with loaded stop totals.`;
 
   // Calculate and render overall progress
   const totalVisited = rows.reduce((sum, row) => sum + row.visited, 0);
@@ -84,14 +84,14 @@ function renderProgress() {
     overallProgressFill.style.width = `${overallPercent}%`;
   }
 
-  els.lineProgressList.innerHTML = "";
+  dom.lineProgressList.innerHTML = "";
 
   for (const row of rows) {
     const wrapper = document.createElement("div");
     wrapper.className = "line-progress-row";
 
     // Get the line to access its color
-    const line = state.lineSummaries.find((l) => l.lineKey === row.lineKey);
+    const line = appState.lineSummaries.find((l) => l.lineKey === row.lineKey);
     const lineColor = line?.color || "#177ca2";
 
     // Create color dot
@@ -137,6 +137,6 @@ function renderProgress() {
     wrapper.append(mainRow, percentLabel);
     wrapper.append(meter);
 
-    els.lineProgressList.append(wrapper);
+    dom.lineProgressList.append(wrapper);
   }
 }

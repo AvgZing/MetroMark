@@ -1,16 +1,16 @@
 function setToken(token, remember = true) {
-  state.token = token || "";
-  if (!state.token) {
+  appState.token = token || "";
+  if (!appState.token) {
     localStorage.removeItem("metromark_token");
     sessionStorage.removeItem("metromark_token");
     return;
   }
 
   if (remember) {
-    localStorage.setItem("metromark_token", state.token);
+    localStorage.setItem("metromark_token", appState.token);
     sessionStorage.removeItem("metromark_token");
   } else {
-    sessionStorage.setItem("metromark_token", state.token);
+    sessionStorage.setItem("metromark_token", appState.token);
     localStorage.removeItem("metromark_token");
   }
 }
@@ -20,11 +20,11 @@ async function apiRequest(path, options = {}) {
   const now = Date.now();
   const isTransitRequest = requestPath.startsWith("/api/transit/");
 
-  if (isTransitRequest && Number(state.transitApiCooldownUntil || 0) > now) {
+  if (isTransitRequest && Number(appState.transitApiCooldownUntil || 0) > now) {
     throw new Error("Transit API temporarily unavailable. Retrying shortly.");
   }
 
-  state.clientApiRequestCount += 1;
+  appState.clientApiRequestCount += 1;
   renderApiCounter();
 
   const headers = {
@@ -32,8 +32,8 @@ async function apiRequest(path, options = {}) {
     ...(options.headers || {})
   };
 
-  if (state.token) {
-    headers.Authorization = `Bearer ${state.token}`;
+  if (appState.token) {
+    headers.Authorization = `Bearer ${appState.token}`;
   }
 
   let response;
@@ -44,7 +44,7 @@ async function apiRequest(path, options = {}) {
     });
   } catch (error) {
     if (isTransitRequest) {
-      state.transitApiCooldownUntil = Date.now() + 30000;
+      appState.transitApiCooldownUntil = Date.now() + 30000;
       setBackendStatus("Transit backend connection failed. Pausing transit requests briefly before retrying.");
     }
     throw error;
@@ -62,28 +62,28 @@ async function apiRequest(path, options = {}) {
   const nextPostgresFailures = Number(payload?.postgresQueryFailureCount);
 
   if (Number.isFinite(nextRestRequests) && nextRestRequests >= 0) {
-    state.transitlandRestApiRequestCount = nextRestRequests;
+    appState.transitlandRestApiRequestCount = nextRestRequests;
   }
   if (Number.isFinite(nextRestFailures) && nextRestFailures >= 0) {
-    state.transitlandRestApiFailureCount = nextRestFailures;
+    appState.transitlandRestApiFailureCount = nextRestFailures;
   }
   if (Number.isFinite(nextVectorRequests) && nextVectorRequests >= 0) {
-    state.transitlandVectorTileRequestCount = nextVectorRequests;
+    appState.transitlandVectorTileRequestCount = nextVectorRequests;
   }
   if (Number.isFinite(nextVectorFailures) && nextVectorFailures >= 0) {
-    state.transitlandVectorTileFailureCount = nextVectorFailures;
+    appState.transitlandVectorTileFailureCount = nextVectorFailures;
   }
   if (Number.isFinite(nextRoutingRequests) && nextRoutingRequests >= 0) {
-    state.transitlandRoutingApiRequestCount = nextRoutingRequests;
+    appState.transitlandRoutingApiRequestCount = nextRoutingRequests;
   }
   if (Number.isFinite(nextRoutingFailures) && nextRoutingFailures >= 0) {
-    state.transitlandRoutingApiFailureCount = nextRoutingFailures;
+    appState.transitlandRoutingApiFailureCount = nextRoutingFailures;
   }
   if (Number.isFinite(nextPostgresQueries) && nextPostgresQueries >= 0) {
-    state.postgresQueryCount = nextPostgresQueries;
+    appState.postgresQueryCount = nextPostgresQueries;
   }
   if (Number.isFinite(nextPostgresFailures) && nextPostgresFailures >= 0) {
-    state.postgresQueryFailureCount = nextPostgresFailures;
+    appState.postgresQueryFailureCount = nextPostgresFailures;
   }
   renderApiCounter();
 
@@ -98,25 +98,25 @@ async function apiRequest(path, options = {}) {
 // Initialize line view ordering controls
 function initializeDiagnostics() {
   const rerenderCurrentLineView = () => {
-    if (!state.lineViewOpen || !state.lineViewLineKey) {
+    if (!appState.lineViewOpen || !appState.lineViewLineKey) {
       syncLineViewOrderingControls();
       return;
     }
 
-    const lineKey = String(state.lineViewLineKey).trim();
+    const lineKey = String(appState.lineViewLineKey).trim();
     applyLineViewOrderingPreference(lineKey);
     renderLineViewStops(
       lineKey,
-      state.lineSummaries.find((entry) => entry.lineKey === lineKey)?.color || '#177ca2',
-      { forceRefresh: true, orderingMode: state.lineViewOrderingMode }
+      appState.lineSummaries.find((entry) => entry.lineKey === lineKey)?.color || '#177ca2',
+      { forceRefresh: true, orderingMode: appState.lineViewOrderingMode }
     ).catch((error) => console.error('Error re-rendering line view stops:', error));
   };
 
   const setOrderingMode = (newMode) => {
     const normalizedMode = normalizeLineViewOrderingMode(newMode);
-    const lineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
+    const lineKey = String(appState.lineViewLineKey || appState.focusedLineKey || "").trim();
     if (!lineKey) {
-      state.lineViewOrderingMode = normalizedMode;
+      appState.lineViewOrderingMode = normalizedMode;
       syncLineViewOrderingControls();
       return;
     }
@@ -134,9 +134,9 @@ function initializeDiagnostics() {
   };
 
   const toggleReverse = () => {
-    const lineKey = String(state.lineViewLineKey || state.focusedLineKey || "").trim();
+    const lineKey = String(appState.lineViewLineKey || appState.focusedLineKey || "").trim();
     if (!lineKey) {
-      state.lineViewOrderingReversed = !state.lineViewOrderingReversed;
+      appState.lineViewOrderingReversed = !appState.lineViewOrderingReversed;
       syncLineViewOrderingControls();
       return;
     }
@@ -147,23 +147,23 @@ function initializeDiagnostics() {
     rerenderCurrentLineView();
   };
 
-  if (els.lineViewOrderingAutoBtn) {
-    els.lineViewOrderingAutoBtn.addEventListener('click', () => setOrderingMode('auto'));
+  if (dom.lineViewOrderingAutoBtn) {
+    dom.lineViewOrderingAutoBtn.addEventListener('click', () => setOrderingMode('auto'));
   }
 
-  if (els.lineViewOrderingGeometryRevisedBtn) {
-    els.lineViewOrderingGeometryRevisedBtn.addEventListener('click', () => setOrderingMode('geometry-revised'));
+  if (dom.lineViewOrderingGeometryRevisedBtn) {
+    dom.lineViewOrderingGeometryRevisedBtn.addEventListener('click', () => setOrderingMode('geometry-revised'));
   }
 
-  if (els.lineViewOrderingGeometryBtn) {
-    els.lineViewOrderingGeometryBtn.addEventListener('click', () => setOrderingMode('legacy-geometry'));
+  if (dom.lineViewOrderingGeometryBtn) {
+    dom.lineViewOrderingGeometryBtn.addEventListener('click', () => setOrderingMode('legacy-geometry'));
   }
 
-  if (els.lineViewOrderingFractionsBtn) {
-    els.lineViewOrderingFractionsBtn.addEventListener('click', () => setOrderingMode('fractions'));
+  if (dom.lineViewOrderingFractionsBtn) {
+    dom.lineViewOrderingFractionsBtn.addEventListener('click', () => setOrderingMode('fractions'));
   }
 
-  if (els.lineViewOrderingReverseBtn) {
-    els.lineViewOrderingReverseBtn.addEventListener('click', toggleReverse);
+  if (dom.lineViewOrderingReverseBtn) {
+    dom.lineViewOrderingReverseBtn.addEventListener('click', toggleReverse);
   }
 }

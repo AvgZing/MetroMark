@@ -10,32 +10,32 @@ function getActiveCitySlug() {
 }
 
 function setFilterPresetStatus(message) {
-  if (!els.filterPresetsStatus) {
+  if (!dom.filterPresetsStatus) {
     return;
   }
 
-  els.filterPresetsStatus.textContent = String(message || "");
+  dom.filterPresetsStatus.textContent = String(message || "");
 }
 
 function openFilterPresetsPanel(open) {
   const isOpen = Boolean(open);
-  if (!els.filterPresetsPanel || !els.filterPresetsBtn) {
+  if (!dom.filterPresetsPanel || !dom.filterPresetsBtn) {
     return;
   }
 
-  els.filterPresetsPanel.hidden = !isOpen;
-  els.filterPresetsBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+  dom.filterPresetsPanel.hidden = !isOpen;
+  dom.filterPresetsBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
 }
 
 function currentFilterSnapshot() {
   return {
     citySlug: getActiveCitySlug(),
-    lineSearchQuery: String(state.lineSearchQuery || ""),
-    activeModeKeys: Array.from(state.activeModeKeys),
-    activeFrequencyKeys: Array.from(state.activeFrequencyKeys),
-    manualLineVisibility: Object.fromEntries(state.manualLineVisibility.entries()),
-    showPrivateOperators: Boolean(state.showPrivateOperators),
-    showProblematicGeometries: Boolean(state.showProblematicGeometries),
+    lineSearchQuery: String(appState.lineSearchQuery || ""),
+    activeModeKeys: Array.from(appState.activeModeKeys),
+    activeFrequencyKeys: Array.from(appState.activeFrequencyKeys),
+    manualLineVisibility: Object.fromEntries(appState.manualLineVisibility.entries()),
+    showPrivateOperators: Boolean(appState.showPrivateOperators),
+    showProblematicGeometries: Boolean(appState.showProblematicGeometries),
     savedAtIso: new Date().toISOString()
   };
 }
@@ -46,8 +46,8 @@ function applyFilterSnapshot(snapshot) {
     ? snapshot.activeFrequencyKeys
     : [FREQUENCY_FILTER_ALL];
 
-  state.activeModeKeys = new Set(modeKeys.map((entry) => String(entry || "").trim()).filter(Boolean));
-  state.activeFrequencyKeys = new Set(
+  appState.activeModeKeys = new Set(modeKeys.map((entry) => String(entry || "").trim()).filter(Boolean));
+  appState.activeFrequencyKeys = new Set(
     frequencyKeys.map((entry) => String(entry || "").trim()).filter(Boolean)
   );
 
@@ -58,27 +58,27 @@ function applyFilterSnapshot(snapshot) {
     .map(([lineKey, value]) => [String(lineKey || "").trim(), String(value || "").trim().toLowerCase()])
     .filter(([lineKey, value]) => lineKey && (value === "on" || value === "off"));
 
-  state.manualLineVisibility = new Map(visibilityEntries);
+  appState.manualLineVisibility = new Map(visibilityEntries);
   if (typeof saveUserPreferences === "function") {
     saveUserPreferences({
       activeModeKeys: modeKeys,
       activeFrequencyKeys: frequencyKeys,
-      manualLineVisibility: Object.fromEntries(state.manualLineVisibility),
+      manualLineVisibility: Object.fromEntries(appState.manualLineVisibility),
       initialCitySlug: citySlug
     }).catch(() => {});
   }
 
-  state.lineSearchQuery = String(snapshot.lineSearchQuery || "").trim().toLowerCase();
-  if (els.lineSearch) {
-    els.lineSearch.value = state.lineSearchQuery;
+  appState.lineSearchQuery = String(snapshot.lineSearchQuery || "").trim().toLowerCase();
+  if (dom.lineSearch) {
+    dom.lineSearch.value = appState.lineSearchQuery;
   }
 
   clearStatusPin();
   resetClearRouteProgressConfirmation();
 
   const shown = getShownLines();
-  if (state.focusedLineKey && !shown.some((line) => line.lineKey === state.focusedLineKey)) {
-    state.focusedLineKey = "";
+  if (appState.focusedLineKey && !shown.some((line) => line.lineKey === appState.focusedLineKey)) {
+    appState.focusedLineKey = "";
   }
 
   renderModeFilterBar();
@@ -89,8 +89,8 @@ function applyFilterSnapshot(snapshot) {
   restoreUserStatusFromFocus();
 
   const citySlug = String(snapshot.citySlug || "").trim();
-  if (citySlug && citySlug !== state.initialCitySlug) {
-    state.initialCitySlug = citySlug;
+  if (citySlug && citySlug !== appState.initialCitySlug) {
+    appState.initialCitySlug = citySlug;
     if (typeof saveUserPreferences === "function") {
       saveUserPreferences({ initialCitySlug: citySlug }).catch(() => {});
     }
@@ -102,8 +102,8 @@ function applyFilterSnapshot(snapshot) {
       });
     }
 
-    const city = Array.isArray(state.cities)
-      ? state.cities.find((entry) => String(entry.slug || "").trim() === citySlug)
+    const city = Array.isArray(appState.cities)
+      ? appState.cities.find((entry) => String(entry.slug || "").trim() === citySlug)
       : null;
 
     if (city && typeof fitToArea === "function") {
@@ -119,7 +119,7 @@ function applyFilterSnapshot(snapshot) {
 // Persist a default snapshot for this user under the reserved name '__defaults__'.
 let __saveDefaultPresetTimeout = null;
 async function saveDefaultPreset() {
-  if (!state.user) return;
+  if (!appState.user) return;
   const citySlug = getActiveCitySlug();
   const snapshot = currentFilterSnapshot();
   const name = "__defaults__";
@@ -147,7 +147,7 @@ let cachedPresets = [];
 let cachedCitySlug = "";
 
 function renderFilterPresets() {
-  if (!els.filterPresetList) {
+  if (!dom.filterPresetList) {
     return;
   }
 
@@ -158,13 +158,13 @@ function renderFilterPresets() {
 
   const presets = cachedPresets;
 
-  els.filterPresetList.innerHTML = "";
+  dom.filterPresetList.innerHTML = "";
 
-  if (!state.user) {
+  if (!appState.user) {
     const option = document.createElement("option");
     option.value = "";
     option.textContent = "Sign in to use filter presets";
-    els.filterPresetList.append(option);
+    dom.filterPresetList.append(option);
     return;
   }
 
@@ -172,7 +172,7 @@ function renderFilterPresets() {
     const option = document.createElement("option");
     option.value = "";
     option.textContent = "No saved presets for this city";
-    els.filterPresetList.append(option);
+    dom.filterPresetList.append(option);
     return;
   }
 
@@ -180,18 +180,18 @@ function renderFilterPresets() {
     const option = document.createElement("option");
     option.value = String(preset.id || "");
     option.textContent = preset.name;
-    els.filterPresetList.append(option);
+    dom.filterPresetList.append(option);
   });
 }
 
 function updateFilterPresetAuthState() {
-  const loggedIn = Boolean(state.user);
+  const loggedIn = Boolean(appState.user);
   const controls = [
-    els.filterPresetList,
-    els.filterPresetName,
-    els.saveFilterPresetBtn,
-    els.applyFilterPresetBtn,
-    els.deleteFilterPresetBtn
+    dom.filterPresetList,
+    dom.filterPresetName,
+    dom.saveFilterPresetBtn,
+    dom.applyFilterPresetBtn,
+    dom.deleteFilterPresetBtn
   ];
 
   controls.forEach((control) => {
@@ -208,7 +208,7 @@ function updateFilterPresetAuthState() {
 }
 
 async function loadFilterPresets(options = {}) {
-  if (!state.user) {
+  if (!appState.user) {
     cachedPresets = [];
     cachedCitySlug = "";
     renderFilterPresets();
@@ -239,7 +239,7 @@ async function loadFilterPresets(options = {}) {
 }
 
 async function saveCurrentAsPreset() {
-  if (!state.user) {
+  if (!appState.user) {
     setFilterPresetStatus("Sign in to save presets.");
     return;
   }
@@ -248,7 +248,7 @@ async function saveCurrentAsPreset() {
   // with any existing preset of the same name so unseen route overrides
   // are preserved.
   const citySlug = getActiveCitySlug();
-  const name = normalizePresetName(els.filterPresetName?.value);
+  const name = normalizePresetName(dom.filterPresetName?.value);
   if (!name) {
     setFilterPresetStatus("Enter a preset name first.");
     return;
@@ -289,7 +289,7 @@ async function saveCurrentAsPreset() {
 
     cachedPresets.sort((a, b) => a.name.localeCompare(b.name));
     renderFilterPresets();
-    els.filterPresetList.value = preset.id;
+    dom.filterPresetList.value = preset.id;
     setFilterPresetStatus(`Saved preset \"${preset.name}\".`);
   } catch (error) {
     setFilterPresetStatus(error.message);
@@ -297,12 +297,12 @@ async function saveCurrentAsPreset() {
 }
 
 function applySelectedPreset() {
-  if (!state.user) {
+  if (!appState.user) {
     setFilterPresetStatus("Sign in to apply presets.");
     return;
   }
 
-  const presetId = String(els.filterPresetList?.value || "").trim();
+  const presetId = String(dom.filterPresetList?.value || "").trim();
   if (!presetId) {
     setFilterPresetStatus("Select a preset to apply.");
     return;
@@ -319,12 +319,12 @@ function applySelectedPreset() {
 }
 
 async function deleteSelectedPreset() {
-  if (!state.user) {
+  if (!appState.user) {
     setFilterPresetStatus("Sign in to delete presets.");
     return;
   }
 
-  const presetId = String(els.filterPresetList?.value || "").trim();
+  const presetId = String(dom.filterPresetList?.value || "").trim();
   if (!presetId) {
     setFilterPresetStatus("Select a preset to delete.");
     return;
@@ -344,12 +344,12 @@ async function deleteSelectedPreset() {
 }
 
 function bindFilterPresetsEvents() {
-  if (!els.filterPresetsBtn || !els.filterPresetsPanel) {
+  if (!dom.filterPresetsBtn || !dom.filterPresetsPanel) {
     return;
   }
 
-  els.filterPresetsBtn.addEventListener("click", () => {
-    const open = els.filterPresetsPanel.hidden;
+  dom.filterPresetsBtn.addEventListener("click", () => {
+    const open = dom.filterPresetsPanel.hidden;
     openFilterPresetsPanel(open);
     if (open) {
       loadFilterPresets().catch(() => {});
@@ -357,29 +357,29 @@ function bindFilterPresetsEvents() {
   });
 
   document.addEventListener("pointerdown", (event) => {
-    if (els.filterPresetsPanel.hidden) {
+    if (dom.filterPresetsPanel.hidden) {
       return;
     }
 
     const target = event.target;
-    const insidePanel = els.filterPresetsPanel.contains(target);
-    const insideButton = els.filterPresetsBtn.contains(target);
+    const insidePanel = dom.filterPresetsPanel.contains(target);
+    const insideButton = dom.filterPresetsBtn.contains(target);
 
     if (!insidePanel && !insideButton) {
       openFilterPresetsPanel(false);
     }
   });
 
-  if (els.saveFilterPresetBtn) {
-    els.saveFilterPresetBtn.addEventListener("click", saveCurrentAsPreset);
+  if (dom.saveFilterPresetBtn) {
+    dom.saveFilterPresetBtn.addEventListener("click", saveCurrentAsPreset);
   }
 
-  if (els.applyFilterPresetBtn) {
-    els.applyFilterPresetBtn.addEventListener("click", applySelectedPreset);
+  if (dom.applyFilterPresetBtn) {
+    dom.applyFilterPresetBtn.addEventListener("click", applySelectedPreset);
   }
 
-  if (els.deleteFilterPresetBtn) {
-    els.deleteFilterPresetBtn.addEventListener("click", deleteSelectedPreset);
+  if (dom.deleteFilterPresetBtn) {
+    dom.deleteFilterPresetBtn.addEventListener("click", deleteSelectedPreset);
   }
 }
 

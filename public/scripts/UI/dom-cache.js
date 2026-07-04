@@ -1,4 +1,4 @@
-const els = {
+const dom = {
   statusText: document.getElementById("statusText"),
   statusMeta: document.getElementById("statusMeta"),
   backendStatusText: document.getElementById("backendStatusText"),

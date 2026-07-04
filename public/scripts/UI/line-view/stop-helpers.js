@@ -101,8 +101,8 @@ function buildFeatureLookupMap(stopFeatures) {
 }
 
 function routeGeometryCoordinatesForLine(lineKey) {
-  const features = Array.isArray(state.transit?.routesGeoJson?.features)
-    ? state.transit.routesGeoJson.features
+  const features = Array.isArray(appState.transit?.routesGeoJson?.features)
+    ? appState.transit.routesGeoJson.features
     : [];
 
   const routeFeature = features.find((feature) => String(feature?.properties?.line_key || "") === String(lineKey || ""));
@@ -123,8 +123,8 @@ function routeGeometryCoordinatesForLine(lineKey) {
 }
 
 function routeGeometryHasMultipleParts(lineKey) {
-  const features = Array.isArray(state.transit?.routesGeoJson?.features)
-    ? state.transit.routesGeoJson.features
+  const features = Array.isArray(appState.transit?.routesGeoJson?.features)
+    ? appState.transit.routesGeoJson.features
     : [];
 
   const routeFeature = features.find((feature) => String(feature?.properties?.line_key || "") === String(lineKey || ""));
@@ -208,8 +208,8 @@ function geometryProgressForFeature(progressMap, feature) {
 }
 
 function lineTerminalHints(lineKey) {
-  const line = Array.isArray(state.lineSummaries)
-    ? state.lineSummaries.find((entry) => String(entry?.lineKey || "") === String(lineKey || ""))
+  const line = Array.isArray(appState.lineSummaries)
+    ? appState.lineSummaries.find((entry) => String(entry?.lineKey || "") === String(lineKey || ""))
     : null;
 
   const longName = String(line?.lineLongName || line?.lineName || "").trim();
@@ -217,7 +217,7 @@ function lineTerminalHints(lineKey) {
     return [];
   }
 
-  const separators = [" - ", " to ", " – ", " — "];
+  const separators = [" - ", " to ", " â€“ ", " â€” "];
   for (const separator of separators) {
     if (!longName.includes(separator)) {
       continue;

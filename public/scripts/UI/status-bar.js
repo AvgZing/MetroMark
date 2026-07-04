@@ -1,13 +1,13 @@
 function setStatus(message, kind = "neutral", meta = "") {
-  els.statusText.textContent = message;
-  els.statusMeta.textContent = meta;
+  dom.statusText.textContent = message;
+  dom.statusMeta.textContent = meta;
 
-  els.statusText.classList.remove("error", "ok");
+  dom.statusText.classList.remove("error", "ok");
   if (kind === "error") {
-    els.statusText.classList.add("error");
+    dom.statusText.classList.add("error");
   }
   if (kind === "ok") {
-    els.statusText.classList.add("ok");
+    dom.statusText.classList.add("ok");
   }
 }
 
@@ -18,21 +18,21 @@ function setBackendStatus(message) {
     /(https?:\/\/[^\s<]+)/g,
     (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
   );
-  const zoom = state.map && state.mapReady ? Number(state.map.getZoom()).toFixed(2) : "n/a";
-  els.backendStatusText.innerHTML = `<span class="backend-status-zoom">Current zoom level: ${zoom}</span><br>${linked}`;
+  const zoom = appState.map && appState.mapReady ? Number(appState.map.getZoom()).toFixed(2) : "n/a";
+  dom.backendStatusText.innerHTML = `<span class="backend-status-zoom">Current zoom level: ${zoom}</span><br>${linked}`;
 }
 
 function clearMapNotice() {
-  if (!els.mapNotice) {
+  if (!dom.mapNotice) {
     return;
   }
 
-  els.mapNotice.hidden = true;
-  els.mapNotice.innerHTML = "";
+  dom.mapNotice.hidden = true;
+  dom.mapNotice.innerHTML = "";
 }
 
 function setMapNotice(title, meta = "", kind = "neutral", placement = "center", detailIsHtml = false) {
-  if (!els.mapNotice) {
+  if (!dom.mapNotice) {
     return;
   }
 
@@ -58,51 +58,51 @@ function setMapNotice(title, meta = "", kind = "neutral", placement = "center", 
   }
 
   const className = kind === "error" ? "error" : kind === "ok" ? "ok" : "";
-  els.mapNotice.className = `map-notice${className ? ` ${className}` : ""}`;
-  els.mapNotice.innerHTML = `
+  dom.mapNotice.className = `map-notice${className ? ` ${className}` : ""}`;
+  dom.mapNotice.innerHTML = `
     <div class="map-notice-card">
       <p class="map-notice-title">${escapeHtml(message)}</p>
       ${detail ? `<p class="map-notice-meta">${detailIsHtml ? detail : escapeHtml(detail)}</p>` : ""}
     </div>
   `;
-  els.mapNotice.hidden = false;
+  dom.mapNotice.hidden = false;
 }
 
 function showMapLoadingBadge() {
-  if (!els.mapLoadingBadge) return;
-  els.mapLoadingBadge.hidden = false;
-  els.mapLoadingBadge.textContent = "Loading...";
+  if (!dom.mapLoadingBadge) return;
+  dom.mapLoadingBadge.hidden = false;
+  dom.mapLoadingBadge.textContent = "Loading...";
 }
 
 function hideMapLoadingBadge() {
-  if (!els.mapLoadingBadge) return;
-  els.mapLoadingBadge.hidden = true;
-  els.mapLoadingBadge.textContent = "";
+  if (!dom.mapLoadingBadge) return;
+  dom.mapLoadingBadge.hidden = true;
+  dom.mapLoadingBadge.textContent = "";
 }
 
 function renderApiCounter() {
-  els.apiRequestCounter.textContent =
-    `Queries - REST: ${state.transitlandRestApiRequestCount}, ` +
-    `Vector: ${state.transitlandVectorTileRequestCount}, ` +
-    `Routing: ${state.transitlandRoutingApiRequestCount}, ` +
-    `Postgres: ${state.postgresQueryCount}`;
+  dom.apiRequestCounter.textContent =
+    `Queries - REST: ${appState.transitlandRestApiRequestCount}, ` +
+    `Vector: ${appState.transitlandVectorTileRequestCount}, ` +
+    `Routing: ${appState.transitlandRoutingApiRequestCount}, ` +
+    `Postgres: ${appState.postgresQueryCount}`;
 
-  if (els.apiRequestCounterDetail) {
-    els.apiRequestCounterDetail.textContent =
-      `Failures - REST: ${state.transitlandRestApiFailureCount}, ` +
-      `Vector: ${state.transitlandVectorTileFailureCount}, ` +
-      `Routing: ${state.transitlandRoutingApiFailureCount}, ` +
-      `Postgres: ${state.postgresQueryFailureCount}`;
+  if (dom.apiRequestCounterDetail) {
+    dom.apiRequestCounterDetail.textContent =
+      `Failures - REST: ${appState.transitlandRestApiFailureCount}, ` +
+      `Vector: ${appState.transitlandVectorTileFailureCount}, ` +
+      `Routing: ${appState.transitlandRoutingApiFailureCount}, ` +
+      `Postgres: ${appState.postgresQueryFailureCount}`;
   }
 }
 
 function resetClearRouteProgressConfirmation(options = {}) {
-  if (state.clearRouteProgressConfirmTimeoutId) {
-    window.clearTimeout(state.clearRouteProgressConfirmTimeoutId);
-    state.clearRouteProgressConfirmTimeoutId = null;
+  if (appState.clearRouteProgressConfirmTimeoutId) {
+    window.clearTimeout(appState.clearRouteProgressConfirmTimeoutId);
+    appState.clearRouteProgressConfirmTimeoutId = null;
   }
 
-  state.clearRouteProgressConfirmLineKey = "";
+  appState.clearRouteProgressConfirmLineKey = "";
 
   if (options.renderNow) {
     renderUserStatus();
@@ -110,15 +110,15 @@ function resetClearRouteProgressConfirmation(options = {}) {
 }
 
 function setStatusPin(kind) {
-  state.userStatusPinnedKind = String(kind || "").trim();
+  appState.userStatusPinnedKind = String(kind || "").trim();
 }
 
 function clearStatusPin() {
-  state.userStatusPinnedKind = "";
+  appState.userStatusPinnedKind = "";
 }
 
 function setUserFeedback(message, kind = "neutral") {
-  state.userFeedback = {
+  appState.userFeedback = {
     message: String(message || "").trim(),
     kind
   };
@@ -127,48 +127,48 @@ function setUserFeedback(message, kind = "neutral") {
 }
 
 function renderUserFeedback() {
-  if (!els.userStatusFeedback) {
+  if (!dom.userStatusFeedback) {
     return;
   }
 
-  const message = String(state.userFeedback?.message || "").trim();
+  const message = String(appState.userFeedback?.message || "").trim();
 
-  els.userStatusFeedback.classList.remove("ok", "error");
-  if (state.userFeedback?.kind === "ok") {
-    els.userStatusFeedback.classList.add("ok");
+  dom.userStatusFeedback.classList.remove("ok", "error");
+  if (appState.userFeedback?.kind === "ok") {
+    dom.userStatusFeedback.classList.add("ok");
   }
-  if (state.userFeedback?.kind === "error") {
-    els.userStatusFeedback.classList.add("error");
+  if (appState.userFeedback?.kind === "error") {
+    dom.userStatusFeedback.classList.add("error");
   }
 
   if (!message) {
-    els.userStatusFeedback.hidden = true;
-    els.userStatusFeedback.textContent = "";
+    dom.userStatusFeedback.hidden = true;
+    dom.userStatusFeedback.textContent = "";
     return;
   }
 
-  els.userStatusFeedback.hidden = false;
-  els.userStatusFeedback.textContent =
+  dom.userStatusFeedback.hidden = false;
+  dom.userStatusFeedback.textContent =
     message.length > 160 ? `${message.slice(0, 157)}...` : message;
 }
 
 function renderUserStatus() {
   const statusLineKey = String(
-    state.userStatus?.routeLineKey || state.lineViewLineKey || state.focusedLineKey || ""
+    appState.userStatus?.routeLineKey || appState.lineViewLineKey || appState.focusedLineKey || ""
   ).trim();
-  const statusLine = state.lineSummaries.find((entry) => entry.lineKey === statusLineKey);
+  const statusLine = appState.lineSummaries.find((entry) => entry.lineKey === statusLineKey);
   const statusLineColor = statusLine?.color || "#177ca2";
 
-  if (els.userStatusTitle) {
-    els.userStatusTitle.style.setProperty("--status-line-color", statusLineColor);
+  if (dom.userStatusTitle) {
+    dom.userStatusTitle.style.setProperty("--status-line-color", statusLineColor);
   }
 
-  els.userStatusTitle.textContent = state.userStatus.title;
-  els.userStatusSubtitle.textContent = state.userStatus.subtitle;
+  dom.userStatusTitle.textContent = appState.userStatus.title;
+  dom.userStatusSubtitle.textContent = appState.userStatus.subtitle;
 
-  if (els.userStatusDetails) {
-    els.userStatusDetails.innerHTML = "";
-    for (const item of state.userStatus.details || []) {
+  if (dom.userStatusDetails) {
+    dom.userStatusDetails.innerHTML = "";
+    for (const item of appState.userStatus.details || []) {
       if (!item || !item.label || !item.value) {
         continue;
       }
@@ -177,81 +177,81 @@ function renderUserStatus() {
       dt.textContent = String(item.label);
       const dd = document.createElement("dd");
       dd.textContent = String(item.value);
-      els.userStatusDetails.append(dt, dd);
+      dom.userStatusDetails.append(dt, dd);
     }
   }
 
-  if (els.userStatusRouteProgress && els.userStatusRouteProgressText && els.userStatusRouteProgressFill) {
-    const progress = state.userStatus.progress;
-    const hasProgress = Boolean(state.user) && Boolean(progress) && Number(progress.total || 0) > 0;
+  if (dom.userStatusRouteProgress && dom.userStatusRouteProgressText && dom.userStatusRouteProgressFill) {
+    const progress = appState.userStatus.progress;
+    const hasProgress = Boolean(appState.user) && Boolean(progress) && Number(progress.total || 0) > 0;
 
     if (hasProgress) {
       const visited = Number(progress.visited || 0);
       const total = Number(progress.total || 0);
       const percent = total > 0 ? Math.round((visited / total) * 100) : 0;
-      els.userStatusRouteProgress.hidden = false;
-      els.userStatusRouteProgressText.textContent = `${visited}/${total} stations visited (${percent}%)`;
-      els.userStatusRouteProgressFill.style.width = `${percent}%`;
+      dom.userStatusRouteProgress.hidden = false;
+      dom.userStatusRouteProgressText.textContent = `${visited}/${total} stations visited (${percent}%)`;
+      dom.userStatusRouteProgressFill.style.width = `${percent}%`;
     } else {
-      els.userStatusRouteProgress.hidden = true;
-      els.userStatusRouteProgressText.textContent = "";
-      els.userStatusRouteProgressFill.style.width = "0%";
+      dom.userStatusRouteProgress.hidden = true;
+      dom.userStatusRouteProgressText.textContent = "";
+      dom.userStatusRouteProgressFill.style.width = "0%";
     }
   }
 
-  if (els.clearRouteProgressBtn) {
-    const routeLineKey = String(state.userStatus.routeLineKey || state.focusedLineKey || "").trim();
-    const showClear = Boolean(state.user) && Boolean(routeLineKey);
-    els.clearRouteProgressBtn.hidden = !showClear;
-    els.clearRouteProgressBtn.disabled = !showClear;
+  if (dom.clearRouteProgressBtn) {
+    const routeLineKey = String(appState.userStatus.routeLineKey || appState.focusedLineKey || "").trim();
+    const showClear = Boolean(appState.user) && Boolean(routeLineKey);
+    dom.clearRouteProgressBtn.hidden = !showClear;
+    dom.clearRouteProgressBtn.disabled = !showClear;
   }
 
-  if (els.clearRouteProgressConfirmText) {
-    const routeLineKey = String(state.userStatus.routeLineKey || state.focusedLineKey || "").trim();
+  if (dom.clearRouteProgressConfirmText) {
+    const routeLineKey = String(appState.userStatus.routeLineKey || appState.focusedLineKey || "").trim();
     const pending =
-      Boolean(routeLineKey) && state.clearRouteProgressConfirmLineKey === routeLineKey;
+      Boolean(routeLineKey) && appState.clearRouteProgressConfirmLineKey === routeLineKey;
 
-    els.clearRouteProgressConfirmText.hidden = !pending;
-    els.clearRouteProgressConfirmText.textContent = pending
+    dom.clearRouteProgressConfirmText.hidden = !pending;
+    dom.clearRouteProgressConfirmText.textContent = pending
       ? "Click Clear Route Progress again to confirm reset."
       : "";
   }
 
-  if (els.lineViewBtn) {
-    const hasLine = Boolean(state.focusedLineKey);
-    els.lineViewBtn.hidden = !hasLine;
-    els.lineViewBtn.disabled = !hasLine;
-    els.lineViewBtn.classList.toggle("is-active", state.lineViewOpen);
-    els.lineViewBtn.setAttribute("aria-pressed", state.lineViewOpen ? "true" : "false");
+  if (dom.lineViewBtn) {
+    const hasLine = Boolean(appState.focusedLineKey);
+    dom.lineViewBtn.hidden = !hasLine;
+    dom.lineViewBtn.disabled = !hasLine;
+    dom.lineViewBtn.classList.toggle("is-active", appState.lineViewOpen);
+    dom.lineViewBtn.setAttribute("aria-pressed", appState.lineViewOpen ? "true" : "false");
   }
 
-  if (els.deselectRouteBtn) {
-    els.deselectRouteBtn.hidden = !state.focusedLineKey;
+  if (dom.deselectRouteBtn) {
+    dom.deselectRouteBtn.hidden = !appState.focusedLineKey;
   }
 
   renderUserFeedback();
 }
 
 function captureMapView() {
-  if (!state.map) {
+  if (!appState.map) {
     return null;
   }
 
-  const center = state.map.getCenter();
+  const center = appState.map.getCenter();
   return {
     center: [center.lng, center.lat],
-    zoom: state.map.getZoom(),
-    bearing: state.map.getBearing(),
-    pitch: state.map.getPitch()
+    zoom: appState.map.getZoom(),
+    bearing: appState.map.getBearing(),
+    pitch: appState.map.getPitch()
   };
 }
 
 function restoreMapView(view) {
-  if (!state.map || !view) {
+  if (!appState.map || !view) {
     return;
   }
 
-  state.map.jumpTo({
+  appState.map.jumpTo({
     center: view.center,
     zoom: view.zoom,
     bearing: view.bearing,
@@ -260,7 +260,7 @@ function restoreMapView(view) {
 }
 
 function setUserStatus(title, subtitle, options = {}) {
-  state.userStatus = {
+  appState.userStatus = {
     title: String(title || "").trim() || "No route selected.",
     subtitle: String(subtitle || "").trim() || "Select a route or station.",
     details: Array.isArray(options.details) ? options.details : [],
@@ -282,18 +282,18 @@ async function loadReviewsForCity(citySlug) {
 
     const data = await response.json();
 
-    state.routeReviewsByCity.clear();
-    state.agencyReviewsByCity.clear();
+    appState.routeReviewsByCity.clear();
+    appState.agencyReviewsByCity.clear();
 
     if (Array.isArray(data.routeReviews)) {
       data.routeReviews.forEach((review) => {
-        state.routeReviewsByCity.set(review.line_key, review);
+        appState.routeReviewsByCity.set(review.line_key, review);
       });
     }
 
     if (Array.isArray(data.agencyReviews)) {
       data.agencyReviews.forEach((review) => {
-        state.agencyReviewsByCity.set(review.operator_name, review);
+        appState.agencyReviewsByCity.set(review.operator_name, review);
       });
     }
   } catch (err) {
@@ -303,7 +303,7 @@ async function loadReviewsForCity(citySlug) {
 
 function lineProgressMetrics(lineKey, fallbackTotal = 0) {
   const normalizedLineKey = String(lineKey || "").trim();
-  const cacheEntry = state.lineStopsCache.get(routeStopCacheKey(normalizedLineKey));
+  const cacheEntry = appState.lineStopsCache.get(routeStopCacheKey(normalizedLineKey));
   const stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
     ? cacheEntry.payload.stopsGeoJson.features
     : [];
@@ -355,7 +355,7 @@ function setUserStatusFromLine(line) {
   clearStatusPin();
 
   const progress = lineProgressMetrics(line.lineKey, Number(line.stopCount || 0));
-  const focusedLineActions = state.focusedLineKey === line.lineKey ? line.lineKey : "";
+  const focusedLineActions = appState.focusedLineKey === line.lineKey ? line.lineKey : "";
 
   const details = [
     {
@@ -392,14 +392,14 @@ function setUserStatusFromStation(properties, extraMessage = "") {
   }) || properties?.line_key || "Unknown line";
 
   const relatedLineKey = String(properties?.line_key || "").trim();
-  const relatedLine = state.lineSummaries.find((entry) => entry.lineKey === relatedLineKey);
+  const relatedLine = appState.lineSummaries.find((entry) => entry.lineKey === relatedLineKey);
   const progress = relatedLine
     ? lineProgressMetrics(relatedLineKey, Number(relatedLine.stopCount || 0))
     : null;
 
   setUserStatus(stationName, `Station on ${lineDescriptor}`, {
     details: [],
-    routeLineKey: state.focusedLineKey === relatedLineKey ? relatedLineKey : "",
+    routeLineKey: appState.focusedLineKey === relatedLineKey ? relatedLineKey : "",
     progress,
     feedback: extraMessage || ""
   });
@@ -408,11 +408,11 @@ function setUserStatusFromStation(properties, extraMessage = "") {
 }
 
 function restoreUserStatusFromFocus() {
-  if (state.userStatusPinnedKind === "station") {
+  if (appState.userStatusPinnedKind === "station") {
     return;
   }
 
-  if (!state.focusedLineKey) {
+  if (!appState.focusedLineKey) {
     const shownLines = getShownLines();
     if (shownLines.length === 0) {
       setUserStatus("Zoom in to see stops.", "Pan or zoom the map to load transit.", {
@@ -439,6 +439,6 @@ function restoreUserStatusFromFocus() {
     return;
   }
 
-  const line = state.lineSummaries.find((entry) => entry.lineKey === state.focusedLineKey);
+  const line = appState.lineSummaries.find((entry) => entry.lineKey === appState.focusedLineKey);
   setUserStatusFromLine(line);
 }

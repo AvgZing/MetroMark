@@ -1,8 +1,8 @@
 function getRouteListLines() {
-  const query = String(state.lineSearchQuery || "").trim().toLowerCase();
+  const query = String(appState.lineSearchQuery || "").trim().toLowerCase();
   const hasQuery = Boolean(query);
 
-  const listed = state.lineSummaries.filter((line) => {
+  const listed = appState.lineSummaries.filter((line) => {
     if (hasQuery) {
       return lineSearchText(line).includes(query);
     }
@@ -53,37 +53,37 @@ function getRouteListLines() {
 }
 
 function renderLineList() {
-  els.lineList.innerHTML = "";
+  dom.lineList.innerHTML = "";
 
-  const query = String(state.lineSearchQuery || "").trim().toLowerCase();
+  const query = String(appState.lineSearchQuery || "").trim().toLowerCase();
   const hasQuery = Boolean(query);
   const visibleLines = getShownLines({ ignoreSearch: true });
   const routeListLines = getRouteListLines();
   const overrideCount = routeListLines.filter((line) => Boolean(lineVisibilityOverride(line.lineKey))).length;
 
-  if (els.routeListSummary) {
+  if (dom.routeListSummary) {
     if (hasQuery) {
-      els.routeListSummary.textContent =
+      dom.routeListSummary.textContent =
         overrideCount > 0
           ? `Results (${routeListLines.length}, ${overrideCount} overrides)`
           : `Results (${routeListLines.length})`;
     } else {
-      els.routeListSummary.textContent =
+      dom.routeListSummary.textContent =
         overrideCount > 0
           ? `Filtered routes (${visibleLines.length} visible, ${overrideCount} overrides)`
           : `Filtered routes (${visibleLines.length} visible)`;
     }
   }
 
-  if (els.routeListDropdown && hasQuery) {
-    els.routeListDropdown.open = true;
+  if (dom.routeListDropdown && hasQuery) {
+    dom.routeListDropdown.open = true;
   }
 
-  if (!state.lineSummaries.length) {
+  if (!appState.lineSummaries.length) {
     const empty = document.createElement("p");
     empty.className = "microcopy";
     empty.textContent = "Routes appear here once nearby areas are loaded.";
-    els.lineList.append(empty);
+    dom.lineList.append(empty);
     return;
   }
 
@@ -93,7 +93,7 @@ function renderLineList() {
     empty.textContent = hasQuery
       ? "No matching routes found. Try adjusting the filters? If a route you're looking for isn't available, first check if it exists on https://www.transit.land/map."
       : "No routes are visible. Adjust filters or search for a route and set it ON.";
-    els.lineList.append(empty);
+    dom.lineList.append(empty);
     return;
   }
 
@@ -103,8 +103,8 @@ function renderLineList() {
     const row = document.createElement("div");
     row.className = "line-item";
 
-    const focused = state.focusedLineKey && state.focusedLineKey === line.lineKey;
-    const faded = state.focusedLineKey && state.focusedLineKey !== line.lineKey;
+    const focused = appState.focusedLineKey && appState.focusedLineKey === line.lineKey;
+    const faded = appState.focusedLineKey && appState.focusedLineKey !== line.lineKey;
     const override = lineVisibilityOverride(line.lineKey);
     const visible = lineIsVisible(line);
 
@@ -183,7 +183,7 @@ function renderLineList() {
     sideTop.className = "line-side-top";
 
     const routeStopsCacheKeyValue = routeStopCacheKey(line.lineKey);
-    const routeStopsCacheEntry = state.lineStopsCache.get(routeStopsCacheKeyValue);
+    const routeStopsCacheEntry = appState.lineStopsCache.get(routeStopsCacheKeyValue);
     const routeStopsFullyLoaded = Boolean(routeStopsCacheEntry?.payload?.stopsGeoJson?.features?.length);
     const routeStopsLoaded = routeStopsFullyLoaded || Number(line.stopCount || 0) > 0;
     const loadedFeatures = Array.isArray(routeStopsCacheEntry?.payload?.stopsGeoJson?.features)
@@ -216,17 +216,17 @@ function renderLineList() {
       routeStopsCacheEntry?.payload?.lineSummaries?.[0]?.stopCount ||
       0
     );
-    const routeStopsLoading = state.inFlightLineStopKeys.has(routeStopsCacheKeyValue);
-    const routeStopsAutoAttempted = Boolean(state.routeStopsAutoLoadAttempts?.has(routeStopsCacheKeyValue));
+    const routeStopsLoading = appState.inFlightLineStopKeys.has(routeStopsCacheKeyValue);
+    const routeStopsAutoAttempted = Boolean(appState.routeStopsAutoLoadAttempts?.has(routeStopsCacheKeyValue));
     const isFocusedRoute =
-      state.focusedLineKey === line.lineKey ||
-      (state.lineViewOpen && state.lineViewLineKey === line.lineKey);
+      appState.focusedLineKey === line.lineKey ||
+      (appState.lineViewOpen && appState.lineViewLineKey === line.lineKey);
 
     if (isFocusedRoute && !routeStopsFullyLoaded && !routeStopsLoading && !routeStopsAutoAttempted) {
-      if (!state.routeStopsAutoLoadAttempts) {
-        state.routeStopsAutoLoadAttempts = new Map();
+      if (!appState.routeStopsAutoLoadAttempts) {
+        appState.routeStopsAutoLoadAttempts = new Map();
       }
-      state.routeStopsAutoLoadAttempts.set(routeStopsCacheKeyValue, Date.now());
+      appState.routeStopsAutoLoadAttempts.set(routeStopsCacheKeyValue, Date.now());
       ensureLineStopsLoaded(line.lineKey, {
         forceRefresh: false,
         silent: true,
@@ -330,5 +330,5 @@ function renderLineList() {
     fragment.append(row);
   });
 
-  els.lineList.append(fragment);
+  dom.lineList.append(fragment);
 }

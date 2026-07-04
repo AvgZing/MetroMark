@@ -33,11 +33,11 @@ function normalizeLineViewOrderingMode(orderingMode) {
 
 function lineViewOrderingDefaultModeForLine(lineKey) {
   const normalizedLineKey = String(lineKey || '').trim();
-  if (!normalizedLineKey || !Array.isArray(state?.lineSummaries)) {
+  if (!normalizedLineKey || !Array.isArray(appState?.lineSummaries)) {
     return 'auto';
   }
 
-  const line = state.lineSummaries.find((entry) => String(entry?.lineKey || '').trim() === normalizedLineKey);
+  const line = appState.lineSummaries.find((entry) => String(entry?.lineKey || '').trim() === normalizedLineKey);
   if (!line) {
     return 'auto';
   }
@@ -55,8 +55,8 @@ function lineViewOrderingDefaultModeForLine(lineKey) {
 
 function setResolved(resolved) {
   try {
-    if (typeof state === 'object') {
-      state.lineViewOrderingResolved = resolved;
+    if (typeof appState === 'object') {
+      appState.lineViewOrderingResolved = resolved;
     }
   } catch (e) {
     // ignore

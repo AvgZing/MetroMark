@@ -1,26 +1,26 @@
 function setTheme(theme, options = {}) {
-  state.theme = theme === "dark" ? "dark" : "light";
-  document.body.setAttribute("data-theme", state.theme);
+  appState.theme = theme === "dark" ? "dark" : "light";
+  document.body.setAttribute("data-theme", appState.theme);
 
   // Update streets basemap to match theme (light or dark Carto tiles)
-  if (state.map && state.map.getSource("streets") && state.mapMode !== "satellite") {
-    const tiles = state.theme === "dark"
+  if (appState.map && appState.map.getSource("streets") && appState.mapMode !== "satellite") {
+    const tiles = appState.theme === "dark"
       ? ["https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"]
       : ["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"];
     try {
-      state.map.getSource("streets").setTiles(tiles);
-      state.map.triggerRepaint();
+      appState.map.getSource("streets").setTiles(tiles);
+      appState.map.triggerRepaint();
     } catch {
       // fallback: re-add source if setTiles not supported
       try {
-        state.map.removeSource("streets");
-        state.map.addSource("streets", {
+        appState.map.removeSource("streets");
+        appState.map.addSource("streets", {
           type: "raster",
           tiles,
           tileSize: 256,
           attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
         });
-        state.map.triggerRepaint();
+        appState.map.triggerRepaint();
       } catch (e) {
         console.warn("Could not update map theme:", e);
       }
@@ -31,16 +31,16 @@ function setTheme(theme, options = {}) {
     return;
   }
 
-  if (state.user) {
-    saveUserPreferences({ theme: state.theme }).catch((error) => {
+  if (appState.user) {
+    saveUserPreferences({ theme: appState.theme }).catch((error) => {
       console.warn("Unable to save theme preference:", error);
     });
     return;
   }
 
-  localStorage.setItem("metromark_theme", state.theme);
+  localStorage.setItem("metromark_theme", appState.theme);
 }
 
 function toggleTheme() {
-  setTheme(state.theme === "dark" ? "light" : "dark");
+  setTheme(appState.theme === "dark" ? "light" : "dark");
 }

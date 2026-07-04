@@ -39,7 +39,7 @@ async function buildFractionRankMap(stopFeatures, lineKey, routeLookupKey) {
       body: JSON.stringify({
         lineKey: String(routeLookupKey || lineKey || '').trim(),
         stops: stopsPayload,
-        zoom: state.mapZoom || null
+        zoom: appState.mapZoom || null
       })
     }).catch(() => null);
 
@@ -96,7 +96,7 @@ async function orderStopsByFractions(stopFeatures, lineKey) {
 
     const payload = await apiRequest('/api/transit/stop-fractions', {
       method: 'POST',
-      body: JSON.stringify({ lineKey, stops: stopsPayload, zoom: state.mapZoom || null })
+      body: JSON.stringify({ lineKey, stops: stopsPayload, zoom: appState.mapZoom || null })
     }).catch(() => null);
 
     if (payload && Array.isArray(payload.results)) {
