@@ -426,6 +426,13 @@ async function loadVisibleTransit(options = {}) {
     setMapNotice("Loading...", "", "neutral", "center");
   }
 
+  // Fire placeholder fetch in parallel with the main spatial query.
+  // When Postgres has cached placeholder data (90-day TTL), this returns
+  // immediately and the underlay appears before the main routes do.
+  if (Number(zoom || 0) < MIN_VIEWPORT_FETCH_ZOOM && typeof fetchPlaceholder === "function") {
+    fetchPlaceholder(rawBbox, zoom);
+  }
+
   logTiming('load-viewport:request');
   try {
     var response = await apiRequest("/api/transit/bbox?" + params.toString(), { method: "GET" });
@@ -473,13 +480,6 @@ async function loadVisibleTransit(options = {}) {
         setBackendStatus("No routes found at zoom " + Number(zoom).toFixed(0) + ". Try a different area.");
       }
       // If routes were already visible, keep them — don't show notices
-    }
-
-    // Fetch placeholder underlay at low zoom regardless of route state.
-    // This shows tile-sourced route previews for unpopulated cities even
-    // when other populated cities in the viewport provide real routes.
-    if (Number(zoom || 0) < MIN_VIEWPORT_FETCH_ZOOM && typeof fetchPlaceholder === "function") {
-      fetchPlaceholder(rawBbox, zoom);
     }
 
     logTiming('load-viewport:done');

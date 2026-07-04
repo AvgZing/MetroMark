@@ -137,10 +137,11 @@ async function getTilePlaceholderGeojson(bbox, zoom, routeTypes) {
   const tileZoom = Math.max(5, Math.min(12, Math.round(userZoom)));
   const MAX_TILES = userZoom < 4 ? 40 : userZoom < 6 ? 30 : userZoom < 9 ? 20 : 10;
 
-  // Snapped cache key so adjacent viewports share the same placeholder result.
-  // Wider snap at low zoom prevents cache misses from small pans at country scale.
-  const snap = userZoom < 5 ? 10 : userZoom < 8 ? 2 : 0.5;
-  const cacheKey = `tile-placeholder:${tileZoom}:${Math.round(minLon / snap) * snap}:${Math.round(minLat / snap) * snap}:${Math.round(maxLon / snap) * snap}:${Math.round(maxLat / snap) * snap}`;
+  // Snapped cache key using floor/ceil so small pans within a cell don't
+  // change the key. Wider cells at low zoom prevent boundary-crossing
+  // cache misses during typical browsing.
+  const step = userZoom < 5 ? 20 : userZoom < 8 ? 5 : 1;
+  const cacheKey = `tile-placeholder:${tileZoom}:${Math.floor(minLon / step) * step}:${Math.floor(minLat / step) * step}:${Math.ceil(maxLon / step) * step}:${Math.ceil(maxLat / step) * step}`;
 
   // Check Postgres cache first — Transitland API is never served directly
   try {
