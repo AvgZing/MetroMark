@@ -39,6 +39,10 @@ const {
   buildDirectionStopSequencesForRoute,
   buildRouteStopsPayload
 } = require("./payload");
+const {
+  simplifyGeometryForZoom,
+  geometrySourceHash
+} = require("./geometry");
 
 async function getRouteStopsTransit(lineKey, options = {}) {
   const normalizedLineKey = sanitizeText(lineKey);
@@ -95,6 +99,17 @@ async function getRouteStopsTransit(lineKey, options = {}) {
   const line = await fetchRouteByLineKey(normalizedLineKey, options);
   if (!line) {
     throw new Error(`No route found for ${normalizedLineKey}.`);
+  }
+
+  // Upsert full geometry into the LOD cache so subsequent bbox views get the unfiltered detail.
+  if (line && line.geometry) {
+    try {
+      await db.upsertRouteGeometryLod(normalizedLineKey, 15, line.geometry, {
+        sourceHash: geometrySourceHash(line.geometry)
+      });
+    } catch {
+      // Best-effort; view will still work with fallback geometry.
+    }
   }
 
   const membershipRouteKey = sanitizeText(line.routeOnestopId || normalizedLineKey);
@@ -372,6 +387,23 @@ async function queueCityReverifyIfStale(area, cached) {
   await db.queueCityRefresh(area.slug);
 }
 
+function geometryCoordinateCount(geometry) {
+  if (!geometry || !geometry.type) return 0;
+  if (geometry.type === "LineString") {
+    return Array.isArray(geometry.coordinates) ? geometry.coordinates.length : 0;
+  }
+  if (geometry.type === "MultiLineString") {
+    const lines = geometry.coordinates;
+    if (!Array.isArray(lines)) return 0;
+    let sum = 0;
+    for (const line of lines) {
+      if (Array.isArray(line)) sum += line.length;
+    }
+    return sum;
+  }
+  return 0;
+}
+
 async function getTransitForArea(area, options = {}) {
   const t0 = Date.now();
   const forceRefresh = Boolean(options.forceRefresh);
@@ -395,149 +427,144 @@ async function getTransitForArea(area, options = {}) {
     }
   }
 
-  if (summaryOnly && Boolean(options.cacheOnly)) {
-    const cached = await db.getCacheAny(cacheKey);
-    if (cached) {
-      return {
-        payload: summaryOnlyPayload(cached.payload?.routesGeoJson, cached.payload?.lineSummaries || []),
-        cacheStatus: isCacheExpiredRow(cached) ? "stale-hit" : "hit",
-        cacheKey: area.key,
-        cacheExpiresAt: cached.expiresAt,
-        cacheVerifiedAt: cached.verifiedAt,
-        feedFingerprint: cached.feedFingerprint || "",
-        stopLocationTypes
-      };
-    }
+  const spatialZoom = Number.isFinite(Number(options.zoom)) ? Number(options.zoom) : 15;
 
-    const [minLon, minLat, maxLon, maxLat] = area.bbox;
-    const overlappingCaches = await db.getCacheByBbox(minLon, minLat, maxLon, maxLat, {
-      includeExpired: true
-    });
-
-    if (overlappingCaches && overlappingCaches.length > 0) {
-      const mergedLines = new Map();
-
-      for (const cacheEntry of overlappingCaches) {
-        const payload = cacheEntry.payload || {};
-
-        for (const line of payload?.lineSummaries || []) {
-          const lineKey = line?.lineKey;
-          if (lineKey && !mergedLines.has(lineKey)) {
-            mergedLines.set(lineKey, line);
-          }
-        }
+  if (summaryOnly) {
+    // For summaryOnly (sidebar filter counts), query route_geometry_lod
+    if (!forceRefresh) {
+      const routeGeometries = await db.getRouteGeometriesByBbox(area.bbox, spatialZoom);
+      if (routeGeometries.length > 0) {
+        const lineKeys = routeGeometries.map((entry) => entry.lineKey);
+        let metadataByLineKey = new Map();
+        try {
+          metadataByLineKey = await db.getRouteMetadatasByLineKeys(lineKeys);
+        } catch { /* best-effort */ }
+        const lineSummaries = lineKeys.map((lk) => {
+          const meta = metadataByLineKey.get(lk);
+          return meta ? { ...meta, lineKey: lk } : { lineKey: lk, lineName: lk };
+        });
+        logGetTransitTiming("route-geometry:summaryOnly:" + routeGeometries.length);
+        return {
+          payload: summaryOnlyPayload({ type: "FeatureCollection", features: [] }, lineSummaries),
+          cacheStatus: "hit",
+          cacheKey: area.key,
+          stopLocationTypes
+        };
       }
-
-      logGetTransitTiming('summaryOnly+cacheOnly:spatial-partial');
+    }
+    // Not found in route_geometry_lod
+    if (Boolean(options.cacheOnly)) {
       return {
-        payload: summaryOnlyPayload(
-          { type: "FeatureCollection", features: [] },
-          Array.from(mergedLines.values())
-        ),
-        cacheStatus: "partial-hit",
+        payload: summaryOnlyPayload({ type: "FeatureCollection", features: [] }, []),
+        cacheStatus: "miss",
         cacheKey: area.key,
         stopLocationTypes
       };
     }
-
-    return {
-      payload: summaryOnlyPayload([]),
-      cacheStatus: "miss",
-      cacheKey: area.key,
-      stopLocationTypes
-    };
+    // Not cacheOnly — fall through to Transitland fetch below
   }
 
+  // ─── Per-route spatial query path ──────────────────────────────────────
+  // One source of truth for route geometry: route_geometry_lod.
+  // Keyed by line_key, GiST-indexed, no tile fragmentation.
+  // Transitland feeds this table when it's empty for a viewport.
   if (!forceRefresh) {
-    const cached = await db.getCacheAny(cacheKey);
-    if (cached) {
-      const cacheStatus = isCacheExpiredRow(cached) ? "stale-hit" : "hit";
-      if (!summaryOnly) {
-        await queueCityReverifyIfStale(area, cached);
+    const routeGeometries = await db.getRouteGeometriesByBbox(area.bbox, spatialZoom);
+
+    if (routeGeometries.length > 0) {
+      const routeFeatures = [];
+      const lineSummaries = [];
+
+      // Collect all line keys for batch metadata lookup
+      const lineKeys = routeGeometries.map((entry) => entry.lineKey);
+
+      // Query route_metadata for per-route properties (name, color, operator, etc.)
+      let metadataByLineKey = new Map();
+      try {
+        metadataByLineKey = await db.getRouteMetadatasByLineKeys(lineKeys);
+      } catch {
+        // Non-critical — routes display fine without enriched metadata
       }
 
+      for (const entry of routeGeometries) {
+        const geometry = simplifyGeometryForZoom(entry.geometry, spatialZoom);
+        const lk = entry.lineKey;
+        const meta = metadataByLineKey.get(lk);
+
+        const properties = meta ? {
+          feature_id: lk,
+          line_key: lk,
+          route_onestop_id: String(meta.routeOnestopId || ""),
+          line_name: String(meta.lineName || ""),
+          line_short_name: String(meta.lineShortName || ""),
+          line_long_name: String(meta.lineLongName || ""),
+          operator_name: String(meta.operatorName || ""),
+          mode: String(meta.mode || ""),
+          route_type: Number.isFinite(Number(meta.routeType)) ? Number(meta.routeType) : null,
+          route_feed_id: String(meta.routeFeedId || ""),
+          service_tier: String(meta.serviceTier || ""),
+          frequency_bucket: String(meta.frequencyBucket || "unknown"),
+          headway_best_minutes: Number.isFinite(Number(meta.headwayBestMinutes))
+            ? Number(meta.headwayBestMinutes) : null,
+          headway_source: String(meta.headwaySource || ""),
+          headway_checked: Number(meta.headwayChecked || 0) === 1 ? 1 : 0,
+          color: String(meta.color || "")
+        } : { line_key: lk };
+
+        routeFeatures.push({
+          type: "Feature",
+          id: lk,
+          geometry,
+          properties
+        });
+
+        lineSummaries.push(meta ? { ...meta, lineKey: lk } : { lineKey: lk, lineName: lk });
+      }
+
+      const routesGeoJson = { type: "FeatureCollection", features: routeFeatures };
+      const stopsGeoJson = { type: "FeatureCollection", features: [] };
+
+      const spatialPayload = {
+        routesGeoJson,
+        stopsGeoJson,
+        lineSummaries,
+        area: { bbox: area.bbox },
+        matchingStats: {
+          routeCount: routeGeometries.length
+        }
+      };
+
       if (summaryOnly) {
+        logGetTransitTiming("route-geometry:" + routeGeometries.length + "routes:summaryOnly");
         return {
-          payload: summaryOnlyPayload(cached.payload?.lineSummaries || []),
-          cacheStatus,
+          payload: summaryOnlyPayload(routesGeoJson, lineSummaries),
+          cacheStatus: "hit",
           cacheKey: area.key,
-          cacheExpiresAt: cached.expiresAt,
-          cacheVerifiedAt: cached.verifiedAt,
-          feedFingerprint: cached.feedFingerprint || "",
           stopLocationTypes
         };
       }
 
-      logGetTransitTiming('cache-hit');
+      let enrichedPayload = spatialPayload;
+      try {
+        enrichedPayload = await applyRouteOrderingMetadataToPayload(spatialPayload);
+      } catch {
+        // Best-effort
+      }
+
+      logGetTransitTiming("route-geometry:" + routeGeometries.length + "routes");
       return {
-        payload: await applyRouteOrderingMetadataToPayload(cached.payload || {}),
-        cacheStatus,
+        payload: enrichedPayload,
+        cacheStatus: "hit",
         cacheKey: area.key,
-        cacheExpiresAt: cached.expiresAt,
-        cacheVerifiedAt: cached.verifiedAt,
-        feedFingerprint: cached.feedFingerprint || "",
         stopLocationTypes
       };
     }
 
-    if (options.cacheOnly) {
-      const [minLon, minLat, maxLon, maxLat] = area.bbox;
-      const overlappingCaches = await db.getCacheByBbox(minLon, minLat, maxLon, maxLat, {
-        includeExpired: true
-      });
-
-      if (overlappingCaches && overlappingCaches.length > 0) {
-        const mergedRoutes = new Map();
-        const mergedStops = new Map();
-        const mergedLines = new Map();
-
-        for (const cacheEntry of overlappingCaches) {
-          const payload = cacheEntry.payload || {};
-
-          for (const feature of payload?.routesGeoJson?.features || []) {
-            const lineKey = feature?.properties?.line_key;
-            if (lineKey && !mergedRoutes.has(lineKey)) {
-              mergedRoutes.set(lineKey, feature);
-            }
-          }
-
-          for (const line of payload?.lineSummaries || []) {
-            const lineKey = line?.lineKey;
-            if (lineKey && !mergedLines.has(lineKey)) {
-              mergedLines.set(lineKey, line);
-            }
-          }
-
-          for (const feature of payload?.stopsGeoJson?.features || []) {
-            const stopId = feature?.properties?.stop_id || feature?.id;
-            if (stopId && !mergedStops.has(stopId)) {
-              mergedStops.set(stopId, feature);
-            }
-          }
-        }
-
-        if (summaryOnly) {
-          return {
-            payload: summaryOnlyPayload({ type: "FeatureCollection", features: [] }, Array.from(mergedLines.values())),
-            cacheStatus: "partial-hit",
-            cacheKey: area.key,
-            stopLocationTypes
-          };
-        }
-
-        return {
-          payload: {
-            routesGeoJson: { type: "FeatureCollection", features: Array.from(mergedRoutes.values()) },
-            stopsGeoJson: { type: "FeatureCollection", features: Array.from(mergedStops.values()) },
-            lineSummaries: Array.from(mergedLines.values()),
-            area: { bbox: area.bbox }
-          },
-          cacheStatus: "partial-hit",
-          cacheKey: area.key,
-          stopLocationTypes
-        };
-      }
-
+    // route_geometry_lod is empty for this viewport.
+    // If cacheOnly, return miss — Postgres has no per-route data here yet.
+    // If NOT cacheOnly, jump directly to Transitland fetch.
+    if (Boolean(options.cacheOnly) && !forceRefresh) {
+      logGetTransitTiming("route-geometry:empty");
       return {
         payload: summaryOnly
           ? summaryOnlyPayload({ type: "FeatureCollection", features: [] }, [])
@@ -565,6 +592,52 @@ async function getTransitForArea(area, options = {}) {
   });
 
   const enrichedPayload = await applyRouteOrderingMetadataToPayload(payload);
+
+  // Store each route's geometry to route_geometry_lod so subsequent spatial
+  // queries (getRouteGeometriesByBbox) can find them without tile fragmentation.
+  const storeZoom = Math.max(15, Math.round(Number(options.zoom) || 15));
+  for (const feature of enrichedPayload?.routesGeoJson?.features || []) {
+    const lineKey = feature?.properties?.line_key;
+    const geometry = feature?.geometry;
+    if (lineKey && geometry && geometry.type && geometry.coordinates) {
+      try {
+        await db.upsertRouteGeometryLod(lineKey, storeZoom, geometry, {
+          sourceHash: geometrySourceHash(geometry)
+        });
+      } catch {
+        // Best-effort
+      }
+    }
+  }
+
+  // Store per-route metadata alongside geometry
+  for (const line of enrichedPayload?.lineSummaries || []) {
+    const lk = line?.lineKey;
+    if (lk) {
+      try {
+        await db.setRouteMetadata(lk, {
+          routeOnestopId: line.routeOnestopId,
+          lineName: line.lineName,
+          lineShortName: line.lineShortName,
+          lineLongName: line.lineLongName,
+          operatorName: line.operatorName,
+          mode: line.mode,
+          routeType: line.routeType,
+          routeFeedId: line.routeFeedId,
+          serviceTier: line.serviceTier,
+          frequencyBucket: line.frequencyBucket,
+          headwayBestMinutes: line.headwayBestMinutes,
+          headwaySource: line.headwaySource,
+          headwayChecked: line.headwayChecked,
+          color: line.color
+        });
+      } catch {
+        // Best-effort
+      }
+    }
+  }
+
+  // Write to transit_cache for backward compatibility with harvesters
   const ttlSeconds = Math.max(60, Number(config.TRANSIT_CACHE_TTL_HOURS || 2160) * 3600);
   const fetchedAt = Math.floor(Date.now() / 1000);
   const feedFingerprint = buildFeedFingerprint(enrichedPayload);
@@ -576,8 +649,73 @@ async function getTransitForArea(area, options = {}) {
     verifiedAt: fetchedAt
   });
 
+  // Build response from Postgres tables — never serve raw Transitland data.
+  // Re-query route_geometry_lod + route_metadata with the same spatial path
+  // the frontend would use on a subsequent request.
+  const responseGeometries = await db.getRouteGeometriesByBbox(area.bbox, spatialZoom);
+  const responseFeatures = [];
+  const responseLineSummaries = [];
+  const responseLineKeys = responseGeometries.map((entry) => entry.lineKey);
+  let responseMetadata = new Map();
+
+  if (responseLineKeys.length) {
+    try {
+      responseMetadata = await db.getRouteMetadatasByLineKeys(responseLineKeys);
+    } catch {
+      // Best-effort
+    }
+  }
+
+  for (const entry of responseGeometries) {
+    const geometry = simplifyGeometryForZoom(entry.geometry, spatialZoom);
+    const lk = entry.lineKey;
+    const meta = responseMetadata.get(lk);
+
+    responseFeatures.push({
+      type: "Feature",
+      id: lk,
+      geometry,
+      properties: meta ? {
+        feature_id: lk,
+        line_key: lk,
+        route_onestop_id: String(meta.routeOnestopId || ""),
+        line_name: String(meta.lineName || ""),
+        line_short_name: String(meta.lineShortName || ""),
+        line_long_name: String(meta.lineLongName || ""),
+        operator_name: String(meta.operatorName || ""),
+        mode: String(meta.mode || ""),
+        route_type: Number.isFinite(Number(meta.routeType)) ? Number(meta.routeType) : null,
+        route_feed_id: String(meta.routeFeedId || ""),
+        service_tier: String(meta.serviceTier || ""),
+        frequency_bucket: String(meta.frequencyBucket || "unknown"),
+        headway_best_minutes: Number.isFinite(Number(meta.headwayBestMinutes))
+          ? Number(meta.headwayBestMinutes) : null,
+        headway_source: String(meta.headwaySource || ""),
+        headway_checked: Number(meta.headwayChecked || 0) === 1 ? 1 : 0,
+        color: String(meta.color || "")
+      } : { line_key: lk }
+    });
+
+    responseLineSummaries.push(meta ? { ...meta, lineKey: lk } : { lineKey: lk, lineName: lk });
+  }
+
+  const fromPostgresPayload = {
+    routesGeoJson: { type: "FeatureCollection", features: responseFeatures },
+    stopsGeoJson: { type: "FeatureCollection", features: [] },
+    lineSummaries: responseLineSummaries,
+    area: { bbox: area.bbox },
+    matchingStats: { routeCount: responseFeatures.length }
+  };
+
+  let enrichedFromPostgres = fromPostgresPayload;
+  try {
+    enrichedFromPostgres = await applyRouteOrderingMetadataToPayload(fromPostgresPayload);
+  } catch {
+    // Best-effort
+  }
+
   const result = {
-    payload: enrichedPayload,
+    payload: enrichedFromPostgres,
     cacheStatus: "miss",
     cacheKey: area.key,
     cacheExpiresAt: fetchedAt + ttlSeconds,

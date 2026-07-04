@@ -3,7 +3,6 @@ const db = require("../../processors/data");
 const { VectorTile } = require("@mapbox/vector-tile");
 const Pbf = require("pbf").default;
 const { geometryBbox } = require("../../processors/postgres/spatial");
-const { simplifyGeometryForZoom, resolveGeometryForZoom } = require("./geometry");
 const {
   sanitizeText,
   extractOperatorName,
@@ -348,7 +347,7 @@ function normalizeRoute(route, index, options = {}) {
     lineName = `${shortName} | ${longName}`;
   }
 
-  const geometry = simplifyGeometryForZoom(route.geometry || null, options.zoom);
+  const geometry = route.geometry || null;
   if (!geometry || !geometry.type || !geometry.coordinates) {
     return null;
   }

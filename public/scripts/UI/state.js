@@ -32,6 +32,7 @@ const appState = {
   user: null,
   cities: [],
   transit: null,
+  _viewportPayload: null,
   mapRenderedTransit: null,
   lastMapFeatureStateSignature: "",
   mapRouteFeatureStateCache: new Map(),

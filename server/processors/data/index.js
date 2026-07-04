@@ -788,6 +788,154 @@ async function upsertRouteGeometryLod(lineKey, zoomLevel, geometry, options = {}
   };
 }
 
+async function getRouteGeometriesByBbox(bbox, zoom) {
+  assertLocalConfigured();
+
+  if (!Array.isArray(bbox) || bbox.length !== 4) {
+    return [];
+  }
+
+  const numericZoom = Number(zoom);
+  if (!Number.isFinite(numericZoom)) {
+    return [];
+  }
+
+  const [minLon, minLat, maxLon, maxLat] = bbox.map((value) => Number(value));
+  if ([minLon, minLat, maxLon, maxLat].some((value) => !Number.isFinite(value))) {
+    return [];
+  }
+
+  // For each route intersecting the bbox, get the highest-detail geometry.
+  // DISTINCT ON (line_key) with ORDER BY zoom_level DESC ensures we get
+  // the best available geometry per route. LOD simplification happens
+  // at the application layer (simplifyGeometryForZoom), not at query time.
+  const { rows } = await localQuery(
+    `select distinct on (line_key)
+       line_key,
+       zoom_level,
+       source_hash,
+       updated_at,
+       ST_AsGeoJSON(geometry)::json as geometry_geojson
+     from public.route_geometry_lod
+     where ST_Intersects(geometry, ST_MakeEnvelope($1, $2, $3, $4, 4326))
+     order by line_key, zoom_level desc`,
+    [minLon, minLat, maxLon, maxLat]
+  );
+
+  if (!rows || !rows.length) {
+    return [];
+  }
+
+  return rows.map((row) => {
+    const geometry = normalizeGeometryFromStorageRow(row);
+    return {
+      lineKey: normalizeText(row.line_key),
+      zoomLevel: Number(row.zoom_level),
+      sourceHash: normalizeText(row.source_hash),
+      updatedAt: toEpochSeconds(row.updated_at),
+      geometry
+    };
+  }).filter((entry) => entry.geometry);
+}
+
+async function getRouteMetadatasByLineKeys(lineKeys) {
+  assertLocalConfigured();
+
+  if (!Array.isArray(lineKeys) || lineKeys.length === 0) {
+    return new Map();
+  }
+
+  const placeholders = lineKeys.map((_, index) => `$${index + 1}`).join(", ");
+  const { rows } = await localQuery(
+    `select * from public.route_metadata where line_key in (${placeholders})`,
+    lineKeys.map((lk) => normalizeText(lk))
+  );
+
+  const metadataByLineKey = new Map();
+  for (const row of rows || []) {
+    const lk = normalizeText(row.line_key);
+    if (lk) {
+      metadataByLineKey.set(lk, {
+        lineKey: lk,
+        routeOnestopId: normalizeText(row.route_onestop_id),
+        lineName: normalizeText(row.line_name),
+        lineShortName: normalizeText(row.line_short_name),
+        lineLongName: normalizeText(row.line_long_name),
+        operatorName: normalizeText(row.operator_name),
+        mode: normalizeText(row.mode),
+        routeType: Number.isFinite(Number(row.route_type)) ? Number(row.route_type) : null,
+        routeFeedId: normalizeText(row.route_feed_id),
+        serviceTier: normalizeText(row.service_tier),
+        frequencyBucket: normalizeText(row.frequency_bucket) || "unknown",
+        headwayBestMinutes: Number.isFinite(Number(row.headway_best_minutes))
+          ? Number(row.headway_best_minutes) : null,
+        headwaySource: normalizeText(row.headway_source),
+        headwayChecked: Number(row.headway_checked) === 1 ? 1 : 0,
+        color: normalizeText(row.color)
+      });
+    }
+  }
+
+  return metadataByLineKey;
+}
+
+async function setRouteMetadata(lineKey, metadata) {
+  assertLocalConfigured();
+
+  const normalizedLineKey = normalizeText(lineKey);
+  if (!normalizedLineKey) {
+    return null;
+  }
+
+  const meta = metadata || {};
+
+  await localQuery(
+    `insert into public.route_metadata (
+      line_key, route_onestop_id, line_name, line_short_name, line_long_name,
+      operator_name, mode, route_type, route_feed_id, service_tier,
+      frequency_bucket, headway_best_minutes, headway_source, headway_checked,
+      color, updated_at
+    ) values (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now()
+    )
+    on conflict (line_key) do update set
+      route_onestop_id = excluded.route_onestop_id,
+      line_name = excluded.line_name,
+      line_short_name = excluded.line_short_name,
+      line_long_name = excluded.line_long_name,
+      operator_name = excluded.operator_name,
+      mode = excluded.mode,
+      route_type = excluded.route_type,
+      route_feed_id = excluded.route_feed_id,
+      service_tier = excluded.service_tier,
+      frequency_bucket = excluded.frequency_bucket,
+      headway_best_minutes = excluded.headway_best_minutes,
+      headway_source = excluded.headway_source,
+      headway_checked = excluded.headway_checked,
+      color = excluded.color,
+      updated_at = excluded.updated_at`,
+    [
+      normalizedLineKey,
+      normalizeText(meta.routeOnestopId),
+      normalizeText(meta.lineName),
+      normalizeText(meta.lineShortName),
+      normalizeText(meta.lineLongName),
+      normalizeText(meta.operatorName),
+      normalizeText(meta.mode),
+      Number.isFinite(Number(meta.routeType)) ? Number(meta.routeType) : null,
+      normalizeText(meta.routeFeedId),
+      normalizeText(meta.serviceTier),
+      normalizeText(meta.frequencyBucket) || "unknown",
+      Number.isFinite(Number(meta.headwayBestMinutes)) ? Number(meta.headwayBestMinutes) : null,
+      normalizeText(meta.headwaySource),
+      Number(meta.headwayChecked || 0) === 1 ? 1 : 0,
+      normalizeText(meta.color)
+    ]
+  );
+
+  return { lineKey: normalizedLineKey };
+}
+
 async function clearCacheByPrefix(prefix) {
   assertLocalConfigured();
   await localQuery("delete from public.transit_cache where cache_key like $1", [`${prefix}%`]);
@@ -1871,6 +2019,9 @@ module.exports = {
   setCache,
   getRouteGeometryLod,
   upsertRouteGeometryLod,
+  getRouteGeometriesByBbox,
+  getRouteMetadatasByLineKeys,
+  setRouteMetadata,
   getFractionOnRoute,
   clearCacheByPrefix,
   getCacheStats,

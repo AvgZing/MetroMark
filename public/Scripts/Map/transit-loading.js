@@ -349,173 +349,136 @@ async function loadVisibleTransit(options = {}) {
 
   appState.loadTimings = [];
   logTiming('load-visible-transit-start');
-  const loadReason = String(options.reason || '').trim() || 'unknown';
-  const zoom = appState.map.getZoom();
-  const rawBbox = mapBoundsToBbox();
-  appState.currentViewportBbox = rawBbox ? [...rawBbox] : null;
+  var zoom = appState.map.getZoom();
+  var rawBbox = mapBoundsToBbox();
+  appState.currentViewportBbox = rawBbox ? rawBbox.slice() : null;
+
   if (rawBbox) {
-    appState.lastViewportFetchBbox = [...rawBbox];
+    appState.lastViewportFetchBbox = rawBbox.slice();
     appState.lastViewportFetchZoom = Number(zoom || 0);
   }
+
   if (!rawBbox) {
+    // Dateline crossing — show all cached routes
     appState.viewportSummaryLineSummaries = [];
     appState.viewportSummaryRequestToken += 1;
-    const allCachedKeys = new Set(appState.areaCache.keys());
+    var allCachedKeys = new Set(appState.areaCache.keys());
     if (allCachedKeys.size === 0) {
-      setStatus(
-        "This view crosses the 180-degree line and cannot be loaded yet.",
-        "error",
-        "Pan away from the dateline and transit will resume loading."
-      );
+      setStatus("This view crosses the 180-degree line and cannot be loaded yet.", "error",
+        "Pan away from the dateline and transit will resume loading.");
       return;
     }
-
     appState.requestedAreaKeys = allCachedKeys;
     appState.currentViewportBbox = null;
-    syncActiveAreaKeys({
-      fallbackToAllCached: true
-    });
+    appState._viewportPayload = null;
+    syncActiveAreaKeys({ fallbackToAllCached: true });
     rebuildCombinedTransit();
     refreshUiFromState();
-
-    appState.lastLoadStats = {
-      requested: 0,
-      cached: allCachedKeys.size,
-      queued: 0,
-      deferred: 0,
-      failed: 0,
-      successful: 0
-    };
-
-    setStatus(
-      "Zoomed out. Showing all cached routes.",
-      "ok",
-      `${allCachedKeys.size} cached areas are visible at this zoom.`
-    );
-
-    setBackendStatus(
-      "World/dateline view detected. Using all cached transit data without requesting new tiles."
-    );
+    setStatus("Zoomed out. Showing all cached routes.", "ok",
+      allCachedKeys.size + " cached areas are visible at this zoom.");
+    setBackendStatus("World/dateline view detected.");
     return;
   }
 
-  const modeRouteTypes = selectedRouteTypesForFetch();
-  let requests = viewportRequestsForMode(rawBbox, zoom, modeRouteTypes);
+  // Single viewport API call — server uses spatial merge (route_geometry_lod
+  // + transit_cache overlap). No tile fragmentation, no fallbacks.
+  var modeRouteTypes = selectedRouteTypesForFetch();
+  var cacheOnly = Number(zoom || 0) < MIN_VIEWPORT_FETCH_ZOOM;
 
-  // When force-refreshing, limit to a handful of tiles near center to avoid
-  // overwhelming Transitland with concurrent API calls, each taking 15+ seconds.
-  if (options.forceRefresh && requests.length > 8) {
-    requests.sort((a, b) => (a.distanceScore || 0) - (b.distanceScore || 0));
-    requests = requests.slice(0, 8);
-  }
+  // Clamp viewport bbox to valid coordinate ranges to prevent 400 errors
+  // at continental/global zoom levels where bounds can exceed safe ranges.
+  var safeBbox = [
+    Math.max(-180, Math.min(180, rawBbox[0])),
+    Math.max(-85, Math.min(85, rawBbox[1])),
+    Math.max(-180, Math.min(180, rawBbox[2])),
+    Math.max(-85, Math.min(85, rawBbox[3]))
+  ];
+  // Ensure west < east and south < north after clamping
+  if (safeBbox[0] >= safeBbox[2]) safeBbox[0] = safeBbox[2] - 0.001;
+  if (safeBbox[1] >= safeBbox[3]) safeBbox[1] = safeBbox[3] - 0.001;
 
-  appState.viewportSummaryLineSummaries = [];
-  appState.viewportSummaryRequestToken += 1;
-
-  // No low-zoom short-circuit: always generate requests for the full viewport
-  // so that the server can return Postgres-backed cached payloads for any zoom.
-
-  const cachedRequestCount = requests.filter((request) => appState.areaCache.has(request.areaKey)).length;
-  const missingRequests = requests.filter(
-    (request) => options.forceRefresh || !appState.areaCache.has(request.areaKey)
-  );
-
-  const cachedInView = visibleCachedAreaKeysForViewport(rawBbox, modeRouteTypes);
-
-  appState.requestedAreaKeys = new Set([
-    ...requests.map((request) => request.areaKey),
-    ...Array.from(cachedInView)
-  ]);
-  trimQueuedFetchesToCurrentView();
-
-  syncActiveAreaKeys({
-    fallbackToAllCached: false
+  var params = new URLSearchParams({
+    bbox: bboxQueryText(safeBbox),
+    zoom: Number(zoom || 0).toFixed(2)
   });
-  rebuildCombinedTransit();
-  refreshUiFromState();
 
-  if (!requests.length) {
-    setStatus("No nearby request tiles were generated for this view.", "error");
-    return;
+  if (cacheOnly) {
+    params.set("cacheOnly", "1");
+  }
+  if (Boolean(options.forceRefresh)) {
+    params.set("refresh", "1");
+    params.delete("cacheOnly");
+  }
+  if (Array.isArray(modeRouteTypes) && modeRouteTypes.length) {
+    params.set("routeTypes", modeRouteTypes.join(","));
   }
 
-  const cached = cachedRequestCount;
-  const missing = missingRequests;
-  const nextBatch = missing.slice(0, MAX_NEW_FETCHES_PER_VIEW);
-
-  appState.lastLoadStats = {
-    requested: requests.length,
-    cached,
-    queued: 0,
-    deferred: Math.max(0, missing.length - nextBatch.length),
-    failed: 0,
-    successful: 0
-  };
-
-  // First, queue cache-only fetches so we always attempt to surface Postgres cached
-  // payloads without triggering Transitland.
-  const cacheOnlyBatch = missing.slice(0, MAX_NEW_FETCHES_PER_VIEW);
-  const queuedCacheOnly = queueTileFetches(cacheOnlyBatch, {
-    cacheOnly: true,
-    forceRefresh: Boolean(options.forceRefresh)
-  });
-  appState.lastLoadStats.queued = queuedCacheOnly;
-
-  if (Number(zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM) {
-    setTimeout(() => {
-      const stillMissing = missing.filter((r) => !appState.areaCache.has(r.areaKey));
-      if (!stillMissing.length) return;
-      const nextFull = stillMissing.slice(0, MAX_NEW_FETCHES_PER_VIEW);
-      const queuedFull = queueTileFetches(nextFull, {
-        cacheOnly: false,
-        forceRefresh: Boolean(options.forceRefresh)
-      });
-      appState.lastLoadStats.queued += queuedFull;
-    }, 100);
-  }
-
-  if (!nextBatch.length) {
-    if (appState.lineSummaries.length > 0) {
-      clearMapNotice();
-      setBackendStatus(`${cached}/${requests.length} on-screen areas loaded from cache. Select a route to load stops.`);
-    } else {
-  if (Number(zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM || Boolean(options.forceRefresh)) {
-        setMapNotice(
-          "No stops found",
-          "Check this map for supported routes: https://www.transit.land/",
-          "error"
-        );
-        setBackendStatus(
-          "No routes are visible in this area. Check Transitland for supported routes: https://www.transit.land/"
-        );
-      } else {
-        hideMapLoadingBadge();
-        setMapNotice("Zoom in to see stops", "Pan or zoom the map to load transit.", "neutral", "center");
-        setBackendStatus("No cached routes are currently visible at this zoom. Pan or zoom to another area.");
-      }
-    }
-    return;
-  }
-
-  if (appState.lineSummaries.length > 0) {
-    clearMapNotice();
-    setBackendStatus(
-      `Loading more routes for the current map view... ${cached} cached - ${queuedCacheOnly} loading${
-        appState.lastLoadStats.deferred > 0 ? ` - ${appState.lastLoadStats.deferred} deferred` : ""
-      }`
-    );
+  // Show loading indicator: corner badge when routes exist, center notice when empty
+  var hasExistingRoutes = appState.lineSummaries.length > 0;
+  if (hasExistingRoutes) {
+    showMapLoadingBadge();
   } else {
-    setMapNotice(
-      "Loading...",
-      `Fetching transit data for this area. ${queuedCacheOnly} request${queuedCacheOnly === 1 ? "" : "s"} queued.`
-    );
-    setBackendStatus(
-      `Loading transit data for the current map view... Route-first mode active. Stops are loaded only on focused routes (location types ${ROUTE_STOP_TYPES_QUERY}).`
-    );
+    setMapNotice("Loading...", "", "neutral", "center");
   }
 
-  debouncedViewportSummary(rawBbox, zoom);
-  logTiming('load-visible-transit-queued');
+  logTiming('load-viewport:request');
+  try {
+    var response = await apiRequest("/api/transit/bbox?" + params.toString(), { method: "GET" });
+    logTiming('load-viewport:response');
+
+    // Track API usage counters
+    appState.viewportRequestCount += 1;
+    var serverPostgres = Number(response?.postgresQueryCount || 0);
+    if (serverPostgres > 0) {
+      appState.postgresQueryCount = serverPostgres;
+    }
+    var serverRest = Number(response?.transitlandRestApiRequests || 0);
+    if (serverRest > 0) {
+      appState.transitlandRestApiRequestCount = serverRest;
+      appState.transitlandViewportFetchCount += 1;
+    }
+    if (!serverRest) {
+      appState.postgresViewportHitCount += 1;
+    }
+    renderApiCounter();
+
+    var responseRoutes = response?.routesGeoJson?.features?.length || 0;
+    var responseCacheStatus = String(response?.cacheStatus || "").trim().toLowerCase();
+
+    if (responseRoutes > 0) {
+      appState._viewportPayload = response;
+      rebuildCombinedTransit(response);
+      refreshUiFromState();
+      clearMapNotice();
+      hideMapLoadingBadge();
+      setBackendStatus(responseRoutes + " routes loaded for viewport at zoom " +
+        Number(zoom).toFixed(0) + " (" + responseCacheStatus + ")");
+    } else {
+      // No routes in viewport — keep _viewportPayload for route-click fallback
+      if (!hasExistingRoutes) {
+        appState._viewportPayload = null;
+      }
+      rebuildCombinedTransit();
+      refreshUiFromState();
+      hideMapLoadingBadge();
+      if (!hasExistingRoutes && Number(zoom || 0) < MIN_VIEWPORT_FETCH_ZOOM) {
+        setMapNotice("Zoom in to see routes", "Pan or zoom the map to load transit.", "neutral", "center");
+        setBackendStatus("No cached routes at this zoom. Zoom in to load.");
+      } else if (!hasExistingRoutes) {
+        setBackendStatus("No routes found at zoom " + Number(zoom).toFixed(0) + ". Try a different area.");
+      }
+      // If routes were already visible, keep them — don't show notices
+    }
+
+    logTiming('load-viewport:done');
+  } catch (error) {
+    hideMapLoadingBadge();
+    console.warn("[viewport] loadVisibleTransit failed:", error.message);
+    setBackendStatus("Viewport load failed: " + error.message);
+    // Don't clear _viewportPayload — keep last successful data visible
+  }
+
+  debouncedViewportSummary(safeBbox, zoom);
 }
 
 let viewportSummaryTimeout = null;
@@ -599,31 +562,6 @@ function onMapMoveEnd() {
   const zoom = appState.map ? Number(appState.map.getZoom()) : 0;
   const lastViewportBbox = normalizeBboxArray(appState.lastViewportFetchBbox);
   const lastViewportZoom = Number(appState.lastViewportFetchZoom);
-
-  if (
-    rawBbox &&
-    lastViewportBbox &&
-    Number.isFinite(lastViewportZoom) &&
-    Math.abs(zoom - lastViewportZoom) < 0.01
-  ) {
-    const bufferedViewport = expandBbox(lastViewportBbox, 0.18);
-    const withinBufferedViewport =
-      rawBbox[0] >= bufferedViewport[0] &&
-      rawBbox[1] >= bufferedViewport[1] &&
-      rawBbox[2] <= bufferedViewport[2] &&
-      rawBbox[3] <= bufferedViewport[3];
-
-    if (withinBufferedViewport) {
-      appState.currentViewportBbox = [...rawBbox];
-      syncActiveAreaKeys({
-        fallbackToAllCached: false
-      });
-      rebuildCombinedTransit();
-      refreshUiFromState();
-      debouncedViewportSummary(rawBbox, zoom);
-      return;
-    }
-  }
 
   const now = Date.now();
   if (now - appState.lastMoveFetchAt < MIN_MOVE_FETCH_INTERVAL_MS) {

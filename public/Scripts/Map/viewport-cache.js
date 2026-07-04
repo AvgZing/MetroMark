@@ -485,9 +485,38 @@ function resetViewAggregation() {
   };
 }
 
-function rebuildCombinedTransit() {
+function countGeometryCoords(geometry) {
+  if (!geometry) return 0;
+  if (geometry.type === 'LineString') {
+    return geometry.coordinates ? geometry.coordinates.length : 0;
+  }
+  if (geometry.type === 'MultiLineString') {
+    var sum = 0;
+    var lines = geometry.coordinates;
+    if (lines) {
+      for (var i = 0; i < lines.length; i++) {
+        if (Array.isArray(lines[i])) {
+          sum += lines[i].length;
+        }
+      }
+    }
+    return sum;
+  }
+  return 0;
+}
+
+function rebuildCombinedTransit(serverPayload) {
+  // If called without a payload (e.g., from scheduleBatchRender after a route-click),
+  // use the last stored viewport payload so route-stops upgrades work correctly.
+  if (!serverPayload && appState._viewportPayload) {
+    serverPayload = appState._viewportPayload;
+  }
+
   const rebuildStart = performance.now();
-  if (appState.activeAreaKeys.size === 0) {
+
+  // Only bail on empty tile cache if we don't have a per-route payload to render.
+  // The spatial query path works without any tile cache entries.
+  if (!serverPayload && appState.activeAreaKeys.size === 0) {
     appState.transit = null;
     appState.lineSummaries = [];
     appState.loadedLineSummaries = [];
@@ -550,9 +579,37 @@ function rebuildCombinedTransit() {
     if (!viewportBbox) {
       return true;
     }
-
     return geometryIntersectsBbox(feature?.geometry, viewportBbox);
   };
+
+  // ── Per-route payload path (no tile iteration) ──────────────────────────
+  // When the server already merged all route geometry into a single payload
+  // via the spatial query (route_geometry_lod), skip the tile-based assembly
+  // and build routeByLine / lineByKeyAll directly from the payload.
+  if (serverPayload && (serverPayload.routesGeoJson || serverPayload.lineSummaries)) {
+    var pf = serverPayload.routesGeoJson?.features || [];
+    for (var pi = 0; pi < pf.length; pi++) {
+      var pfeature = pf[pi];
+      var plineKey = pfeature?.properties?.line_key;
+      if (!plineKey) continue;
+      routeByLine.set(plineKey, pfeature);
+    }
+
+    var plines = serverPayload.lineSummaries || [];
+    for (var pj = 0; pj < plines.length; pj++) {
+      var pline = plines[pj];
+      var lk = pline?.lineKey;
+      if (!lk) continue;
+      lineByKeyAll.set(lk, pline);
+    }
+
+    // Mark all routes in the payload as visible (viewport filtering below)
+    // Fall through to shared post-processing: route-stop upgrades,
+    // visibility filtering, stop assembly, and appState.transit assignment.
+  } else {
+
+  // DEBUG: track per-route tile coverage to diagnose partial-geometry loading
+  var _debugRouteTileCoverage = new Map();
 
   for (const cacheKey of appState.activeAreaKeys) {
     const payload = appState.areaCache.get(cacheKey)?.payload;
@@ -568,9 +625,26 @@ function rebuildCombinedTransit() {
       if (!routeIntersectsViewport(feature)) {
         continue;
       }
-      if (!routeByLine.has(lineKey)) {
+      // Pick the tile with the most coordinates for each route, so that
+      // higher-detail or larger-coverage tiles are never overridden by
+      // lower-detail representations from coarser zoom levels.
+      var existingFeature = routeByLine.get(lineKey);
+      if (!existingFeature) {
+        routeByLine.set(lineKey, feature);
+      } else if (countGeometryCoords(feature.geometry) > countGeometryCoords(existingFeature.geometry)) {
         routeByLine.set(lineKey, feature);
       }
+
+      // DEBUG: record coordinate count per tile for this route
+      if (!_debugRouteTileCoverage.has(lineKey)) {
+        _debugRouteTileCoverage.set(lineKey, []);
+      }
+      var coords = (feature?.geometry?.type === 'LineString')
+        ? (feature.geometry.coordinates?.length || 0)
+        : (feature?.geometry?.type === 'MultiLineString')
+          ? (feature.geometry.coordinates || []).reduce(function(s, c) { return s + (Array.isArray(c) ? c.length : 0); }, 0)
+          : 0;
+      _debugRouteTileCoverage.get(lineKey).push({ cacheKey: cacheKey, coords: coords });
     }
 
     for (const line of payload?.lineSummaries || []) {
@@ -589,6 +663,40 @@ function rebuildCombinedTransit() {
       }
     }
   }
+
+  // DEBUG: log routes whose selected geometry tile has significantly fewer
+  // coords than another cached tile — only triggers when most-coords heuristic
+  // picks something unexpected (should be rare after the fix).
+  for (var _entries = _debugRouteTileCoverage.entries(), _entry; (_entry = _entries.next()) && !_entry.done;) {
+    var debugLineKey = _entry.value[0];
+    var tiles = _entry.value[1];
+    if (tiles.length > 1) {
+      var maxCoords = tiles.reduce(function(m, t) { return Math.max(m, t.coords); }, 0);
+      // The selected tile should be the one with maxCoords after the heuristic.
+      // Warn only if the first-processed tile was notably smaller (informational).
+      var firstCoords = tiles[0].coords;
+      if (maxCoords > firstCoords * 1.5 && maxCoords > 20) {
+        var selectedFeature = routeByLine.get(debugLineKey);
+        var selectedCoords = countGeometryCoords(selectedFeature?.geometry);
+        if (selectedCoords < maxCoords) {
+          console.warn(
+            '[rebuild] route ' + debugLineKey +
+            ' selected tile has ' + selectedCoords + ' coords but another tile has ' + maxCoords +
+            ' — geometry may be partial. tiles: ' +
+            JSON.stringify(tiles)
+          );
+        } else {
+          console.log(
+            '[rebuild] route ' + debugLineKey +
+            ' upgraded from ' + firstCoords + ' to ' + selectedCoords + ' coords' +
+            ' (discarded lower-detail tiles). tiles: ' +
+            JSON.stringify(tiles)
+          );
+        }
+      }
+    }
+  }
+  } // end tile-iteration path
 
   // Upgrade route geometry from route-stops cache (full detail) for any routes that have it
   for (const [lineKey, routeFeature] of routeByLine) {
@@ -620,9 +728,8 @@ function rebuildCombinedTransit() {
   for (const [lineKey, override] of appState.manualLineVisibility.entries()) {
     const normalizedOverride = String(override || "").trim().toLowerCase();
     if (normalizedOverride === "on" && lineByKeyAll.has(lineKey)) {
-      // Only include manual override if route geometry intersects current viewport
-      const line = lineByKeyAll.get(lineKey);
-      if (line && geometryIntersectsBbox(line.geometry, appState.currentViewportBbox)) {
+      const feature = routeByLine.get(lineKey);
+      if (feature && geometryIntersectsBbox(feature.geometry, appState.currentViewportBbox)) {
         effectiveVisibleLineKeys.add(lineKey);
       }
     } else if (normalizedOverride === "off") {

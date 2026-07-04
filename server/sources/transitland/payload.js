@@ -6,9 +6,6 @@ const {
   geometryBbox
 } = require("../../processors/postgres/spatial");
 const {
-  resolveGeometryForZoom
-} = require("./geometry");
-const {
   TRANSITLAND_BASE_URL,
   transitlandMetrics
 } = require("./metrics");
@@ -363,10 +360,7 @@ async function buildTransitPayload(area, rawRoutes, rawStops, options = {}) {
   const normalizedRoutes = normalizeRoutes(rawRoutes, options);
   const resolvedRoutes = [];
   for (const route of normalizedRoutes) {
-    const resolvedGeometry = await resolveGeometryForZoom(route, {
-      zoom: options.zoom,
-      bbox: area?.bbox
-    });
+    const resolvedGeometry = route.geometry || null;
 
     if (!resolvedGeometry) {
       continue;

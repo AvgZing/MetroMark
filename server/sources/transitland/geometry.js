@@ -13,14 +13,14 @@ function geometryToleranceForZoom(zoom) {
   }
 
   if (numeric >= 15) return 0;
-  if (numeric >= 14) return 0.00002;
-  if (numeric >= 13) return 0.00004;
-  if (numeric >= 12) return 0.00008;
-  if (numeric >= 11) return 0.00016;
-  if (numeric >= 10) return 0.0003;
-  if (numeric >= 9) return 0.00055;
-  if (numeric >= 8) return 0.0009;
-  return 0.0015;
+  if (numeric >= 14) return 0.000008;
+  if (numeric >= 13) return 0.000015;
+  if (numeric >= 12) return 0.00003;
+  if (numeric >= 11) return 0.00006;
+  if (numeric >= 10) return 0.00012;
+  if (numeric >= 9) return 0.00025;
+  if (numeric >= 8) return 0.0004;
+  return 0.0007;
 }
 
 function perpendicularDistance(point, start, end) {
@@ -93,9 +93,10 @@ function simplifyGeometryForZoom(geometry, zoom) {
 
   if (geometry.type === "LineString") {
     const simplified = simplifyLineStringCoordinates(geometry.coordinates, tolerance);
-    return Array.isArray(simplified) && simplified.length >= 2
-      ? { type: "LineString", coordinates: simplified }
-      : null;
+    if (Array.isArray(simplified) && simplified.length >= 2) {
+      return { type: "LineString", coordinates: simplified };
+    }
+    return geometry;
   }
 
   if (geometry.type === "MultiLineString") {
@@ -103,14 +104,10 @@ function simplifyGeometryForZoom(geometry, zoom) {
       .map((line) => simplifyLineStringCoordinates(line, tolerance))
       .filter((line) => Array.isArray(line) && line.length >= 2);
 
-    if (!lines.length) {
-      return null;
+    if (lines.length) {
+      return { type: "MultiLineString", coordinates: lines };
     }
-
-    return {
-      type: "MultiLineString",
-      coordinates: lines
-    };
+    return geometry;
   }
 
   return geometry;
@@ -136,23 +133,16 @@ async function resolveGeometryForZoom(route, options = {}) {
     return fallbackGeometry || null;
   }
 
+  // Prefer full cached geometry (no bbox clipping) so routes aren't cut at viewport edges.
   try {
-    const cached = await db.getRouteGeometryLod(lineKey, zoom, { bbox });
+    const cached = await db.getRouteGeometryLod(lineKey, zoom);
     if (cached?.geometry) {
       return cached.geometry;
     }
   } catch {
-    // Fall through to local simplification and best-effort storage.
   }
 
-  try {
-    await db.upsertRouteGeometryLod(lineKey, zoom, fallbackGeometry, {
-      sourceHash: geometrySourceHash(route.geometry || fallbackGeometry)
-    });
-  } catch {
-    // Ignore storage failures and keep serving the simplified geometry.
-  }
-
+  // Fall back to bbox-clipped geometry if full geometry is not available.
   if (bbox) {
     try {
       const clipped = await db.getRouteGeometryLod(lineKey, zoom, { bbox });
@@ -160,8 +150,14 @@ async function resolveGeometryForZoom(route, options = {}) {
         return clipped.geometry;
       }
     } catch {
-      // Ignore clipping read failures.
     }
+  }
+
+  try {
+    await db.upsertRouteGeometryLod(lineKey, zoom, fallbackGeometry, {
+      sourceHash: geometrySourceHash(route.geometry || fallbackGeometry)
+    });
+  } catch {
   }
 
   return fallbackGeometry;
