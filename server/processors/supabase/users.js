@@ -1,7 +1,7 @@
 const bcrypt = require("bcryptjs");
 
 const config = require("../../admin/config");
-const { statements, nowSeconds } = require("./client");
+const { statements, nowSeconds } = require("../postgres/client");
 
 function sanitizeUser(row) {
   if (!row) {

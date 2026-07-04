@@ -1,4 +1,4 @@
-const { statements, nowSeconds } = require("./client");
+const { statements, nowSeconds } = require("../postgres/client");
 
 function setVisitedState(userId, payload) {
   const lineKey = String(payload.lineKey || "").trim();

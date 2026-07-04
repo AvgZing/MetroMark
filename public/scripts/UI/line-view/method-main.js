@@ -184,8 +184,8 @@ function buildOptimalBranchMergeRankMap(stopFeatures, directionSequences, lineKe
 
   // If we only have one direction, fall back to standard trip pattern
   if (Object.keys(patternsByDirection).length <= 1) {
-    const res = buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
-    return Object.assign({}, res, { isMerged: false });
+    const tripPatternRankMap = buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+    return Object.assign({}, tripPatternRankMap, { isMerged: false });
   }
 
   const pattern0 = patternsByDirection["0"] || [];
@@ -198,8 +198,8 @@ function buildOptimalBranchMergeRankMap(stopFeatures, directionSequences, lineKe
 
   if (keysReversed) {
     // Simple line: just pick the better coverage direction
-    const res = buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
-    return Object.assign({}, res, { isMerged: false });
+    const tripPatternRankMap = buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+    return Object.assign({}, tripPatternRankMap, { isMerged: false });
   }
 
   // BRANCHING LINE DETECTED: Intelligently merge both patterns
@@ -212,8 +212,8 @@ function buildOptimalBranchMergeRankMap(stopFeatures, directionSequences, lineKe
 
   // If minimal branching (very few unique stops), use single best pattern
   if (Math.min(uniqueToDir0.size, uniqueToDir1.size) <= 1 && Math.max(uniqueToDir0.size, uniqueToDir1.size) <= 2) {
-    const res = buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
-    return Object.assign({}, res, { isMerged: false });
+    const tripPatternRankMap = buildTripPatternRankMap(stopFeatures, directionSequences, lineKey);
+    return Object.assign({}, tripPatternRankMap, { isMerged: false });
   }
 
   // MERGE STRATEGY: Start with pattern 0 (authoritative from trip data)
