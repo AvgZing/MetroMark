@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const config = require("../../admin/config");
 const db = require("../../processors/data");
 const { getCityBySlug } = require("../../processors/city-presets");
+const { geometryBbox } = require("../../processors/postgres/spatial");
 const {
   TRANSIT_CACHE_PREFIX
 } = require("./metrics");
@@ -171,9 +172,59 @@ async function getRouteHeadway(lineKey, options = {}) {
     throw new Error("lineKey is required.");
   }
 
-  const line = await fetchRouteByLineKey(normalizedLineKey, options);
+  // Try Postgres first — avoid Transitland REST call if the route's
+  // geometry and metadata are already cached from a previous viewport
+  // fetch or route-stops load.
+  let line = null;
+  let headwayFromPostgres = null;
+  try {
+    const meta = await db.getRouteMetadatasByLineKeys([normalizedLineKey]);
+    const routeMeta = meta.get(normalizedLineKey);
+    if (routeMeta) {
+      const geoEntry = await db.getRouteGeometryLod(normalizedLineKey, 15);
+      const geometry = geoEntry?.geometry || null;
+      const bbox = geometry
+        ? geometryBbox(geometry)
+        : null;
+      line = {
+        lineKey: normalizedLineKey,
+        routeOnestopId: routeMeta.routeOnestopId,
+        routeType: routeMeta.routeType,
+        routeFeedId: routeMeta.routeFeedId,
+        bbox,
+        geometry
+      };
+      if (Number.isFinite(Number(routeMeta.headwayBestMinutes)) && Number(routeMeta.headwayBestMinutes) > 0) {
+        headwayFromPostgres = routeMeta;
+      }
+    }
+  } catch {
+    // Fall through to Transitland
+  }
+
   if (!line) {
-    throw new Error(`No route found for ${normalizedLineKey}.`);
+    line = await fetchRouteByLineKey(normalizedLineKey, options);
+    if (!line) {
+      throw new Error(`No route found for ${normalizedLineKey}.`);
+    }
+  }
+
+  // If metadata already has valid headway, return it without vector tile fetch
+  if (headwayFromPostgres) {
+    const bm = Number(headwayFromPostgres.headwayBestMinutes);
+    return {
+      summary: {
+        source: String(headwayFromPostgres.headwaySource || "postgres"),
+        headwaySeconds: Math.round(bm * 60),
+        bestMinutes: bm,
+        frequencyBucket: String(headwayFromPostgres.frequencyBucket || "unknown"),
+        headwayFallback: 0,
+        routeType: Number.isFinite(Number(line.routeType)) ? Number(line.routeType) : null
+      },
+      line,
+      cacheStatus: "hit",
+      cacheKey: `${TRANSIT_CACHE_PREFIX}headway:${sanitizeText(line.routeOnestopId || normalizedLineKey)}`
+    };
   }
 
   const lookupKey = sanitizeText(line.routeOnestopId || normalizedLineKey);

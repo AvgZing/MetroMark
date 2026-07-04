@@ -413,6 +413,11 @@ async function loadVisibleTransit(options = {}) {
     params.set("routeTypes", modeRouteTypes.join(","));
   }
 
+  // Clear placeholder overlay at zoom >= 10 — real data renders instead
+  if (Number(zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM && typeof clearPlaceholderLayer === "function") {
+    clearPlaceholderLayer();
+  }
+
   // Show loading indicator: corner badge when routes exist, center notice when empty
   var hasExistingRoutes = appState.lineSummaries.length > 0;
   if (hasExistingRoutes) {
@@ -468,6 +473,13 @@ async function loadVisibleTransit(options = {}) {
         setBackendStatus("No routes found at zoom " + Number(zoom).toFixed(0) + ". Try a different area.");
       }
       // If routes were already visible, keep them — don't show notices
+    }
+
+    // Fetch placeholder underlay at low zoom regardless of route state.
+    // This shows tile-sourced route previews for unpopulated cities even
+    // when other populated cities in the viewport provide real routes.
+    if (Number(zoom || 0) < MIN_VIEWPORT_FETCH_ZOOM && typeof fetchPlaceholder === "function") {
+      fetchPlaceholder(rawBbox, zoom);
     }
 
     logTiming('load-viewport:done');

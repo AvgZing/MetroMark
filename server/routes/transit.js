@@ -9,6 +9,7 @@ const {
   getRouteStopsTransit,
   getRouteHeadway
 } = require("../processors/transitland");
+const { getTilePlaceholderGeojson } = require("../sources/transitland/tile-placeholder");
 const {
   asBoolean,
   parseStopTypes,
@@ -239,6 +240,23 @@ router.post("/transit/route-ordering/vote", authMiddleware, async (req, res) => 
       detail: error.message
     });
   }
+});
+
+router.get("/transit/tile-placeholder", async (req, res) => {
+  console.log("[tile-placeholder] REQUEST:", req.query.bbox, req.query.zoom);
+  const bboxRaw = String(req.query.bbox || "").trim();
+  if (!bboxRaw) return res.status(400).json({ error: "bbox is required" });
+  const bbox = bboxRaw.split(",").map((value) => Number(value.trim()));
+  const zoom = Number(req.query.zoom);
+  const routeTypes = String(req.query.routeTypes || "").trim()
+    .split(",")
+    .map((value) => Number(value.trim()))
+    .filter(Number.isFinite);
+  const result = await getTilePlaceholderGeojson(bbox, Number.isFinite(zoom) ? zoom : 5, routeTypes.length ? routeTypes : null);
+  return res.json(withTransitlandMetrics({
+    ...result,
+    serverTimingMs: Date.now() - req.startTime
+  }));
 });
 
 module.exports = router;

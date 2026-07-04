@@ -701,6 +701,9 @@ function refreshUiFromState() {
   if (typeof loadVisibleRouteStopCounts === "function") {
     loadVisibleRouteStopCounts().catch(() => {});
   }
+  if (typeof applyPlaceholderLayerFilter === "function") {
+    applyPlaceholderLayerFilter();
+  }
   const elapsed = performance.now() - t0;
   if (elapsed > 50) {
     console.log(`[perf] refreshUiFromState: ${elapsed.toFixed(1)}ms`);

@@ -41,16 +41,19 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
     routeParams.route_types = routeTypes.join(",");
   }
 
-  // Page through /routes results to avoid missing routes when a single page
-  // is truncated by Transitland limits. Respect routeLimit as the per-request
-  // page size and stop when we reach a reasonable maxResults cap.
+  // Page through /routes results following Transitland pagination to its
+  // natural end. MAX_PAGES is a safety cap against hypothetical infinite
+  // pagination glitches — at 20 pages × 200 routes/page = 4000 routes,
+  // it would never be hit in normal operation (dense cities are <1000
+  // routes) but limits a worst-case bug to 20 REST calls (0.2% of
+  // the 10,000/month quota).
   const fetchedRoutes = [];
   let afterCursor = null;
   const pageLimit = Math.max(40, Math.min(routeLimit, 500));
-  const maxResults = Math.max(routeLimit, Number(config.ROUTE_CATALOG_MAX_RESULTS || 220));
-
+  const MAX_PAGES = 20;
   let pagesFetched = 0;
-  while (fetchedRoutes.length < maxResults) {
+
+  while (pagesFetched < MAX_PAGES) {
     const params = {
       ...routeParams,
       limit: String(pageLimit)
@@ -67,7 +70,6 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
     const pageRoutes = Array.isArray(pageResponse.routes) ? pageResponse.routes : [];
     for (const r of pageRoutes) {
       fetchedRoutes.push(r);
-      if (fetchedRoutes.length >= maxResults) break;
     }
 
     pagesFetched += 1;

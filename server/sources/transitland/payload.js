@@ -122,29 +122,6 @@ async function transitlandRequest(path, params, options = {}) {
   throw new Error("Transitland request failed after retries.");
 }
 
-async function fetchRouteStopPatternsForRoute(lineKey, options = {}) {
-  const normalizedLineKey = sanitizeText(lineKey);
-  if (!normalizedLineKey) {
-    return null;
-  }
-
-  try {
-    return await transitlandRequest(
-      "/route_stop_patterns",
-      {
-        traversed_by: normalizedLineKey,
-        per_page: "1000"
-      },
-      {
-        enforceDailyCap: Boolean(options.enforceDailyCap),
-        requestSource: options.requestSource
-      }
-    );
-  } catch {
-    return null;
-  }
-}
-
 function extractTripStopTimes(tripResponse) {
   const trip = tripResponse?.trip || tripResponse?.trips?.[0] || tripResponse || {};
   const candidates = [
