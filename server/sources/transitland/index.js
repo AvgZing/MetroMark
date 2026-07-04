@@ -80,7 +80,8 @@ async function getRouteStopsTransit(lineKey, options = {}) {
             headwayBestMinutes: Number.isFinite(Number(cachedLineSummary.headwayBestMinutes)) ? Number(cachedLineSummary.headwayBestMinutes) : null,
             headwaySource: cachedLineSummary.headwaySource || "",
             headwayChecked: Number(cachedLineSummary.headwayChecked || 0) === 1 ? 1 : 0,
-            color: cachedLineSummary.color || "#d44d1f"
+            color: cachedLineSummary.color || "#d44d1f",
+            stopCount: Number(cachedLineSummary.stopCount || 0)
           });
         } catch (error) {
           console.warn("[perf] getRouteStopsTransit: metadata promotion failed for " + normalizedLineKey + ": " + (error?.message || error));
@@ -171,7 +172,8 @@ async function getRouteStopsTransit(lineKey, options = {}) {
         headwayBestMinutes: routeMetadata.headwayBestMinutes ?? null,
         headwaySource: routeMetadata.headwaySource || "",
         headwayChecked: routeMetadata.headwayChecked ?? 0,
-        color: line.color || routeMetadata.color || ""
+        color: line.color || routeMetadata.color || "",
+        stopCount: Number(routeMetadata.stopCount || 0)
       });
     } catch {
       // Best-effort
@@ -638,7 +640,7 @@ async function getTransitForArea(area, options = {}) {
           properties
         });
 
-        lineSummaries.push(meta ? { ...meta, lineKey: lk } : { lineKey: lk, lineName: lk });
+        lineSummaries.push(meta ? { ...meta, lineKey: lk, stopCount: meta.stopCount || 0 } : { lineKey: lk, lineName: lk, stopCount: 0 });
       }
 
     const routesGeoJson = { type: "FeatureCollection", features: routeFeatures };
@@ -746,7 +748,8 @@ async function getTransitForArea(area, options = {}) {
           headwayBestMinutes: line.headwayBestMinutes,
           headwaySource: line.headwaySource,
           headwayChecked: line.headwayChecked,
-          color: line.color
+          color: line.color,
+          stopCount: Number(line.stopCount || 0)
         });
       } catch { /* Best-effort */ }
     }
@@ -805,7 +808,7 @@ async function getTransitForArea(area, options = {}) {
       } : { line_key: lk }
     });
 
-    responseLineSummaries.push(meta ? { ...meta, lineKey: lk } : { lineKey: lk, lineName: lk });
+    responseLineSummaries.push(meta ? { ...meta, lineKey: lk, stopCount: meta.stopCount || 0 } : { lineKey: lk, lineName: lk, stopCount: 0 });
   }
 
   const fromPostgresPayload = {

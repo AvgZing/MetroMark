@@ -871,7 +871,8 @@ async function getRouteMetadatasByLineKeys(lineKeys) {
           ? Number(row.headway_best_minutes) : null,
         headwaySource: normalizeText(row.headway_source),
         headwayChecked: Number(row.headway_checked) === 1 ? 1 : 0,
-        color: normalizeText(row.color)
+        color: normalizeText(row.color),
+        stopCount: Number(row.stop_count) || 0
       });
     }
   }
@@ -894,9 +895,9 @@ async function setRouteMetadata(lineKey, metadata) {
       line_key, route_onestop_id, line_name, line_short_name, line_long_name,
       operator_name, mode, route_type, route_feed_id, service_tier,
       frequency_bucket, headway_best_minutes, headway_source, headway_checked,
-      color, updated_at
+      color, stop_count, updated_at
     ) values (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now()
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now()
     )
     on conflict (line_key) do update set
       route_onestop_id = excluded.route_onestop_id,
@@ -913,6 +914,7 @@ async function setRouteMetadata(lineKey, metadata) {
       headway_source = excluded.headway_source,
       headway_checked = excluded.headway_checked,
       color = excluded.color,
+      stop_count = excluded.stop_count,
       updated_at = excluded.updated_at`,
     [
       normalizedLineKey,
@@ -929,7 +931,8 @@ async function setRouteMetadata(lineKey, metadata) {
       Number.isFinite(Number(meta.headwayBestMinutes)) ? Number(meta.headwayBestMinutes) : null,
       normalizeText(meta.headwaySource),
       Number(meta.headwayChecked || 0) === 1 ? 1 : 0,
-      normalizeText(meta.color)
+      normalizeText(meta.color),
+      Number(meta.stopCount || 0)
     ]
   );
 

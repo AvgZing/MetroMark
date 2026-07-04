@@ -101,6 +101,7 @@ create table if not exists public.route_metadata (
   headway_source text not null default '',
   headway_checked integer not null default 0,
   color text not null default '',
+  stop_count integer not null default 0,
   updated_at timestamptz not null default now()
 );
 

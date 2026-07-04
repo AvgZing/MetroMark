@@ -698,14 +698,20 @@ function rebuildCombinedTransit(serverPayload) {
   }
   } // end tile-iteration path
 
-  // Upgrade route geometry from route-stops cache (full detail) for any routes that have it
+  // Upgrade route geometry from route-stops cache only if it provides more
+  // detail than the spatial query geometry. Stale cached geometry (fewer
+  // coords) would break the viewport intersection check on pan.
   for (const [lineKey, routeFeature] of routeByLine) {
     const stopCacheKey = typeof routeStopCacheKey === "function" ? routeStopCacheKey(lineKey) : null;
     if (!stopCacheKey) continue;
     const stopEntry = appState.lineStopsCache.get(stopCacheKey);
     const fullGeo = stopEntry?.payload?.routesGeoJson?.features?.[0]?.geometry;
     if (fullGeo && fullGeo.coordinates && fullGeo.type) {
-      routeByLine.set(lineKey, { ...routeFeature, geometry: fullGeo });
+      var existingCoords = countGeometryCoords(routeFeature.geometry);
+      var cachedCoords = countGeometryCoords(fullGeo);
+      if (cachedCoords > existingCoords) {
+        routeByLine.set(lineKey, { ...routeFeature, geometry: fullGeo });
+      }
     }
   }
 
