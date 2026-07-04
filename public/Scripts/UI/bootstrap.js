@@ -451,6 +451,8 @@ async function init() {
   } catch (error) {
     setStatus(error.message, "error");
   }
+
+  initializeDiagnostics();
 }
 
 init();
