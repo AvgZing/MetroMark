@@ -939,28 +939,6 @@ async function setRouteMetadata(lineKey, metadata) {
   return { lineKey: normalizedLineKey };
 }
 
-async function setRouteMetadataFrequency(lineKey, frequencyBucket, headwayBestMinutes, headwaySource) {
-  assertLocalConfigured();
-  const normalizedLineKey = normalizeText(lineKey);
-  if (!normalizedLineKey) return;
-
-  await localQuery(
-    `update public.route_metadata set
-       frequency_bucket = $1,
-       headway_best_minutes = $2,
-       headway_source = $3,
-       headway_checked = 1,
-       updated_at = now()
-     where line_key = $4`,
-    [
-      normalizeText(frequencyBucket) || "unknown",
-      Number.isFinite(Number(headwayBestMinutes)) ? Number(headwayBestMinutes) : null,
-      normalizeText(headwaySource),
-      normalizedLineKey
-    ]
-  );
-}
-
 async function clearCacheByPrefix(prefix) {
   assertLocalConfigured();
   await localQuery("delete from public.transit_cache where cache_key like $1", [`${prefix}%`]);
@@ -2047,7 +2025,6 @@ module.exports = {
   getRouteGeometriesByBbox,
   getRouteMetadatasByLineKeys,
   setRouteMetadata,
-  setRouteMetadataFrequency,
   getFractionOnRoute,
   clearCacheByPrefix,
   getCacheStats,

@@ -48,7 +48,6 @@ router.get("/transit/city/:slug", async (req, res) => {
       feedFingerprint: data.feedFingerprint || "",
       stopLocationTypes: data.stopLocationTypes || [0, 1],
       routeTypes: data.routeTypes || [],
-      needsTransitlandFetch: Boolean(data.needsTransitlandFetch),
       ...data.payload
     }));
   } catch (error) {
@@ -75,7 +74,6 @@ router.get("/transit/bbox", async (req, res) => {
     const data = await getBboxTransit(bbox, {
       forceRefresh: asBoolean(req.query.refresh),
       cacheOnly: asBoolean(req.query.cacheOnly),
-      after: req.query.after || null,
       debug: asBoolean(req.query.debug),
       zoom: Number.isFinite(zoom) ? zoom : null,
       stopLocationTypes: stopTypes,
@@ -97,8 +95,6 @@ router.get("/transit/bbox", async (req, res) => {
       snapStep: data.snapStep,
       stopLocationTypes: data.stopLocationTypes || [0, 1],
       routeTypes: data.routeTypes || [],
-      needsTransitlandFetch: Boolean(data.needsTransitlandFetch),
-      nextAfter: data.nextAfter || null,
       ...data.payload
     }));
   } catch (error) {

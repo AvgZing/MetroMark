@@ -44,7 +44,6 @@ const {
   simplifyGeometryForZoom,
   geometrySourceHash
 } = require("./geometry");
-const { getMvtLineKeyCount } = require("./tile-placeholder");
 
 async function getRouteStopsTransit(lineKey, options = {}) {
   const normalizedLineKey = sanitizeText(lineKey);
@@ -64,6 +63,31 @@ async function getRouteStopsTransit(lineKey, options = {}) {
     if (cached) {
       const cacheStatus = isCacheExpiredRow(cached) ? "stale-hit" : "hit";
       const cachedLineSummary = Array.isArray(cached.payload?.lineSummaries) ? cached.payload.lineSummaries[0] || null : null;
+
+      if (cachedLineSummary && normalizedLineKey) {
+        try {
+          await db.setRouteMetadata(normalizedLineKey, {
+            routeOnestopId: cachedLineSummary.routeOnestopId || "",
+            lineName: cachedLineSummary.lineName || "",
+            lineShortName: cachedLineSummary.lineShortName || "",
+            lineLongName: cachedLineSummary.lineLongName || "",
+            operatorName: cachedLineSummary.operatorName || "",
+            mode: cachedLineSummary.mode || "",
+            routeType: Number.isFinite(Number(cachedLineSummary.routeType)) ? Number(cachedLineSummary.routeType) : null,
+            routeFeedId: cachedLineSummary.routeFeedId || "",
+            serviceTier: cachedLineSummary.serviceTier || "",
+            frequencyBucket: cachedLineSummary.frequencyBucket || "unknown",
+            headwayBestMinutes: Number.isFinite(Number(cachedLineSummary.headwayBestMinutes)) ? Number(cachedLineSummary.headwayBestMinutes) : null,
+            headwaySource: cachedLineSummary.headwaySource || "",
+            headwayChecked: Number(cachedLineSummary.headwayChecked || 0) === 1 ? 1 : 0,
+            color: cachedLineSummary.color || "#d44d1f",
+            stopCount: Number(cachedLineSummary.stopCount || 0)
+          });
+        } catch (error) {
+          console.warn("[perf] getRouteStopsTransit: metadata promotion failed for " + normalizedLineKey + ": " + (error?.message || error));
+        }
+      }
+
       if (summaryOnly) {
         return {
           payload: {
@@ -309,15 +333,15 @@ async function getRouteHeadway(lineKey, options = {}) {
     }
   }
 
-  // Store headway to route_metadata — only update frequency fields
+  // Store headway to route_metadata so it persists across page reloads
   if (summary && Number.isFinite(Number(summary.bestMinutes)) && Number(summary.bestMinutes) > 0) {
     try {
-      await db.setRouteMetadataFrequency(
-        normalizedLineKey,
-        String(summary.frequencyBucket || "unknown"),
-        Number(summary.bestMinutes),
-        String(summary.source || "transitland-vector-tiles")
-      );
+      await db.setRouteMetadata(normalizedLineKey, {
+        frequencyBucket: String(summary.frequencyBucket || "unknown"),
+        headwayBestMinutes: Number(summary.bestMinutes),
+        headwaySource: String(summary.source || "transitland-vector-tiles"),
+        headwayChecked: 1
+      });
     } catch {
       // Best-effort
     }
@@ -651,27 +675,11 @@ async function getTransitForArea(area, options = {}) {
     }
 
     logGetTransitTiming(`route-geometry:${routeGeometries.length}routes`);
-
-    // MVT count comparison: count distinct lineKeys in one vector tile at
-    // the viewport center. If Transitland's tiles have more routes than
-    // Postgres, flag the client to trigger a REST backfill.
-    var needsTransitlandFetch = false;
-    if (Number.isFinite(spatialZoom) && spatialZoom >= 10) {
-      try {
-        var mvtCount = await getMvtLineKeyCount(area.bbox, spatialZoom);
-        needsTransitlandFetch = Number.isFinite(mvtCount) && mvtCount > routeGeometries.length;
-        if (needsTransitlandFetch) {
-          logGetTransitTiming("mvt-gap:pg=" + routeGeometries.length + "+mvt=" + mvtCount);
-        }
-      } catch { /* Best-effort */ }
-    }
-
     return {
       payload: enrichedPayload,
       cacheStatus: "hit",
       cacheKey: area.key,
-      stopLocationTypes,
-      needsTransitlandFetch
+      stopLocationTypes
     };
   }
 
@@ -699,19 +707,7 @@ async function getTransitForArea(area, options = {}) {
     routeTypes
   });
 
-  // Merge vector tile headway data into routes so buildTransitPayload
-  // can read route.headwaySeconds and produce frequency_bucket / headway_best_minutes.
-  const headwayByKey = fetchResult.vectorHeadwayMeta?.headwayByRouteKey || {};
-  const routesWithHeadway = (fetchResult.routes || []).map(function (route) {
-    var key = route?.onestop_id;
-    var headway = key ? headwayByKey[key] : null;
-    if (headway && Number.isFinite(Number(headway.headwaySeconds))) {
-      return { ...route, headwaySeconds: Number(headway.headwaySeconds) };
-    }
-    return route;
-  });
-
-  const payload = await buildTransitPayload(area, routesWithHeadway, fetchResult.stops || [], {
+  const payload = await buildTransitPayload(area, fetchResult.routes || [], fetchResult.stops || [], {
     zoom: Number(options.zoom),
     stopLocationTypes,
     routeTypes,
@@ -835,8 +831,7 @@ async function getTransitForArea(area, options = {}) {
     cacheExpiresAt: fetchedAt + ttlSeconds,
     cacheVerifiedAt: fetchedAt,
     feedFingerprint,
-    stopLocationTypes,
-    nextAfter: fetchResult.nextAfter || null
+    stopLocationTypes
   };
 
   if (options.debug) {

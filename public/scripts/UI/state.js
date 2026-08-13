@@ -34,7 +34,6 @@ const appState = {
   transit: null,
   _viewportPayload: null,
   _forceRefreshInFlight: false,
-  _backfillAfterCursor: null,
   mapRenderedTransit: null,
   lastMapFeatureStateSignature: "",
   mapRouteFeatureStateCache: new Map(),
