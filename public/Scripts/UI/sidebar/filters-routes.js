@@ -18,313 +18,30 @@ function getShownLines(options = {}) {
   filtered.sort((a, b) => {
     // If there's a search query, prioritize search score first
     if (hasQuery) {
-      const scoreA = calculateLineSearchScore(a, query);
-      const scoreB = calculateLineSearchScore(b, query);
-      if (scoreA !== scoreB) {
-        return scoreB - scoreA; // Higher score first
-      }
+      return scoreB - scoreA;
     }
-
-    const stopCountKnownA = lineHasCachedStopCount(a) ? 1 : 0;
-    const stopCountKnownB = lineHasCachedStopCount(b) ? 1 : 0;
-    if (stopCountKnownA !== stopCountKnownB) {
-      return stopCountKnownB - stopCountKnownA;
-    }
-
-    // Fall back to tier sorting
-    const tierDiff = lineSortWeight(a) - lineSortWeight(b);
-    if (tierDiff !== 0) {
-      return tierDiff;
-    }
-    return lineDisplayName(a).localeCompare(lineDisplayName(b));
+    return scoreA - scoreB;
   });
 
   return filtered;
 }
 
-function lineHasCachedStopCount(line) {
-  return Number(line?.stopCount || 0) > 0;
-}
-
-function getLoadedLines() {
-  if (Array.isArray(appState.loadedLineSummaries) && appState.loadedLineSummaries.length > 0) {
-    return appState.loadedLineSummaries;
-  }
-
-  return Array.isArray(appState.lineSummaries) ? appState.lineSummaries : [];
-}
-
-function getToggleCountLines() {
-  const summaryLines = Array.isArray(appState.viewportSummaryTransit?.lineSummaries)
-    ? appState.viewportSummaryTransit.lineSummaries
-    : Array.isArray(appState.viewportSummaryLineSummaries)
-      ? appState.viewportSummaryLineSummaries
-      : [];
-  const sourceLines = summaryLines.length > 0 ? summaryLines : getLoadedLines();
-  const deduped = new Map();
-
-  for (const line of sourceLines) {
-    const lineKey = String(line?.lineKey || "").trim();
-    if (!lineKey || deduped.has(lineKey)) {
-      continue;
-    }
-    deduped.set(lineKey, line);
-  }
-
-  return Array.from(deduped.values());
-}
-
-function lineEligibleForToggleCounts(line, options = {}) {
-  if (!line) {
-    return false;
-  }
-
-  if (typeof lineIntersectsCurrentViewport === "function" && !lineIntersectsCurrentViewport(line)) {
-    return false;
-  }
-
-  if (!appState.showProblematicGeometries && line?.lineKey) {
-    const routeReview = appState.routeReviewsByCity.get(line.lineKey);
-    if (routeReview?.problematic_override === true) {
-      return false;
-    }
-  }
-
-  if (!appState.showPrivateOperators && line?.operatorName) {
-    const agencyReview = appState.agencyReviewsByCity.get(line.operatorName);
-    if (agencyReview?.allowed_override === false) {
-      return false;
-    }
-  }
-
-  if (Boolean(options.requireModeMatch) && typeof lineMatchesModeSelection === "function" && !lineMatchesModeSelection(line)) {
-    return false;
-  }
-
-  if (Boolean(options.requireFrequencyMatch) && typeof lineMatchesFrequencySelection === "function" && !lineMatchesFrequencySelection(line)) {
-    return false;
-  }
-
-  return true;
-}
-
-function getVisibleLineKeys(shownLines) {
-  return new Set(shownLines.map((line) => line.lineKey));
-}
-
-function updateShowAllStopsUi() {
-  if (!dom.showAllStopsBtn) {
-    return;
-  }
-
-  const active = Boolean(appState.showAllStops);
-  dom.showAllStopsBtn.classList.toggle("is-active", active);
-  dom.showAllStopsBtn.setAttribute("aria-pressed", active ? "true" : "false");
-  dom.showAllStopsBtn.textContent = active ? "All Stops On" : "Show All Stops";
-}
-
-function setShowAllStops(enabled, options = {}) {
-  appState.showAllStops = Boolean(enabled);
-  persistBooleanToStorage(SHOW_ALL_STOPS_STORAGE_KEY, appState.showAllStops);
-  updateShowAllStopsUi();
-  renderMapData();
-
-  if (options.silent) {
-    return;
-  }
-
-  setStatus(
-    appState.showAllStops ? "Showing all stops." : "Showing route-linked stops only.",
-    "ok"
-  );
-}
-
-function refreshRouteStopDependentUi(options = {}) {
-  rebuildCombinedTransit();
-  renderMapData();
-  renderLineList();
-  renderProgress();
-
-  if (typeof renderLineView === "function") {
-    renderLineView({ forceStopRefresh: Boolean(options.forceStopRefresh) });
-  }
-
-  restoreUserStatusFromFocus();
-}
-
-async function ensureLineStopsLoaded(lineKey, options = {}) {
-  const normalizedLineKey = String(lineKey || "").trim();
-  if (!normalizedLineKey) {
-    return false;
-  }
-
-  const cacheKey = routeStopCacheKey(normalizedLineKey);
-  const existing = appState.lineStopsCache.get(cacheKey);
-  const requestOptions = { ...options };
-  if (existing && !requestOptions.forceRefresh) {
-    if (requestOptions.cacheOnly) {
-      existing.lastUsedAt = Date.now();
-      return true;
-    }
-
-    const needsPatternRefresh = !existing.payload?.directionStopPatterns && !existing.patternsRefreshAttempted;
-    if (!needsPatternRefresh) {
-      if (appState.routeStopsAutoLoadAttempts) {
-        appState.routeStopsAutoLoadAttempts.delete(cacheKey);
-      }
-      existing.lastUsedAt = Date.now();
-      refreshRouteStopDependentUi({
-        forceStopRefresh: false
-      });
-      return true;
-    }
-    existing.patternsRefreshAttempted = true;
-    requestOptions.forceRefresh = true;
-    requestOptions.silent = true;
-  }
-
-  if (appState.inFlightLineStopKeys.has(cacheKey)) {
-    return false;
-  }
-
-  const line = appState.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
-  const lineLabel = line ? lineDisplayName(line) : normalizedLineKey;
-  const routeStopLookupKey = String(line?.routeOnestopId || normalizedLineKey).trim();
-
-  appState.inFlightLineStopKeys.add(cacheKey);
-  updateLoadingStatus();
-
-  if (!requestOptions.silent) {
-    setStatus(`Loading stops for ${lineLabel}...`, "ok", "Using route membership from Transitland.");
-  }
-
-  try {
-    const params = new URLSearchParams({
-      lineKey: routeStopLookupKey,
-      stopTypes: ROUTE_STOP_TYPES_QUERY
-    });
-
-    if (requestOptions.cacheOnly) {
-      params.set("cacheOnly", "1");
-    }
-
-    if (requestOptions.forceRefresh) {
-      params.set("refresh", "1");
-    }
-
-    const payload = await apiRequest(`/api/transit/route-stops?${params.toString()}`, {
-      method: "GET"
-    });
-
-    const hasStopPayload = Array.isArray(payload?.stopsGeoJson?.features);
-    if (!hasStopPayload) {
-      return false;
-    }
-
-    const compactPayload = compactRouteStopsPayload(payload);
-
-    appState.lineStopsCache.set(cacheKey, {
-      lineKey: normalizedLineKey,
-      stopTypesKey: ROUTE_STOP_TYPES_KEY,
-      payload: compactPayload,
-      cacheStatus: payload.cacheStatus || "miss",
-      lastUsedAt: Date.now()
-    });
-
-    if (appState.routeStopsAutoLoadAttempts) {
-      appState.routeStopsAutoLoadAttempts.delete(cacheKey);
-    }
-
-    pruneLineStopsCache();
-    refreshRouteStopDependentUi({
-      forceStopRefresh: Boolean(requestOptions.forceRefresh)
-    });
-    restoreUserStatusFromFocus();
-
-    const stationCount = Number(payload?.stopsGeoJson?.features?.length || 0);
-    setBackendStatus(
-      `Route stops ready for ${lineLabel} (${payload.cacheStatus || "miss"} cache, ${stationCount} stops).`
-    );
-
-    if (!requestOptions.silent) {
-      setStatus(`Loaded ${stationCount} route-linked stops for ${lineLabel}.`, "ok");
-    }
-
-    return true;
-  } catch (error) {
-    setBackendStatus(`Route stop fetch failed for ${lineLabel}: ${error.message}`);
-    if (!requestOptions.silent) {
-      setStatus(`Could not load stops for ${lineLabel}.`, "error", error.message);
-    }
-    return false;
-  } finally {
-    appState.inFlightLineStopKeys.delete(cacheKey);
-    updateLoadingStatus();
-  }
-}
-
-function lineNeedsHeadwayLookup(line) {
-  if (!line) {
-    return false;
-  }
-
-  if (lineHeadwayBestMinutes(line) !== null) {
-    return false;
-  }
-
-  return Number(line?.headwayChecked || 0) !== 1;
-}
-
-function normalizeHeadwayUpdate(payload) {
-  const headwayBestMinutes = Number(payload?.headwayBestMinutes);
-  const normalizedBestMinutes =
-    Number.isFinite(headwayBestMinutes) && headwayBestMinutes > 0
-      ? Number(headwayBestMinutes.toFixed(1))
-      : null;
-
-  const headwayFallback = Boolean(payload?.headwayFallback);
-
-  const normalizedBucket = String(payload?.frequencyBucket || "").trim().toLowerCase();
-  const frequencyBucket = normalizedBestMinutes
-    ? frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)
-    : normalizedBucket || FREQUENCY_FILTER_UNKNOWN;
-
-  return {
-    headwayBestMinutes: headwayFallback ? null : normalizedBestMinutes,
-    frequencyBucket,
-    headwaySource: String(payload?.headwaySource || payload?.headwaySummary?.source || "").trim(),
-    headwayChecked: 1,
-    headwayFallback: headwayFallback ? 1 : 0
-  };
-}
-
 function applyHeadwayUpdateToCachedTransit(lineKey, headwayUpdate) {
-  const normalizedLineKey = String(lineKey || "").trim();
-  if (!normalizedLineKey) {
-    return false;
-  }
+  var normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) return false;
 
-  let updated = false;
+  var updated = false;
 
-  appState.lineSummaries = appState.lineSummaries.map((line) => {
-    if (line.lineKey !== normalizedLineKey) {
-      return line;
-    }
-
+  appState.lineSummaries = appState.lineSummaries.map(function (line) {
+    if (line.lineKey !== normalizedLineKey) return line;
     updated = true;
-    return {
-      ...line,
-      ...headwayUpdate
-    };
+    return { ...line, ...headwayUpdate };
   });
 
-  if (appState.transit?.routesGeoJson?.features) {
-    for (const feature of appState.transit.routesGeoJson.features) {
-      const featureLineKey = String(feature?.properties?.line_key || "").trim();
-      if (featureLineKey !== normalizedLineKey) {
-        continue;
-      }
-
+  if (appState.transit && appState.transit.routesGeoJson && appState.transit.routesGeoJson.features) {
+    for (var i = 0; i < appState.transit.routesGeoJson.features.length; i++) {
+      var feature = appState.transit.routesGeoJson.features[i];
+      if (String(feature?.properties?.line_key || "").trim() !== normalizedLineKey) continue;
       feature.properties = {
         ...feature.properties,
         frequency_bucket: headwayUpdate.frequencyBucket,
@@ -335,48 +52,28 @@ function applyHeadwayUpdateToCachedTransit(lineKey, headwayUpdate) {
     }
   }
 
-  for (const cacheEntry of appState.areaCache.values()) {
-    const payload = cacheEntry?.payload;
-    if (!payload) {
-      continue;
-    }
-
+  for (var ci = 0; ci < (appState.areaCache ? Array.from(appState.areaCache.values()).length : 0); ci++) {
+    var cacheEntry = Array.from(appState.areaCache.values())[ci];
+    var payload = cacheEntry?.payload;
+    if (!payload) continue;
     if (Array.isArray(payload.lineSummaries)) {
-      let didUpdateLineSummary = false;
-      payload.lineSummaries = payload.lineSummaries.map((line) => {
-        if (line?.lineKey !== normalizedLineKey) {
-          return line;
-        }
-
-        didUpdateLineSummary = true;
-        return {
-          ...line,
-          ...headwayUpdate
-        };
-      });
-
-      if (didUpdateLineSummary) {
+      payload.lineSummaries = payload.lineSummaries.map(function (line) {
+        if (line.lineKey !== normalizedLineKey) return line;
         updated = true;
-      }
+        return { ...line, ...headwayUpdate };
+      });
     }
+  }
 
-    const routeFeatures = payload?.routesGeoJson?.features;
-    if (Array.isArray(routeFeatures)) {
-      for (const feature of routeFeatures) {
-        const featureLineKey = String(feature?.properties?.line_key || "").trim();
-        if (featureLineKey !== normalizedLineKey) {
-          continue;
-        }
-
-        feature.properties = {
-          ...feature.properties,
-          frequency_bucket: headwayUpdate.frequencyBucket,
-          headway_best_minutes: headwayUpdate.headwayBestMinutes,
-          headway_source: headwayUpdate.headwaySource,
-          headway_checked: headwayUpdate.headwayChecked
-        };
+  var vp = appState._viewportPayload;
+  if (vp && Array.isArray(vp.lineSummaries)) {
+    vp.lineSummaries = vp.lineSummaries.map(function (entry) {
+      if (entry.lineKey === normalizedLineKey) {
+        updated = true;
+        return { ...entry, ...headwayUpdate };
       }
-    }
+      return entry;
+    });
   }
 
   return updated;
@@ -707,6 +404,21 @@ function refreshUiFromState() {
   const elapsed = performance.now() - t0;
   if (elapsed > 50) {
     console.log(`[perf] refreshUiFromState: ${elapsed.toFixed(1)}ms`);
+  }
+}
+
+// Initial UI state for show-all-stops toggle
+if (typeof updateShowAllStopsUi !== "function") {
+  function updateShowAllStopsUi() {
+    if (dom.showAllStopsBtn) {
+      dom.showAllStopsBtn.classList.toggle("is-active", Boolean(appState.showAllStops));
+    }
+  }
+
+  function setShowAllStops(value) {
+    appState.showAllStops = Boolean(value);
+    updateShowAllStopsUi();
+    refreshUiFromState();
   }
 }
 

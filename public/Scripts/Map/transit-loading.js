@@ -408,6 +408,9 @@ async function loadVisibleTransit(options = {}) {
   if (Boolean(options.forceRefresh)) {
     params.set("refresh", "1");
     params.delete("cacheOnly");
+    if (appState._backfillAfterCursor != null) {
+      params.set("after", String(appState._backfillAfterCursor));
+    }
     // Force refresh always fetches all route types — mode filter is client-side only
   } else if (Array.isArray(modeRouteTypes) && modeRouteTypes.length) {
     params.set("routeTypes", modeRouteTypes.join(","));
@@ -433,10 +436,10 @@ async function loadVisibleTransit(options = {}) {
     fetchPlaceholder(rawBbox, zoom);
   }
 
-  logTiming('load-viewport:request');
-  try {
-    var response = await apiRequest("/api/transit/bbox?" + params.toString(), { method: "GET" });
-    logTiming('load-viewport:response');
+    logTiming('load-viewport:request');
+    try {
+      var response = await apiRequest("/api/transit/bbox?" + params.toString(), { method: "GET" });
+      logTiming('load-viewport:response');
 
     // Track API usage counters
     appState.viewportRequestCount += 1;
@@ -458,22 +461,30 @@ async function loadVisibleTransit(options = {}) {
     var responseCacheStatus = String(response?.cacheStatus || "").trim().toLowerCase();
 
     if (responseRoutes > 0) {
-      appState._viewportPayload = response;
-      rebuildCombinedTransit(response);
-      refreshUiFromState();
-      clearMapNotice();
-      hideMapLoadingBadge();
-      setBackendStatus(responseRoutes + " routes loaded for viewport at zoom " +
-        Number(zoom).toFixed(0) + " (" + responseCacheStatus + ")");
+      if (Boolean(options.storeOnly)) {
+        // Force refresh for storage only — don't rebuild transit.
+        // Store the pagination cursor for the next backfill request.
+        appState._backfillAfterCursor = response.nextAfter || null;
+        hideMapLoadingBadge();
+      } else {
+        appState._viewportPayload = response;
+        rebuildCombinedTransit(response);
+        refreshUiFromState();
+        clearMapNotice();
+        hideMapLoadingBadge();
+        setBackendStatus(responseRoutes + " routes loaded for viewport at zoom " +
+          Number(zoom).toFixed(0) + " (" + responseCacheStatus + ")");
+      }
 
-      // At zoom >= 10, always backfill from Transitland so Postgres is complete.
-      // The spatial query may only have a subset of routes (Amtrak from a
-      // different bbox, mode-filtered previous fetch). One fetch per viewport
-      // snap cell per session fills the gap permanently.
-      if (Number(zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM && !appState._forceRefreshInFlight) {
+      // Server ran an MVT count check — if the vector tiles have more
+      // routes than Postgres, auto-trigger a REST backfill. The 2000-route
+      // cap with 100-route pages fills the gap permanently. After the first
+      // backfill, subsequent pans show equal counts and never retrigger.
+      if (Boolean(response.needsTransitlandFetch) && !appState._forceRefreshInFlight && Number(zoom || 0) >= MIN_VIEWPORT_FETCH_ZOOM) {
         appState._forceRefreshInFlight = true;
         setBackendStatus(responseRoutes + " routes loaded — backfilling from Transitland...");
-        loadVisibleTransit({ forceRefresh: true, reason: "auto-backfill" }).then(function () {
+        // Store-only: routes go to Postgres, next pan picks them up via spatial query
+        loadVisibleTransit({ forceRefresh: true, reason: "auto-backfill", storeOnly: true }).then(function () {
           appState._forceRefreshInFlight = false;
         }).catch(function () {
           appState._forceRefreshInFlight = false;
@@ -500,8 +511,8 @@ async function loadVisibleTransit(options = {}) {
     }
 
     logTiming('load-viewport:done');
-  } catch (error) {
-    hideMapLoadingBadge();
+    } catch (error) {
+      hideMapLoadingBadge();
     console.warn("[viewport] loadVisibleTransit failed:", error.message);
     setBackendStatus("Viewport load failed: " + error.message);
     // Don't clear _viewportPayload — keep last successful data visible

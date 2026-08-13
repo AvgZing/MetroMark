@@ -1,0 +1,80 @@
+-- Migrate from tile-based transit_cache to per-route storage.
+-- Run: psql -f operations/migrate-route-tables.psql
+--
+-- Creates route_metadata table and seeds both route_geometry_lod and
+-- route_metadata from existing transit_cache entries.
+
+-- 1. Create route_metadata table (also in local-postgres-schema.sql for fresh setups)
+create table if not exists public.route_metadata (
+  line_key text primary key,
+  route_onestop_id text not null default '',
+  line_name text not null default '',
+  line_short_name text not null default '',
+  line_long_name text not null default '',
+  operator_name text not null default '',
+  mode text not null default '',
+  route_type integer,
+  route_feed_id text not null default '',
+  service_tier text not null default '',
+  frequency_bucket text not null default 'unknown',
+  headway_best_minutes double precision,
+  headway_source text not null default '',
+  headway_checked integer not null default 0,
+  color text not null default '',
+  updated_at timestamptz not null default now()
+);
+
+-- 2. Seed route_geometry_lod from transit_cache entries.
+-- Each transit_cache payload contains routesGeoJson with full geometry per route.
+-- We store at zoom 15 (full detail) and let the LOD system simplify on read.
+insert into public.route_geometry_lod (line_key, zoom_level, geometry, source_hash, updated_at)
+select distinct on (feature->>'id', 15)
+  (feature->'properties'->>'line_key') as line_key,
+  15 as zoom_level,
+  ST_SetSRID(ST_GeomFromGeoJSON((feature->>'geometry')::text), 4326) as geometry,
+  encode(sha256((feature->>'geometry')::text::bytea), 'hex') as source_hash,
+  now() as updated_at
+from public.transit_cache,
+     jsonb_array_elements((payload->'routesGeoJson'->'features')::jsonb) as feature
+where payload ? 'routesGeoJson'
+  and (feature->'properties'->>'line_key') is not null
+  and (feature->>'geometry') is not null
+on conflict (line_key, zoom_level) do nothing;
+
+-- 3. Seed route_metadata from transit_cache lineSummaries.
+-- Deduplicate by line_key — first entry wins (random order, but fine for migration).
+insert into public.route_metadata (
+  line_key, route_onestop_id, line_name, line_short_name, line_long_name,
+  operator_name, mode, route_type, route_feed_id, service_tier,
+  frequency_bucket, headway_best_minutes, headway_source, headway_checked,
+  color, updated_at
+)
+select distinct on (line->>'lineKey')
+  line->>'lineKey' as line_key,
+  coalesce(line->>'routeOnestopId', ''),
+  coalesce(line->>'lineName', ''),
+  coalesce(line->>'lineShortName', ''),
+  coalesce(line->>'lineLongName', ''),
+  coalesce(line->>'operatorName', ''),
+  coalesce(line->>'mode', ''),
+  (line->>'routeType')::integer,
+  coalesce(line->>'routeFeedId', ''),
+  coalesce(line->>'serviceTier', ''),
+  coalesce(line->>'frequencyBucket', 'unknown'),
+  (line->>'headwayBestMinutes')::double precision,
+  coalesce(line->>'headwaySource', ''),
+  (line->>'headwayChecked')::integer,
+  coalesce(line->>'color', ''),
+  now()
+from public.transit_cache,
+     jsonb_array_elements((payload->'lineSummaries')::jsonb) as line
+where payload ? 'lineSummaries'
+  and (line->>'lineKey') is not null
+on conflict (line_key) do nothing;
+
+-- 4. Report counts
+select 'route_geometry_lod' as table_name, count(*) as row_count from public.route_geometry_lod
+union all
+select 'route_metadata' as table_name, count(*) as row_count from public.route_metadata
+union all
+select 'transit_cache (legacy)' as table_name, count(*) as row_count from public.transit_cache;

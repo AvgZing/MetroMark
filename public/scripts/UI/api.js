@@ -38,9 +38,16 @@ async function apiRequest(path, options = {}) {
 
   let response;
   try {
-    response = await fetch(path, {
+    // Bypass Service Worker cache with a unique query parameter
+    var cacheBustPath = path;
+    if (String(path || "").startsWith("/api/transit/")) {
+      var separator = path.indexOf("?") >= 0 ? "&" : "?";
+      cacheBustPath = path + separator + "_=" + Date.now().toString(36);
+    }
+    response = await fetch(cacheBustPath, {
       ...options,
-      headers
+      headers,
+      cache: "no-store"
     });
   } catch (error) {
     if (isTransitRequest) {
