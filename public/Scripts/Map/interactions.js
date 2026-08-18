@@ -173,17 +173,7 @@ function initializeMap() {
   });
 
   appState.map.on("load", () => {
-    appState.map.addSource("routes", {
-      type: "geojson",
-      promoteId: "feature_id",
-      data: emptyFeatureCollection()
-    });
-
-    appState.map.addSource("stops", {
-      type: "geojson",
-      promoteId: "feature_id",
-      data: emptyFeatureCollection()
-    });
+    registerMapSources(appState.map);
 
     appState.map.addSource("focus-mask", {
       type: "geojson",
