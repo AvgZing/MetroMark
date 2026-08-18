@@ -31,40 +31,6 @@ function focusMaskFeatureCollection(active) {
   };
 }
 
-function collectCoordsFromGeometry(geometry, bbox) {
-  if (!geometry) {
-    return bbox;
-  }
-
-  const type = geometry.type;
-  const coords = geometry.coordinates;
-  if (!coords) {
-    return bbox;
-  }
-
-  const update = (lng, lat) => {
-    if (!Number.isFinite(lng) || !Number.isFinite(lat)) {
-      return;
-    }
-    bbox.minLng = Math.min(bbox.minLng, lng);
-    bbox.minLat = Math.min(bbox.minLat, lat);
-    bbox.maxLng = Math.max(bbox.maxLng, lng);
-    bbox.maxLat = Math.max(bbox.maxLat, lat);
-  };
-
-  if (type === "LineString") {
-    coords.forEach(([lng, lat]) => update(lng, lat));
-    return bbox;
-  }
-
-  if (type === "MultiLineString") {
-    coords.forEach((line) => line.forEach(([lng, lat]) => update(lng, lat)));
-    return bbox;
-  }
-
-  return bbox;
-}
-
 function buildLineBboxFromStops(lineKey) {
   const cacheEntry = appState.lineStopsCache.get(routeStopCacheKey(lineKey));
   const stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
