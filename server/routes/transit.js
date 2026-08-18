@@ -5,11 +5,11 @@ const { authMiddleware } = require("../processors/supabase/auth");
 const { getCityBySlug } = require("../processors/city-presets");
 const {
   getCityTransit,
-  getBboxTransit,
   getRouteStopsTransit,
   getRouteHeadway
 } = require("../processors/transitland");
 const { getTilePlaceholderGeojson } = require("../sources/transitland/tile-placeholder");
+const { handleBboxRequest } = require("../sources/transitland/bbox-pipeline");
 const {
   asBoolean,
   parseStopTypes,
@@ -65,19 +65,16 @@ router.get("/transit/bbox", async (req, res) => {
     return res.status(400).json({ error: "bbox query parameter is required." });
   }
 
-  const bbox = bboxRaw.split(",").map((value) => Number(value.trim()));
   const zoom = Number(req.query.zoom);
-  const stopTypes = parseStopTypes(req.query.stopTypes);
-  const routeTypes = parseRouteTypes(req.query.routeTypes);
 
   try {
-    const data = await getBboxTransit(bbox, {
+    const data = await handleBboxRequest(bboxRaw, {
       forceRefresh: asBoolean(req.query.refresh),
       cacheOnly: asBoolean(req.query.cacheOnly),
       debug: asBoolean(req.query.debug),
-      zoom: Number.isFinite(zoom) ? zoom : null,
-      stopLocationTypes: stopTypes,
-      routeTypes,
+      zoom,
+      stopLocationTypes: parseStopTypes(req.query.stopTypes),
+      routeTypes: parseRouteTypes(req.query.routeTypes),
       requestSource: "user"
     });
 
