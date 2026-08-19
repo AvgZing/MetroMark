@@ -8,6 +8,7 @@ const authRoutes = require("./routes/auth");
 const progressRoutes = require("./routes/progress");
 const adminRoutes = require("./routes/admin");
 const presetsRoutes = require("./routes/presets");
+const tilesRoutes = require("./routes/tiles");
 
 function createApp() {
   const app = express();
@@ -21,6 +22,7 @@ function createApp() {
   app.use("/api", progressRoutes);
   app.use("/api", adminRoutes);
   app.use("/api", presetsRoutes);
+  app.use("/api", tilesRoutes);
 
   app.use(express.static(path.join(__dirname, "..", "public")));
 
