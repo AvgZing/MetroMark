@@ -97,7 +97,7 @@ function onRouteHoverMove(event) {
   }
 
   const features = appState.map.queryRenderedFeatures(event.point, {
-    layers: ["routes-main", "routes-background-main"]
+    layers: ["routes-main-vector", "routes-background-main-vector"]
   });
 
   const uniqueLines = new Map();
@@ -175,6 +175,23 @@ function initializeMap() {
   appState.map.on("load", () => {
     registerMapSources(appState.map);
 
+    appState.map.addLayer({
+      id: "routes-vector-layer",
+      type: "line",
+      source: "routes-vector",
+      "source-layer": "routes",
+      layout: {
+        "line-cap": "round",
+        "line-join": "round"
+      },
+      paint: {
+        "line-color": "#ff5cc8",
+        "line-width": 2.4,
+        "line-opacity": 0.9,
+        "line-dasharray": [1.6, 1.2]
+      }
+    });
+
     appState.map.addSource("focus-mask", {
       type: "geojson",
       data: focusMaskFeatureCollection(false)
@@ -184,6 +201,44 @@ function initializeMap() {
       id: "routes-background-casing",
       type: "line",
       source: "routes",
+      layout: {
+        visibility: "none"
+      },
+      paint: {
+        "line-color": "#111920",
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          1,
+          0.7,
+          3,
+          1.1,
+          6,
+          2.1,
+          9,
+          3.2,
+          12,
+          4.3
+        ],
+        "line-opacity": [
+          "case",
+          [
+            "all",
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 0]
+          ],
+          0,
+          0
+        ]
+      }
+    });
+
+    appState.map.addLayer({
+      id: "routes-background-casing-vector",
+      type: "line",
+      source: "routes-vector",
+      "source-layer": "routes",
       paint: {
         "line-color": "#111920",
         "line-width": [
@@ -218,6 +273,44 @@ function initializeMap() {
       id: "routes-background-main",
       type: "line",
       source: "routes",
+      layout: {
+        visibility: "none"
+      },
+      paint: {
+        "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          1,
+          0.45,
+          3,
+          0.7,
+          6,
+          1.3,
+          9,
+          1.9,
+          12,
+          2.4
+        ],
+        "line-opacity": [
+          "case",
+          [
+            "all",
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 0]
+          ],
+          0.9,
+          0
+        ]
+      }
+    });
+
+    appState.map.addLayer({
+      id: "routes-background-main-vector",
+      type: "line",
+      source: "routes-vector",
+      "source-layer": "routes",
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
         "line-width": [
@@ -262,6 +355,44 @@ function initializeMap() {
       id: "routes-casing",
       type: "line",
       source: "routes",
+      layout: {
+        visibility: "none"
+      },
+      paint: {
+        "line-color": "#0f1b22",
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          1,
+          0.95,
+          3,
+          1.4,
+          6,
+          2.6,
+          9,
+          3.9,
+          12,
+          5.2
+        ],
+        "line-opacity": [
+          "case",
+          [
+            "all",
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+          ],
+          0.38,
+          0
+        ]
+      }
+    });
+
+    appState.map.addLayer({
+      id: "routes-casing-vector",
+      type: "line",
+      source: "routes-vector",
+      "source-layer": "routes",
       paint: {
         "line-color": "#0f1b22",
         "line-width": [
@@ -296,6 +427,44 @@ function initializeMap() {
       id: "routes-main",
       type: "line",
       source: "routes",
+      layout: {
+        visibility: "none"
+      },
+      paint: {
+        "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          1,
+          0.7,
+          3,
+          1.05,
+          6,
+          1.9,
+          9,
+          2.9,
+          12,
+          3.6
+        ],
+        "line-opacity": [
+          "case",
+          [
+            "all",
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+          ],
+          0.96,
+          0
+        ]
+      }
+    });
+
+    appState.map.addLayer({
+      id: "routes-main-vector",
+      type: "line",
+      source: "routes-vector",
+      "source-layer": "routes",
       paint: {
         "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
         "line-width": [
@@ -329,7 +498,8 @@ function initializeMap() {
     appState.map.addLayer({
       id: "routes-hit",
       type: "line",
-      source: "routes",
+      source: "routes-vector",
+      "source-layer": "routes",
       paint: {
         "line-color": "#000000",
         "line-width": [
@@ -407,7 +577,7 @@ function initializeMap() {
         }
       });
 
-      const routeHoverLayers = ["routes-main", "routes-background-main"];
+      const routeHoverLayers = ["routes-main-vector", "routes-background-main-vector"];
       const routeClickLayers = ["routes-hit"];
 
       for (const layerId of routeClickLayers) {
@@ -546,7 +716,7 @@ function initializeMap() {
             [point.x + closePadding, point.y + closePadding]
           ],
           {
-            layers: ["stops-layer", "routes-hit", "routes-main", "routes-background-main"]
+            layers: ["stops-layer", "routes-hit", "routes-main-vector", "routes-background-main-vector"]
           }
         );
 

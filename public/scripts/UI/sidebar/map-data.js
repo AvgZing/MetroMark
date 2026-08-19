@@ -40,23 +40,7 @@ function syncMapSourceData() {
     return;
   }
 
-  const routesSource = appState.map.getSource("routes");
   const stopsSource = appState.map.getSource("stops");
-
-  const normalizeRouteFeature = (feature) => {
-    const lineKey = String(feature?.properties?.line_key || feature?.id || "").trim();
-    const featureId = String(feature?.id || feature?.properties?.feature_id || lineKey || "").trim();
-
-    return {
-      ...feature,
-      id: featureId || undefined,
-      properties: {
-        ...feature?.properties,
-        feature_id: featureId || undefined,
-        line_key: lineKey || feature?.properties?.line_key || ""
-      }
-    };
-  };
 
   const normalizeStopFeature = (feature) => {
     const props = feature?.properties || {};
@@ -77,9 +61,6 @@ function syncMapSourceData() {
   };
 
   if (!appState.transit) {
-    if (routesSource) {
-      routesSource.setData(emptyFeatureCollection());
-    }
     if (stopsSource) {
       stopsSource.setData(emptyFeatureCollection());
     }
@@ -95,27 +76,6 @@ function syncMapSourceData() {
     appState.mapRouteFeatureStateCache = new Map();
     appState.mapStopFeatureStateCache = new Map();
 
-    const routes = Array.isArray(appState.transit?.routesGeoJson?.features)
-      ? {
-          ...appState.transit.routesGeoJson,
-          features: appState.transit.routesGeoJson.features.map(normalizeRouteFeature)
-        }
-      : emptyFeatureCollection();
-
-    // Replace focused route's geometry with full-detail version from route-stops cache
-    if (appState.focusedLineKey && routes.features.length > 0) {
-      const stopCacheKey = routeStopCacheKey(appState.focusedLineKey);
-      const stopCache = appState.lineStopsCache.get(stopCacheKey);
-      const fullGeo = stopCache?.payload?.routesGeoJson?.features?.[0]?.geometry;
-      if (fullGeo) {
-        const idx = routes.features.findIndex((f) => f?.properties?.line_key === appState.focusedLineKey);
-        if (idx >= 0) {
-          const orig = routes.features[idx];
-          routes.features[idx] = { ...orig, geometry: fullGeo };
-        }
-      }
-    }
-
     const stops = Array.isArray(appState.transit?.stopsGeoJson?.features)
       ? {
           ...appState.transit.stopsGeoJson,
@@ -123,19 +83,6 @@ function syncMapSourceData() {
         }
       : emptyFeatureCollection();
 
-  if (routesSource) {
-      routesSource.setData(routes);
-      if (appState.focusedLineKey) {
-        const focused = routes.features.find((f) => f?.properties?.line_key === appState.focusedLineKey);
-        if (focused?.geometry?.coordinates) {
-          const coords = focused.geometry.coordinates;
-          const coordCount = Array.isArray(coords[0]?.[0]) ? coords.reduce((sum, seg) => sum + seg.length, 0) : coords.length;
-          const firstCoord = JSON.stringify(Array.isArray(coords[0]?.[0]) ? coords[0][0] : coords[0]);
-          const lastCoord = JSON.stringify(Array.isArray(coords[0]?.[0]) ? coords[coords.length - 1]?.slice(-1)[0] : coords[coords.length - 1]);
-          console.log(`[geo] Focused route geometry: ${coordCount} coords, first=${firstCoord}, last=${lastCoord}, type=${focused.geometry.type}`);
-        }
-      }
-    }
     if (stopsSource) {
       stopsSource.setData(stops);
     }
@@ -198,7 +145,7 @@ function syncMapFeatureStates() {
     }
 
     appState.map.setFeatureState(
-      { source: "routes", id: featureId },
+      { source: "routes-vector", sourceLayer: "routes", id: featureId },
       nextState
     );
     routeStateCache.set(featureId, nextState);

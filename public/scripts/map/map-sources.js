@@ -10,8 +10,19 @@ const MAP_SOURCE_DEFS = [
     type: "geojson",
     promoteId: "feature_id",
     data: emptyFeatureCollection()
+  },
+  {
+    id: "routes-vector",
+    type: "vector",
+    url: "pmtiles:///api/tiles/routes.pmtiles",
+    promoteId: "line_key"
   }
 ];
+
+if (typeof maplibregl !== "undefined" && typeof pmtiles !== "undefined") {
+  const pmtilesProtocol = new pmtiles.Protocol();
+  maplibregl.addProtocol("pmtiles", pmtilesProtocol.tile);
+}
 
 function registerMapSources(map) {
   for (const sourceDef of MAP_SOURCE_DEFS) {

@@ -93,7 +93,7 @@ function renderPlaceholderLayer(geojson) {
       "line-join": "round",
       "line-cap": "round"
     }
-  }, "routes-background-casing");
+  }, "routes-background-casing-vector");
 
   applyPlaceholderLayerFilter();
 }
