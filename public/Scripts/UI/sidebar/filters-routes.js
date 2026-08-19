@@ -570,6 +570,47 @@ async function ensureLineHeadwayLoaded(lineKey, options = {}) {
   }
 }
 
+async function loadVisibleRouteHeadways() {
+  if (!appState.lineSummaries.length) {
+    return false;
+  }
+
+  const candidates = getShownLines().filter((line) => {
+    if (!line || !line.lineKey) {
+      return false;
+    }
+    if (!lineNeedsHeadwayLookup(line)) {
+      return false;
+    }
+    if (appState.inFlightHeadwayLineKeys.has(line.lineKey)) {
+      return false;
+    }
+    return true;
+  });
+
+  if (!candidates.length) {
+    return false;
+  }
+
+  const maxCandidates = Math.min(candidates.length, 12);
+  const results = await Promise.all(
+    candidates.slice(0, maxCandidates).map((line) =>
+      ensureLineHeadwayLoaded(line.lineKey, { forceRefresh: false, silent: true }).catch(() => false)
+    )
+  );
+
+  if (results.some(Boolean)) {
+    renderLineList();
+    renderProgress();
+    renderFrequencyFilterBar();
+    if (typeof updateLoadingStatus === "function") {
+      updateLoadingStatus();
+    }
+  }
+
+  return true;
+}
+
 
 function applyLineVisibilityPreference(line, targetVisibility) {
   const lineKey = String(line?.lineKey || "").trim();
@@ -622,6 +663,9 @@ function refreshUiFromState() {
   }
   if (typeof loadVisibleRouteStopCounts === "function") {
     loadVisibleRouteStopCounts().catch(() => {});
+  }
+  if (typeof loadVisibleRouteHeadways === "function") {
+    loadVisibleRouteHeadways().catch(() => {});
   }
   if (typeof applyPlaceholderLayerFilter === "function") {
     applyPlaceholderLayerFilter();

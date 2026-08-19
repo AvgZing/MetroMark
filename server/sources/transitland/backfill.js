@@ -6,7 +6,7 @@ const { normalizeRoutes } = require("./routes");
 const { routeToFeature } = require("./route-features");
 const { buildPmtiles, listNdjsonFiles, GEO_DIR } = require("../../scripts/build/build-pmtiles");
 
-const BACKFILL_FILE = path.join(GEO_DIR, "backfill.ndjson");
+const BACKFILL_FILE = path.join(GEO_DIR, "routes-feed.ndjson");
 
 const backfillStats = {
   count: 0,

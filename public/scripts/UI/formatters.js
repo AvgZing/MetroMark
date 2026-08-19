@@ -187,30 +187,6 @@ function isFallbackHeadwayMinutes(minutes) {
   return Number.isFinite(numeric) && Math.abs(numeric - FALLBACK_HEADWAY_MINUTES) < 0.2;
 }
 
-/** Estimate a frequency bucket for a line when only fallback headway data is available. */
-function lineFallbackFrequencyBucket(line) {
-  const routeType = Number(line?.routeType);
-  const routeMode = String(line?.mode || line?.lineMode || "").trim().toLowerCase();
-  const routeName = [line?.lineShortName, line?.lineLongName, line?.lineName]
-    .map((value) => String(value || "").toLowerCase())
-    .join(" ");
-  const combined = `${routeMode} ${routeName}`;
-
-  if (routeType === 1 || /\b(subway|metro|rapid transit)\b/.test(combined)) {
-    return FREQUENCY_FILTER_FREQUENT;
-  }
-
-  if (routeType === 0 || /\b(tram|streetcar|light rail)\b/.test(combined)) {
-    return FREQUENCY_FILTER_REGULAR;
-  }
-
-  if (routeType === 12 || /\b(airport|people mover|monorail)\b/.test(combined)) {
-    return FREQUENCY_FILTER_FREQUENT;
-  }
-
-  return FREQUENCY_FILTER_LOCAL;
-}
-
 /** Determine whether a line is using a fallback (estimated) headway value. */
 function lineHasFallbackHeadway(line) {
   if (Number(line?.headwayFallback || 0) === 1) {
@@ -238,7 +214,7 @@ function lineFrequencyBucket(line) {
   }
 
   if (lineHasFallbackHeadway(line)) {
-    return lineFallbackFrequencyBucket(line);
+    return FREQUENCY_FILTER_LOCAL;
   }
 
   const explicit = String(line?.frequencyBucket || "").trim().toLowerCase();
@@ -267,23 +243,15 @@ function frequencyBucketLabel(bucket) {
 function lineHeadwayLabel(line) {
   const bestHeadwayMinutes = lineHeadwayBestMinutes(line);
   if (bestHeadwayMinutes !== null) {
-    return `Peak headway ~${bestHeadwayMinutes} min`;
+    const rounded = Number(bestHeadwayMinutes.toFixed(1));
+    return `Peak headway ~${rounded} min`;
   }
 
   if (lineHasFallbackHeadway(line)) {
-    const fallbackBucket = lineFrequencyBucket(line);
-    if (fallbackBucket === FREQUENCY_FILTER_FREQUENT) {
-      return "Frequency Frequent";
-    }
-
-    if (fallbackBucket === FREQUENCY_FILTER_REGULAR) {
-      return "Frequency Regular";
-    }
-
-    return "Frequency Varies";
+    return "Frequency varies";
   }
 
-  return frequencyBucketLabel(lineFrequencyBucket(line));
+  return "Frequency Unknown";
 }
 
 /** Format a count label for a filter chip, showing "?" when uncertain. */

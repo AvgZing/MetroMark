@@ -73,7 +73,7 @@ function rebuildLineMetadataFromTiles() {
         : null,
       headwaySource: hasKnownHeadway ? String(existing.headwaySource || "") : "",
       headwayChecked: hasKnownHeadway ? 1 : 0,
-      headwayFallback: hasKnownHeadway ? Number(existing.headwayFallback || 0) : 1
+      headwayFallback: hasKnownHeadway ? Number(existing.headwayFallback || 0) : 0
     });
   }
 

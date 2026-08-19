@@ -22,6 +22,7 @@ const appState = {
   transit: null,
   currentViewportBbox: null,
   lastMapFeatureStateSignature: "",
+  lastStopsSourceKey: "",
   mapRouteFeatureStateCache: new Map(),
   mapStopFeatureStateCache: new Map(),
   lineSummaries: [],

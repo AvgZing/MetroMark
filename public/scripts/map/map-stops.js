@@ -101,6 +101,16 @@ function syncStopsSourceData() {
     features: Array.from(stopByKey.values()).map(normalizeStopFeature)
   };
 
+  // The stops layer's paint is driven by feature-state (visible/focused).
+  // syncMapFeatureStates skips work when its signature is unchanged, but that
+  // signature doesn't include the stop set — so invalidate it whenever the
+  // stop set changes, forcing feature-state to be re-applied to new stops.
+  const stopsKey = Array.from(stopByKey.keys()).sort().join("|");
+  if (stopsKey !== appState.lastStopsSourceKey) {
+    appState.lastStopsSourceKey = stopsKey;
+    appState.lastMapFeatureStateSignature = "";
+  }
+
   if (appState.transit) {
     appState.transit.stopsGeoJson = stops;
   }
