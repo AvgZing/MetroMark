@@ -55,12 +55,7 @@ function getLoadedLines() {
 }
 
 function getToggleCountLines() {
-  const summaryLines = Array.isArray(appState.viewportSummaryTransit?.lineSummaries)
-    ? appState.viewportSummaryTransit.lineSummaries
-    : Array.isArray(appState.viewportSummaryLineSummaries)
-      ? appState.viewportSummaryLineSummaries
-      : [];
-  const sourceLines = summaryLines.length > 0 ? summaryLines : getLoadedLines();
+  const sourceLines = getLoadedLines();
   const deduped = new Map();
 
   for (const line of sourceLines) {
@@ -140,7 +135,6 @@ function setShowAllStops(enabled, options = {}) {
 }
 
 function refreshRouteStopDependentUi(options = {}) {
-  rebuildCombinedTransit();
   renderMapData();
   renderLineList();
   renderProgress();
@@ -335,50 +329,6 @@ function applyHeadwayUpdateToCachedTransit(lineKey, headwayUpdate) {
     }
   }
 
-  for (const cacheEntry of appState.areaCache.values()) {
-    const payload = cacheEntry?.payload;
-    if (!payload) {
-      continue;
-    }
-
-    if (Array.isArray(payload.lineSummaries)) {
-      let didUpdateLineSummary = false;
-      payload.lineSummaries = payload.lineSummaries.map((line) => {
-        if (line?.lineKey !== normalizedLineKey) {
-          return line;
-        }
-
-        didUpdateLineSummary = true;
-        return {
-          ...line,
-          ...headwayUpdate
-        };
-      });
-
-      if (didUpdateLineSummary) {
-        updated = true;
-      }
-    }
-
-    const routeFeatures = payload?.routesGeoJson?.features;
-    if (Array.isArray(routeFeatures)) {
-      for (const feature of routeFeatures) {
-        const featureLineKey = String(feature?.properties?.line_key || "").trim();
-        if (featureLineKey !== normalizedLineKey) {
-          continue;
-        }
-
-        feature.properties = {
-          ...feature.properties,
-          frequency_bucket: headwayUpdate.frequencyBucket,
-          headway_best_minutes: headwayUpdate.headwayBestMinutes,
-          headway_source: headwayUpdate.headwaySource,
-          headway_checked: headwayUpdate.headwayChecked
-        };
-      }
-    }
-  }
-
   return updated;
 }
 
@@ -427,48 +377,6 @@ function applyRouteStopCountSummaryToCachedTransit(lineKey, stopCount) {
     });
   }
 
-  for (const cacheEntry of appState.areaCache.values()) {
-    const payload = cacheEntry?.payload;
-    if (!payload) {
-      continue;
-    }
-
-    if (Array.isArray(payload.lineSummaries)) {
-      let didUpdateLineSummary = false;
-      payload.lineSummaries = payload.lineSummaries.map((line) => {
-        if (line?.lineKey !== normalizedLineKey) {
-          return line;
-        }
-
-        didUpdateLineSummary = true;
-        return {
-          ...line,
-          stopCount: normalizedStopCount
-        };
-      });
-
-      if (didUpdateLineSummary) {
-        updated = true;
-      }
-    }
-
-    const routeFeatures = payload?.routesGeoJson?.features;
-    if (Array.isArray(routeFeatures)) {
-      for (const feature of routeFeatures) {
-        const featureLineKey = String(feature?.properties?.line_key || "").trim();
-        if (featureLineKey !== normalizedLineKey) {
-          continue;
-        }
-
-        feature.properties = {
-          ...feature.properties,
-          stop_count: normalizedStopCount,
-          stopCount: normalizedStopCount
-        };
-      }
-    }
-  }
-
   return updated;
 }
 
@@ -507,13 +415,27 @@ async function loadRouteStopCountSummary(lineKey, options = {}) {
       method: "GET"
     });
 
-    const summaryCount = Number(payload?.lineSummaries?.[0]?.stopCount || payload?.lineSummaries?.[0]?.stop_count || 0);
+    const summary = payload?.lineSummaries?.[0];
+    const summaryCount = Number(summary?.stopCount || summary?.stop_count || 0);
     if (Number.isFinite(summaryCount) && summaryCount > 0) {
       applyRouteStopCountSummaryToCachedTransit(normalizedLineKey, summaryCount);
+    }
+
+    const summaryHeadway = Number(summary?.headwayBestMinutes);
+    if (Number.isFinite(summaryHeadway) && summaryHeadway > 0) {
+      applyHeadwayUpdateToCachedTransit(normalizedLineKey, {
+        headwayBestMinutes: summaryHeadway,
+        frequencyBucket: typeof frequencyBucketFromHeadwayMinutes === "function"
+          ? frequencyBucketFromHeadwayMinutes(summaryHeadway)
+          : "unknown",
+        headwaySource: String(summary?.headwaySource || "postgres"),
+        headwayChecked: 1,
+        headwayFallback: 0
+      });
       return true;
     }
 
-    return false;
+    return summaryCount > 0;
   } catch (error) {
     if (!options.silent) {
       setStatus(`Could not load stop totals for ${lineDisplayName(line)}.`, "error", error.message);

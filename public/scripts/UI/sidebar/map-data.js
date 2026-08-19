@@ -35,62 +35,6 @@ function buildMapFeatureStateSignature(visibility) {
   ].join("::");
 }
 
-function syncMapSourceData() {
-  if (!appState.mapReady || !appState.map) {
-    return;
-  }
-
-  const stopsSource = appState.map.getSource("stops");
-
-  const normalizeStopFeature = (feature) => {
-    const props = feature?.properties || {};
-    const lineKey = String(props.line_key || "").trim();
-    const stationKey = String(props.station_key || props.stop_id || feature?.id || "").trim();
-    const featureId = String(feature?.id || props.feature_id || `${lineKey}|${stationKey}` || "").trim();
-
-    return {
-      ...feature,
-      id: featureId || undefined,
-      properties: {
-        ...props,
-        feature_id: featureId || undefined,
-        line_key: lineKey,
-        station_key: props.station_key || stationKey
-      }
-    };
-  };
-
-  if (!appState.transit) {
-    if (stopsSource) {
-      stopsSource.setData(emptyFeatureCollection());
-    }
-    appState.mapRenderedTransit = null;
-    appState.lastMapFeatureStateSignature = "";
-    appState.mapRouteFeatureStateCache = new Map();
-    appState.mapStopFeatureStateCache = new Map();
-    return;
-  }
-
-  if (appState.transit !== appState.mapRenderedTransit) {
-    appState.lastMapFeatureStateSignature = "";
-    appState.mapRouteFeatureStateCache = new Map();
-    appState.mapStopFeatureStateCache = new Map();
-
-    const stops = Array.isArray(appState.transit?.stopsGeoJson?.features)
-      ? {
-          ...appState.transit.stopsGeoJson,
-          features: appState.transit.stopsGeoJson.features.map(normalizeStopFeature)
-        }
-      : emptyFeatureCollection();
-
-    if (stopsSource) {
-      stopsSource.setData(stops);
-    }
-
-    appState.mapRenderedTransit = appState.transit || null;
-  }
-}
-
 function syncMapFeatureStates() {
   if (!appState.mapReady || !appState.map || !appState.transit) {
     return;
@@ -219,7 +163,9 @@ function renderMapData() {
     return;
   }
 
-  syncMapSourceData();
+  if (typeof syncStopsSourceData === "function") {
+    syncStopsSourceData();
+  }
   syncMapFeatureStates();
 
   const focusMaskSource = appState.map.getSource("focus-mask");

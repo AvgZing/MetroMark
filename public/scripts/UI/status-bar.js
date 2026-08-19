@@ -87,13 +87,32 @@ function renderApiCounter() {
     `Routing: ${appState.transitlandRoutingApiRequestCount}, ` +
     `Postgres: ${appState.postgresQueryCount}`;
 
-  if (dom.apiRequestCounterDetail) {
-    dom.apiRequestCounterDetail.textContent =
-      `Failures - REST: ${appState.transitlandRestApiFailureCount}, ` +
-      `Vector: ${appState.transitlandVectorTileFailureCount}, ` +
-      `Routing: ${appState.transitlandRoutingApiFailureCount}, ` +
-      `Postgres: ${appState.postgresQueryFailureCount}`;
+  let detail =
+    `Failures - REST: ${appState.transitlandRestApiFailureCount}, ` +
+    `Vector: ${appState.transitlandVectorTileFailureCount}, ` +
+    `Routing: ${appState.transitlandRoutingApiFailureCount}, ` +
+    `Postgres: ${appState.postgresQueryFailureCount}`;
+
+  const tiles = appState.tilesStats?.tiles;
+  const backfill = appState.tilesStats?.backfill;
+  const archive = appState.tilesStats?.archive;
+  if (tiles || backfill || archive) {
+    detail +=
+      ` | Tiles: ${tiles?.requests || 0} req (avg ${tiles?.averageMs || 0}ms, ${formatApiBytes(tiles?.bytesServed || 0)}), ` +
+      `Backfill: ${backfill?.count || 0} (+${backfill?.addedRoutes || 0} routes, avg ${backfill?.averageMs || 0}ms), ` +
+      `Archive: ${archive?.totalRoutes ?? "-"} routes`;
   }
+
+  if (dom.apiRequestCounterDetail) {
+    dom.apiRequestCounterDetail.textContent = detail;
+  }
+}
+
+function formatApiBytes(bytes) {
+  const n = Number(bytes || 0);
+  if (n >= 1048576) return `${(n / 1048576).toFixed(2)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
 }
 
 function resetClearRouteProgressConfirmation(options = {}) {

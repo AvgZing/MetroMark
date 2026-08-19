@@ -9,6 +9,7 @@ const progressRoutes = require("./routes/progress");
 const adminRoutes = require("./routes/admin");
 const presetsRoutes = require("./routes/presets");
 const tilesRoutes = require("./routes/tiles");
+const tilesBackfillRoutes = require("./routes/tiles-backfill");
 
 function createApp() {
   const app = express();
@@ -23,6 +24,7 @@ function createApp() {
   app.use("/api", adminRoutes);
   app.use("/api", presetsRoutes);
   app.use("/api", tilesRoutes);
+  app.use("/api", tilesBackfillRoutes);
 
   app.use(express.static(path.join(__dirname, "..", "public")));
 

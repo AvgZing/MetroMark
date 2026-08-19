@@ -1,54 +1,3 @@
-function countGeometryCoords(geometry) {
-  if (!geometry) return 0;
-  if (geometry.type === 'LineString') {
-    return geometry.coordinates ? geometry.coordinates.length : 0;
-  }
-  if (geometry.type === 'MultiLineString') {
-    var sum = 0;
-    var lines = geometry.coordinates;
-    if (lines) {
-      for (var i = 0; i < lines.length; i++) {
-        if (Array.isArray(lines[i])) {
-          sum += lines[i].length;
-        }
-      }
-    }
-    return sum;
-  }
-  return 0;
-}
-
-function geometryIntersectsBbox(geometry, bbox) {
-  if (!geometry || !bbox) {
-    return true;
-  }
-
-  const geometryBbox = {
-    minLng: Infinity,
-    minLat: Infinity,
-    maxLng: -Infinity,
-    maxLat: -Infinity
-  };
-
-  collectCoordsFromGeometry(geometry, geometryBbox);
-
-  if (
-    !Number.isFinite(geometryBbox.minLng) ||
-    !Number.isFinite(geometryBbox.minLat) ||
-    !Number.isFinite(geometryBbox.maxLng) ||
-    !Number.isFinite(geometryBbox.maxLat)
-  ) {
-    return true;
-  }
-
-  return !(
-    geometryBbox.maxLng < bbox[0] ||
-    geometryBbox.minLng > bbox[2] ||
-    geometryBbox.maxLat < bbox[1] ||
-    geometryBbox.minLat > bbox[3]
-  );
-}
-
 function collectCoordsFromGeometry(geometry, bbox) {
   if (!geometry) {
     return bbox;
@@ -83,6 +32,37 @@ function collectCoordsFromGeometry(geometry, bbox) {
   return bbox;
 }
 
+function geometryIntersectsBbox(geometry, bbox) {
+  if (!geometry || !bbox) {
+    return true;
+  }
+
+  const geometryBbox = {
+    minLng: Infinity,
+    minLat: Infinity,
+    maxLng: -Infinity,
+    maxLat: -Infinity
+  };
+
+  collectCoordsFromGeometry(geometry, geometryBbox);
+
+  if (
+    !Number.isFinite(geometryBbox.minLng) ||
+    !Number.isFinite(geometryBbox.minLat) ||
+    !Number.isFinite(geometryBbox.maxLng) ||
+    !Number.isFinite(geometryBbox.maxLat)
+  ) {
+    return true;
+  }
+
+  return !(
+    geometryBbox.maxLng < bbox[0] ||
+    geometryBbox.minLng > bbox[2] ||
+    geometryBbox.maxLat < bbox[1] ||
+    geometryBbox.minLat > bbox[3]
+  );
+}
+
 function normalizeBboxArray(candidate) {
   if (!Array.isArray(candidate) || candidate.length !== 4) {
     return null;
@@ -101,10 +81,6 @@ function normalizeBboxArray(candidate) {
   return [west, south, east, north];
 }
 
-function bboxQueryText(bbox) {
-  return bbox.map((value) => Number(value).toFixed(6)).join(",");
-}
-
 function mapBoundsToBbox() {
   if (!appState.map) {
     return null;
@@ -117,10 +93,12 @@ function mapBoundsToBbox() {
   const north = clamp(bounds.getNorth(), -85, 85);
 
   if (west > east) {
-    // Antimeridian wrap (common on very wide/world views). Return a world bbox
-    // so Postgres-backed viewport requests still run instead of early-returning.
     return [-180, south, 180, north];
   }
 
   return [west, south, east, north];
+}
+
+function bboxQueryText(bbox) {
+  return bbox.map((value) => Number(value).toFixed(6)).join(",");
 }

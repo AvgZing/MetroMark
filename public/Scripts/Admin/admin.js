@@ -526,10 +526,70 @@ function bindEvents() {
   });
 }
 
+function bindViewportUpdate() {
+  const bboxInput = document.getElementById("viewportBboxInput");
+  const updateBtn = document.getElementById("updateViewportBtn");
+  const statusEl = document.getElementById("viewportUpdateStatus");
+
+  if (!bboxInput || !updateBtn || !statusEl) {
+    return;
+  }
+
+  updateBtn.addEventListener("click", async () => {
+    const bboxRaw = String(bboxInput.value || "").trim();
+    const parts = bboxRaw.split(",").map((value) => Number(value.trim()));
+    const bbox = parts.length === 4 && parts.every((value) => Number.isFinite(value)) ? parts : null;
+
+    if (!bbox || bbox[0] >= bbox[2] || bbox[1] >= bbox[3]) {
+      statusEl.textContent = "Enter a valid bbox: west,south,east,north.";
+      statusEl.style.color = "#a22828";
+      return;
+    }
+
+    const token = sessionStorage.getItem(SESSION_KEY) || "";
+    if (!token) {
+      statusEl.textContent = "Log in first.";
+      statusEl.style.color = "#a22828";
+      return;
+    }
+
+    updateBtn.disabled = true;
+    statusEl.textContent = "Fetching viewport routes from Transitland and rebuilding tiles...";
+    statusEl.style.color = "#5a5a5a";
+
+    try {
+      const response = await fetch("/api/admin/tiles/backfill", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ bbox, forceRefresh: true })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error || `Request failed (${response.status}).`);
+      }
+
+      statusEl.textContent =
+        `Done. +${payload.addedRoutes} added, ${payload.updatedRoutes} updated, ` +
+        `${payload.skippedRoutes} skipped (${payload.fetchedRoutes} fetched), ` +
+        `${payload.totalRoutesInArchive} routes in archive.`;
+      statusEl.style.color = "#2e7d32";
+    } catch (error) {
+      statusEl.textContent = `Failed: ${error.message}`;
+      statusEl.style.color = "#a22828";
+    } finally {
+      updateBtn.disabled = false;
+    }
+  });
+}
+
 async function init() {
   dom.adminKeyInput.value = "";
   dom.overrideKeyInput.value = "";
   bindEvents();
+  bindViewportUpdate();
   await refreshCities();
 
   if (appState.adminKey) {

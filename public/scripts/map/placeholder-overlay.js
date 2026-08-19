@@ -1,9 +1,8 @@
 // Transient vector-tile-sourced route overlay for empty viewports.
-// When route_geometry_lod has no data for a viewport (zoom < 10, city
-// not yet populated), this module fetches a lightweight GeoJSON overlay
-// from Transitland's MVT tiles and renders it as a muted placeholder
-// layer. Cleared automatically when real route data arrives.
-// Entire module can be disabled by returning early from fetchPlaceholder.
+// Renders a lightweight GeoJSON overlay from Transitland's MVT tiles as a
+// muted underlay so users get visual feedback even before PMTiles archives
+// cover an area. Sits below the PMTiles route layers; cleared automatically
+// when no data is available for a viewport.
 
 var PLACEHOLDER_SOURCE = "routes-placeholder";
 var PLACEHOLDER_LAYER = "routes-placeholder-layer";
@@ -139,9 +138,6 @@ function applyPlaceholderLayerFilter() {
 }
 
 async function fetchPlaceholder(rawBbox, zoom) {
-  // Comment out this early return to disable the placeholder overlay
-  // if (!appState.map || !appState.mapReady) return;
-
   if (!rawBbox || !appState.map) return;
 
   var bboxStr = rawBbox.slice();
@@ -152,9 +148,7 @@ async function fetchPlaceholder(rawBbox, zoom) {
   if (bboxStr[0] >= bboxStr[2]) bboxStr[0] = bboxStr[2] - 0.001;
   if (bboxStr[1] >= bboxStr[3]) bboxStr[1] = bboxStr[3] - 0.001;
 
-  // Coarse bbox comparison matching the server's cache snap step.
-  // At low zoom, only trigger a new fetch when the viewport moves by
-  // more than one snap degree (10° at country scale, 2° at region scale).
+  // Coarse bbox comparison — only fetch when the viewport moves meaningfully.
   var snap = Number(zoom || 0) < 5 ? 10 : Number(zoom || 0) < 8 ? 2 : 0.5;
   var coarseKey = Math.round(bboxStr[0] / snap) + "," + Math.round(bboxStr[1] / snap) + "," +
                   Math.round(bboxStr[2] / snap) + "," + Math.round(bboxStr[3] / snap);

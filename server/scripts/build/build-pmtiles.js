@@ -86,13 +86,15 @@ function readTileCount(filePath) {
   }
 }
 
-async function main() {
+async function buildPmtiles(options = {}) {
+  const log = options.log || console;
   const files = listNdjsonFiles();
   if (!files.length) {
-    console.error(
-      `[build] ERROR: no *.ndjson files found in ${GEO_DIR}. Run export-transitland-geojson.js first.`
+    const error = new Error(
+      `No *.ndjson files found in ${GEO_DIR}. Run export-transitland-geojson.js first.`
     );
-    process.exit(1);
+    error.code = "NO_INPUT";
+    throw error;
   }
 
   const tippecanoeBin = resolveTippecanoe();
@@ -110,24 +112,26 @@ async function main() {
 
   fs.mkdirSync(path.dirname(OUTPUT_FILE), { recursive: true });
 
-  console.log(`[build] tippecanoe: ${tippecanoeBin}`);
-  console.log(
-    `[build] inputs: ${files.length} NDJSON file(s): ${files
-      .map((file) => path.basename(file))
-      .join(", ")}`
-  );
-  console.log(`[build] output: ${OUTPUT_FILE}`);
+  log.log(`[build] tippecanoe: ${tippecanoeBin}`);
+  log.log(`[build] inputs: ${files.length} NDJSON file(s): ${files.map((file) => path.basename(file)).join(", ")}`);
 
   const child = spawn(tippecanoeBin, args, { stdio: ["pipe", "pipe", "pipe"] });
+  let stderrTail = "";
 
-  child.stdout.on("data", (chunk) => process.stdout.write(chunk));
-  child.stderr.on("data", (chunk) => process.stderr.write(chunk));
+  child.stdout.on("data", (chunk) => {
+    if (options.captureStderr !== false) {
+      // tippecanoe writes its summary to stderr; keep stdout quiet for server use
+    }
+  });
+  child.stderr.on("data", (chunk) => {
+    stderrTail = (stderrTail + chunk.toString()).slice(-2000);
+  });
 
   await new Promise((resolve, reject) => {
     child.on("error", reject);
     child.on("close", (code) => {
       if (code !== 0) {
-        reject(new Error(`tippecanoe exited with code ${code}`));
+        reject(new Error(`tippecanoe exited with code ${code}: ${stderrTail.slice(-300)}`));
         return;
       }
       resolve();
@@ -136,25 +140,44 @@ async function main() {
   });
 
   if (!fs.existsSync(OUTPUT_FILE)) {
-    console.error("[build] ERROR: tippecanoe finished but produced no output file.");
-    process.exit(1);
+    throw new Error("tippecanoe finished but produced no output file.");
   }
 
   const stats = fs.statSync(OUTPUT_FILE);
-  const tileCount = readTileCount(OUTPUT_FILE);
+  return {
+    outputFile: OUTPUT_FILE,
+    sizeBytes: stats.size,
+    tileCount: readTileCount(OUTPUT_FILE),
+    fileCount: files.length
+  };
+}
+
+async function main() {
+  const result = await buildPmtiles({ log: console });
   console.log(
-    `[build] done. routes.pmtiles: ${formatBytes(stats.size)} (${stats.size} bytes), tiles: ${
-      tileCount === null ? "unknown" : tileCount
+    `[build] done. routes.pmtiles: ${formatBytes(result.sizeBytes)} (${result.sizeBytes} bytes), tiles: ${
+      result.tileCount === null ? "unknown" : result.tileCount
     }`
   );
 }
 
-main().catch((error) => {
-  if (error && error.code === "ENOENT") {
-    console.error(
-      "[build] ERROR: tippecanoe was not found. Install it at tools/tippecanoe (or tools/tippecanoe.exe), add it to PATH, or set TIPPECANOE_BIN."
-    );
-  }
-  console.error(`[build] FAILED: ${error?.message || error}`);
-  process.exit(1);
-});
+module.exports = {
+  buildPmtiles,
+  listNdjsonFiles,
+  resolveTippecanoe,
+  readTileCount,
+  GEO_DIR,
+  OUTPUT_FILE
+};
+
+if (require.main === module) {
+  main().catch((error) => {
+    if (error && error.code === "ENOENT") {
+      console.error(
+        "[build] ERROR: tippecanoe was not found. Install it at tools/tippecanoe (or tools/tippecanoe.exe), add it to PATH, or set TIPPECANOE_BIN."
+      );
+    }
+    console.error(`[build] FAILED: ${error?.message || error}`);
+    process.exit(1);
+  });
+}

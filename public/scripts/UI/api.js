@@ -16,14 +16,6 @@ function setToken(token, remember = true) {
 }
 
 async function apiRequest(path, options = {}) {
-  const requestPath = String(path || "");
-  const now = Date.now();
-  const isTransitRequest = requestPath.startsWith("/api/transit/");
-
-  if (isTransitRequest && Number(appState.transitApiCooldownUntil || 0) > now) {
-    throw new Error("Transit API temporarily unavailable. Retrying shortly.");
-  }
-
   appState.clientApiRequestCount += 1;
   renderApiCounter();
 
@@ -43,10 +35,6 @@ async function apiRequest(path, options = {}) {
       headers
     });
   } catch (error) {
-    if (isTransitRequest) {
-      appState.transitApiCooldownUntil = Date.now() + 30000;
-      setBackendStatus("Transit backend connection failed. Pausing transit requests briefly before retrying.");
-    }
     throw error;
   }
 

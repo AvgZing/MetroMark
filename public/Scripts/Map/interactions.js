@@ -175,6 +175,10 @@ function initializeMap() {
   appState.map.on("load", () => {
     registerMapSources(appState.map);
 
+    if (typeof initVectorMetadataWiring === "function") {
+      initVectorMetadataWiring();
+    }
+
     appState.map.addLayer({
       id: "routes-vector-layer",
       type: "line",
@@ -260,7 +264,7 @@ function initializeMap() {
           "case",
           [
             "all",
-            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
             ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 0]
           ],
           0,
@@ -332,7 +336,7 @@ function initializeMap() {
           "case",
           [
             "all",
-            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
             ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 0]
           ],
           0.9,
@@ -414,7 +418,7 @@ function initializeMap() {
           "case",
           [
             "all",
-            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
             ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
           ],
           0.38,
@@ -486,7 +490,7 @@ function initializeMap() {
           "case",
           [
             "all",
-            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
             ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
           ],
           0.96,
@@ -517,7 +521,7 @@ function initializeMap() {
         ],
         "line-opacity": [
           "case",
-          ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
+          ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
           0,
           0
         ]

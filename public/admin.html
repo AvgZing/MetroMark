@@ -1,3 +1,5 @@
+<!--Helpful Note: When you wire up mode/agency/frequency (and if you add color/rename overrides later), the correct pattern — which the current architecture already follows — is: apply them client-side on top of the tile-derived metadata, not baked into the tiles. Concretely, rebuildLineMetadataFromTiles() (vector-metadata.js) is the single place that turns tile properties into lineSummaries; that's where overrides should be merged (e.g. line.mode = override.mode || tileMode). That keeps overrides separate, durable across refetch, and correct for all users without admin auth-->
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -97,6 +99,13 @@
             <button id="queueCityBtn" type="button">Queue</button>
           </div>
         </div>
+
+        <h3>Update Routes for Viewport (Data Correction)</h3>
+        <div class="override-grid">
+          <input id="viewportBboxInput" type="text" placeholder="bbox west,south,east,north (e.g. -122.4,47.5,-122.2,47.7)" />
+          <button id="updateViewportBtn" type="button">Fetch + Rebuild Viewport</button>
+        </div>
+        <p id="viewportUpdateStatus" class="status"></p>
 
         <h3>Station Override</h3>
         <div class="override-grid">

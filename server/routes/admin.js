@@ -8,6 +8,7 @@ const { TRANSIT_CACHE_PREFIX, getTransitlandMetrics } = require("../processors/t
 const { postgresMetrics } = require("../processors/postgres");
 const { runHarvestCore } = require("../admin/harvest-core");
 const { runNonrecoverableBackup } = require("../admin/backup-nonrecoverable");
+const { runBackfill } = require("../sources/transitland/backfill");
 
 const router = express.Router();
 const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 8;
@@ -274,6 +275,34 @@ router.post("/admin/actions/backup-nonrecoverable", async (req, res) => {
     return res.status(500).json({
       error: "Backup run failed.",
       detail: error.message
+    });
+  }
+});
+
+router.post("/admin/tiles/backfill", async (req, res) => {
+  if (!(await isAdminAuthorized(req))) {
+    res.status(403).json({ error: "Admin authorization required." });
+    return;
+  }
+
+  const parts = String(req.body?.bbox || "")
+    .split(",")
+    .map((value) => Number(value.trim()));
+  const bbox = parts.length === 4 && parts.every((value) => Number.isFinite(value)) ? parts : null;
+  if (!bbox || bbox[0] >= bbox[2] || bbox[1] >= bbox[3]) {
+    return res.status(400).json({ error: "A valid bbox (west,south,east,north) is required." });
+  }
+
+  try {
+    const summary = await runBackfill(bbox, {
+      forceRefresh: true,
+      zoom: Number(req.body?.zoom)
+    });
+    return res.json({ ok: true, ...summary });
+  } catch (error) {
+    return res.status(400).json({
+      error: "Viewport update failed.",
+      detail: String(error?.message || error)
     });
   }
 });

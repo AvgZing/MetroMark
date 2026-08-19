@@ -110,10 +110,6 @@ function applyFilterSnapshot(snapshot) {
       fitToArea(city);
     }
   }
-
-  if (typeof loadVisibleTransit === "function") {
-    loadVisibleTransit({ forceRefresh: false, reason: "filter-preset-apply" }).catch(() => {});
-  }
 }
 
 // Persist a default snapshot for this user under the reserved name '__defaults__'.

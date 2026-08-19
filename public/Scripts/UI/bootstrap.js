@@ -201,7 +201,6 @@ function bindEvents() {
       return;
     }
 
-    appState.areaCache.clear();
     appState.lineStopsCache.clear();
     if (appState.loadedLineSummaries) {
       appState.loadedLineSummaries = [];
@@ -216,60 +215,15 @@ function bindEvents() {
     if (appState.inFlightRouteStopCountKeys) {
       appState.inFlightRouteStopCountKeys.clear();
     }
-    resetViewAggregation();
 
-    rebuildCombinedTransit();
+    if (typeof rebuildLineMetadataFromTiles === "function") {
+      appState.lastTileMetadataSignature = "";
+      rebuildLineMetadataFromTiles();
+    }
     refreshUiFromState();
 
-    setBackendStatus("Local session cache cleared by user (route tiles and route stops).");
-
-    try {
-      await loadVisibleTransit({ forceRefresh: false, reason: "clear-cache" });
-    } catch (error) {
-      setStatus(error.message, "error");
-    }
+    setBackendStatus("Local session cache cleared by user (route stops).");
   });
-
-  const forceRefreshBtn = document.getElementById("forceRefreshBtn");
-  if (forceRefreshBtn) {
-    forceRefreshBtn.addEventListener("click", async () => {
-      const confirmed = window.confirm(
-        "Re-fetch transit data for the current viewport from Transitland? This may use API quota."
-      );
-      if (!confirmed) return;
-      setBackendStatus("Reloading viewport from Transitland...");
-      try {
-        // Clear focused route's stop cache so geometry re-fetches fresh
-        if (appState.focusedLineKey) {
-          const stopCacheKey = typeof routeStopCacheKey === "function" ? routeStopCacheKey(appState.focusedLineKey) : `${appState.focusedLineKey}|types:${ROUTE_STOP_TYPES_KEY}`;
-          appState.lineStopsCache.delete(stopCacheKey);
-          appState.inFlightLineStopKeys.delete(stopCacheKey);
-        }
-        await loadVisibleTransit({ forceRefresh: true, reason: "manual-refresh" });
-        // Wait for the full Transitland phase to complete (fires 100ms later)
-        await new Promise((resolve) => {
-          const poll = () => {
-            if (appState.fetchQueue.length === 0 && appState.inFlightAreaKeys.size === 0) {
-              // Small extra wait for the final responses to be processed
-              setTimeout(resolve, 200);
-            } else {
-              setTimeout(poll, 300);
-            }
-          };
-          setTimeout(poll, 300);
-        });
-        // Re-fetch focused route stops from Transitland to get full geometry
-        if (appState.focusedLineKey && typeof ensureLineStopsLoaded === "function") {
-          await ensureLineStopsLoaded(appState.focusedLineKey, { forceRefresh: true, silent: true });
-          rebuildCombinedTransit();
-          renderMapData();
-        }
-        setBackendStatus("Transitland reload complete.");
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-  }
 
   if (dom.clearRouteProgressBtn) {
     dom.clearRouteProgressBtn.addEventListener("click", () => {
@@ -395,18 +349,6 @@ async function init() {
   console.log(`[perf] init: pre-map setup in ${(performance.now() - initT0).toFixed(1)}ms`);
   initializeMap();
 
-  let initialTriggered = false;
-  const triggerInitialLoad = () => {
-    if (initialTriggered) {
-      return;
-    }
-    initialTriggered = true;
-
-    loadVisibleTransit({ forceRefresh: false, reason: "initial" }).catch((error) => {
-      setBackendStatus(`Initial load failed: ${error.message}`);
-    });
-  };
-
   const startupDataPromise = Promise.all([loadCities(), hydrateSession()]);
   const mapReadyPromise = waitForMapReady();
   const mapT0 = performance.now();
@@ -426,11 +368,8 @@ async function init() {
         if (appState.map && typeof appState.map.resize === "function") {
           appState.map.resize();
         }
-        triggerInitialLoad();
       });
     });
-
-    window.setTimeout(triggerInitialLoad, 1400);
 
     const startupT0 = performance.now();
     await startupDataPromise;
@@ -438,12 +377,21 @@ async function init() {
 
     await loadProgress();
 
+    if (typeof loadTilesStats === "function") {
+      loadTilesStats().catch(() => {});
+      window.setInterval(() => {
+        if (typeof loadTilesStats === "function") {
+          loadTilesStats().catch(() => {});
+        }
+      }, 10000);
+    }
+
     const activeModeLabels = MODE_DEFS.filter((modeDef) => appState.activeModeKeys.has(modeDef.key)).map(
       (modeDef) => modeDef.label
     );
 
     setStatus(
-      "Route loading is automatic for the map area you are viewing.",
+      "Routes render from vector tiles for the area you are viewing.",
       "ok",
       `Visible by default: ${activeModeLabels.join(", ")} | All Frequencies. Stops load only when you focus a route.`
     );

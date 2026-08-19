@@ -124,29 +124,22 @@ function lineVisibleFromFilters(line, options = {}) {
 }
 
 function lineIntersectsCurrentViewport(line) {
-  const viewportBbox = normalizeBboxArray(appState.currentViewportBbox);
-  if (!viewportBbox) {
-    return true;
-  }
-
   const lineKey = String(line?.lineKey || "").trim();
   if (!lineKey) {
     return false;
   }
 
-  const features = [
-    ...(Array.isArray(appState.transit?.routesGeoJson?.features) ? appState.transit.routesGeoJson.features : []),
-    ...(Array.isArray(appState.viewportSummaryTransit?.routesGeoJson?.features)
-      ? appState.viewportSummaryTransit.routesGeoJson.features
-      : [])
-  ];
-  if (!features.length) {
+  const features = Array.isArray(appState.transit?.routesGeoJson?.features)
+    ? appState.transit.routesGeoJson.features
+    : [];
+  const routeFeature = features.find((feature) => String(feature?.properties?.line_key || "").trim() === lineKey);
+  if (!routeFeature) {
     return false;
   }
 
-  const routeFeature = features.find((feature) => String(feature?.properties?.line_key || "").trim() === lineKey);
-  if (!routeFeature || typeof geometryIntersectsBbox !== "function") {
-    return false;
+  const viewportBbox = typeof normalizeBboxArray === "function" ? normalizeBboxArray(appState.currentViewportBbox) : null;
+  if (!viewportBbox || typeof geometryIntersectsBbox !== "function") {
+    return true;
   }
 
   return geometryIntersectsBbox(routeFeature.geometry, viewportBbox);
@@ -158,12 +151,8 @@ function lineIsVisible(line, options = {}) {
     return false;
   }
 
-  if (!lineIntersectsCurrentViewport(line)) {
+  if (override !== "on" && !lineIntersectsCurrentViewport(line)) {
     return false;
-  }
-
-  if (override === "on") {
-    return true;
   }
 
   // Check problematic geometry review
@@ -185,71 +174,6 @@ function lineIsVisible(line, options = {}) {
   return lineVisibleFromFilters(line, options);
 }
 
-function selectedRouteTypesForFetch() {
-  // If the user has selected the special "all" mode, fetch everything.
-  if (appState.activeModeKeys.has(MODE_FILTER_ALL)) {
-    return [];
-  }
-
-  const types = new Set();
-  for (const key of Array.from(appState.activeModeKeys)) {
-    const def = MODE_DEF_BY_KEY.get(key);
-    if (def && Array.isArray(def.routeTypes)) {
-      def.routeTypes.forEach((t) => types.add(t));
-    }
-  }
-
-  return Array.from(types);
-}
-
-function viewportRequestsForMode(rawBbox, zoom, routeTypes) {
-  const modeKey = modeCacheKeyFromRouteTypes(routeTypes);
-  const primary = buildViewportTileRequests(rawBbox, zoom);
-  const coarse = zoom >= 8 ? buildViewportTileRequests(rawBbox, zoom - 3) : [];
-  const fine = zoom >= 2 ? buildViewportTileRequests(rawBbox, zoom + 3) : [];
-  const seen = new Set();
-  const merged = [];
-  const push = (reqs) => {
-    for (const req of reqs) {
-      const key = `${req.areaKey}:types:${modeKey}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push({
-        ...req,
-        routeTypes: Array.isArray(routeTypes) ? routeTypes : [],
-        areaKey: key
-      });
-    }
-  };
-  push(primary);
-  push(coarse);
-  push(fine);
-  // Always include detail-level tiles around the center to capture data cached at closer zooms
-  if (zoom >= 3) {
-    const center = bboxCenter(rawBbox);
-    const detailZoom = 9;
-    const ct = lngLatToTile(center[0], center[1], detailZoom);
-    for (let dx = -2; dx <= 2; dx++) {
-      for (let dy = -2; dy <= 2; dy++) {
-        const x = ct.x + dx;
-        const y = ct.y + dy;
-        const tileBbox = tileToBbox(x, y, detailZoom);
-        const key = `tile:${detailZoom}:${x}:${y}:types:${modeKey}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        merged.push({
-          areaKey: key,
-          bbox: tileBbox,
-          zoom,
-          distanceScore: Math.abs(dx) + Math.abs(dy),
-          routeTypes: Array.isArray(routeTypes) ? routeTypes : []
-        });
-      }
-    }
-  }
-  return merged;
-}
-
 function lineMatchesModeSelection(line) {
   if (appState.activeModeKeys.has(MODE_FILTER_ALL)) {
     return true;
@@ -264,34 +188,6 @@ function lineMatchesFrequencySelection(line) {
   }
 
   return appState.activeFrequencyKeys.has(lineFrequencyBucket(line));
-}
-function canFetchViewportRoutes() {
-  if (!appState.mapReady || !appState.map) {
-    return false;
-  }
-
-  // Always allow viewport fetches at any zoom level; server will decide
-  // whether to return cached Postgres payloads or to fallback to Transitland.
-  return true;
-}
-
-function areFilterCountsUncertain() {
-  if (!canFetchViewportRoutes()) {
-    return false;
-  }
-
-  if (
-    (Array.isArray(appState.loadedLineSummaries) && appState.loadedLineSummaries.length > 0) ||
-    (Array.isArray(appState.lineSummaries) && appState.lineSummaries.length > 0)
-  ) {
-    return false;
-  }
-
-  return (
-    appState.inFlightAreaKeys.size > 0 ||
-    appState.fetchQueue.length > 0 ||
-    Number(appState.lastLoadStats?.deferred || 0) > 0
-  );
 }
 // Interlining offset calculation - DISABLED
 // This was used for rendering interlined routes with visual offset,

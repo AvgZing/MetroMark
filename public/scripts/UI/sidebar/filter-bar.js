@@ -18,7 +18,7 @@ function renderModeFilterBar() {
     label: modeDef.label,
     count: modeDef.key === MODE_FILTER_ALL ? linesForCounts.length : counts.get(modeDef.key) || 0
   }));
-  const uncertainCounts = areFilterCountsUncertain();
+  const uncertainCounts = false;
 
   for (const chip of chips) {
     const button = document.createElement("button");
@@ -70,9 +70,6 @@ function renderModeFilterBar() {
 
       setStatus("Mode filter updated.", "ok", `Showing: ${selectedLabels.join(", ")}.`);
 
-      loadVisibleTransit({ forceRefresh: false, reason: "mode-filter-change" }).catch((error) => {
-        setBackendStatus(`Mode-filter fetch failed: ${error.message}`);
-      });
       if (typeof saveDefaultPresetDebounced === "function") {
         try { saveDefaultPresetDebounced(); } catch (e) {}
       }
