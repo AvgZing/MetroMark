@@ -13,6 +13,10 @@ function resolveTippecanoe() {
   }
   candidates.push(path.join(REPO_ROOT, "tools", "tippecanoe"));
   candidates.push(path.join(REPO_ROOT, "tools", "tippecanoe.exe"));
+  if (process.platform === "win32") {
+    candidates.push("C:\\msys64\\usr\\bin\\tippecanoe.exe");
+    candidates.push("C:\\msys64\\mingw64\\bin\\tippecanoe.exe");
+  }
   for (const candidate of candidates) {
     if (!fs.existsSync(candidate)) {
       continue;
@@ -128,7 +132,13 @@ async function buildPmtiles(options = {}) {
   });
 
   await new Promise((resolve, reject) => {
-    child.on("error", reject);
+    child.on("error", (error) => {
+      if (error && error.code === "ENOENT") {
+        reject(new Error("tippecanoe is not installed or not on PATH. Set TIPPECANOE_BIN or install tippecanoe (see docs/working/tippecanoe-setup.md)."));
+        return;
+      }
+      reject(error);
+    });
     child.on("close", (code) => {
       if (code !== 0) {
         reject(new Error(`tippecanoe exited with code ${code}: ${stderrTail.slice(-300)}`));

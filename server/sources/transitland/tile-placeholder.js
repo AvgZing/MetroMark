@@ -137,7 +137,7 @@ async function getTilePlaceholderGeojson(bbox, zoom, routeTypes) {
   // archive renders, which gap detection relies on.
   const [minLon, minLat, maxLon, maxLat] = bbox;
   const userZoom = Number.isFinite(Number(zoom)) ? Number(zoom) : 5;
-  const tileZoom = Math.max(5, Math.min(11, Math.round(userZoom)));
+  const tileZoom = Math.max(5, Math.min(12, Math.round(userZoom)));
   const MAX_TILES = 64;
 
   // Snapped cache key using floor/ceil so small pans within a cell don't

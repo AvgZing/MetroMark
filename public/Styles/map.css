@@ -137,13 +137,21 @@ body.line-view-open .map-overlay-controls {
 }
 
 /* Dark-mode navigation controls + attribution (match the zoom readout) */
-body[data-theme="dark"] .maplibregl-ctrl-group button {
+body[data-theme="dark"] .maplibregl-ctrl-group {
   background-color: #0d1a24;
-  filter: invert(0.9);
+  box-shadow: 0 0 0 1px var(--panel-border);
 }
 
-body[data-theme="dark"] .maplibregl-ctrl-group {
-  box-shadow: 0 0 0 1px var(--panel-border);
+body[data-theme="dark"] .maplibregl-ctrl-group button {
+  background-color: transparent;
+}
+
+body[data-theme="dark"] .maplibregl-ctrl-group button + button {
+  border-top-color: rgba(148, 180, 205, 0.22);
+}
+
+body[data-theme="dark"] .maplibregl-ctrl-group .maplibregl-ctrl-icon {
+  filter: invert(1);
 }
 
 body[data-theme="dark"] .maplibregl-ctrl-attrib {
@@ -156,7 +164,7 @@ body[data-theme="dark"] .maplibregl-ctrl-attrib a {
 }
 
 body[data-theme="dark"] .maplibregl-ctrl-attrib-button {
-  filter: invert(0.9);
+  filter: invert(1);
 }
 
 .maplibregl-popup-content {

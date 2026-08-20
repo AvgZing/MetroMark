@@ -40,9 +40,9 @@ router.post("/tiles/backfill", async (req, res) => {
       serverTimingMs: Date.now() - requestStart
     }));
   } catch (error) {
+    const detail = String(error?.message || error);
     return res.status(400).json({
-      error: "Tile backfill failed.",
-      detail: String(error?.message || error),
+      error: `Tile backfill failed: ${detail}`,
       serverTimingMs: Date.now() - requestStart
     });
   }
