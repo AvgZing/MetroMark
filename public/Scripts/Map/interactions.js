@@ -179,6 +179,10 @@ function initializeMap() {
       initVectorMetadataWiring();
     }
 
+    if (typeof initZoomReadout === "function") {
+      initZoomReadout();
+    }
+
     appState.map.addLayer({
       id: "routes-vector-layer",
       type: "line",

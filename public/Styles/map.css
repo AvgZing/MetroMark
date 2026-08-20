@@ -118,6 +118,24 @@ body.line-view-open .map-overlay-controls {
   color: rgba(234, 245, 250, 0.86);
 }
 
+/* Zoom readout shown between the NavigationControl +/- buttons */
+.zoom-readout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 29px;
+  height: 22px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--panel);
+  border-bottom: 1px solid var(--panel-border);
+  cursor: default;
+  user-select: none;
+  line-height: 1;
+}
+
 .maplibregl-popup-content {
   border-radius: 10px;
   background: var(--panel);

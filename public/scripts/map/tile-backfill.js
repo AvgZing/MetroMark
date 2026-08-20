@@ -139,6 +139,19 @@ async function maybeBackfillViewport() {
 async function requestBackfill(bbox, options = {}) {
   const t0 = performance.now();
   appState.tileBackfillInFlight = true;
+
+  if (typeof setMapNotice === "function") {
+    setMapNotice(
+      "Loading new routes for this area…",
+      "Fetching from Transitland and rebuilding tiles. This may take a moment.",
+      "neutral",
+      "center"
+    );
+  }
+  if (typeof setBackendStatus === "function") {
+    setBackendStatus("Fetching routes for this viewport from Transitland…");
+  }
+
   try {
     const payload = await apiRequest("/api/tiles/backfill", {
       method: "POST",
@@ -158,6 +171,23 @@ async function requestBackfill(bbox, options = {}) {
       reloadVectorSource();
     }
 
+    if (typeof clearMapNotice === "function") {
+      clearMapNotice();
+    }
+    if (typeof setStatus === "function") {
+      const added = Number(payload?.addedRoutes || 0);
+      const updated = Number(payload?.updatedRoutes || 0);
+      if (added > 0 || updated > 0) {
+        setStatus(
+          `${added} new route${added === 1 ? "" : "s"} loaded for this area.`,
+          "ok",
+          `${payload.totalRoutesInArchive} routes now in the archive.`
+        );
+      } else {
+        setStatus("No new routes to load for this area.", "ok", "This area is already covered.");
+      }
+    }
+
     if (typeof loadTilesStats === "function") {
       loadTilesStats().catch(() => {});
     }
@@ -165,6 +195,12 @@ async function requestBackfill(bbox, options = {}) {
     return payload;
   } catch (error) {
     appState.tileBackfillLastError = String(error?.message || error);
+    if (typeof clearMapNotice === "function") {
+      clearMapNotice();
+    }
+    if (typeof setStatus === "function") {
+      setStatus("Couldn't load routes for this area.", "error", String(error?.message || error));
+    }
     if (typeof setBackendStatus === "function") {
       setBackendStatus(`Backfill failed: ${error?.message || error}`);
     }

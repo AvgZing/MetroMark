@@ -1,12 +1,18 @@
-function onMapMoveEnd() {
+async function onMapMoveEnd() {
   if (!appState.mapReady || !appState.map) {
     return;
   }
 
   appState.currentViewportBbox = typeof mapBoundsToBbox === "function" ? mapBoundsToBbox() : null;
 
+  // The placeholder underlay is the "Transitland has routes here" signal used by
+  // gap detection, so wait for it before scheduling the backfill check.
   if (typeof fetchPlaceholder === "function") {
-    fetchPlaceholder(appState.currentViewportBbox, appState.map.getZoom());
+    try {
+      await fetchPlaceholder(appState.currentViewportBbox, appState.map.getZoom());
+    } catch {
+      // Non-critical
+    }
   }
 
   if (typeof refreshUiFromState === "function") {
@@ -20,12 +26,14 @@ function onMapMoveEnd() {
 
 function updateLoadingStatus() {
   const routeStopLoadingCount = appState.inFlightLineStopKeys.size;
+  const backfillInFlight = Boolean(appState.tileBackfillInFlight);
   const hasRoutes = Array.isArray(appState.lineSummaries) && appState.lineSummaries.some((line) => {
     if (typeof lineIsVisible === "function") {
       return lineIsVisible(line);
     }
     return true;
   });
+  const zoom = appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
 
   if (routeStopLoadingCount > 0) {
     if (hasRoutes) {
@@ -33,7 +41,7 @@ function updateLoadingStatus() {
       clearMapNotice();
     } else {
       hideMapLoadingBadge();
-      setMapNotice("Loading...", "", "neutral", "center");
+      setMapNotice("Loading…", "", "neutral", "center");
     }
     return;
   }
@@ -46,9 +54,38 @@ function updateLoadingStatus() {
     return;
   }
 
+  if (backfillInFlight) {
+    hideMapLoadingBadge();
+    setMapNotice(
+      "Loading new routes for this area…",
+      "Fetching from Transitland and rebuilding tiles. This may take a moment.",
+      "neutral",
+      "center"
+    );
+    setBackendStatus("Fetching routes for this viewport from Transitland…");
+    return;
+  }
+
+  if (zoom < (typeof BACKFILL_MIN_ZOOM !== "undefined" ? BACKFILL_MIN_ZOOM : 8)) {
+    hideMapLoadingBadge();
+    setMapNotice(
+      "Zoom in to load routes",
+      "Routes load automatically at zoom level 8 and higher.",
+      "neutral",
+      "center"
+    );
+    setBackendStatus(`No routes loaded — current zoom ${Number(zoom).toFixed(1)} is below the loading threshold.`);
+    return;
+  }
+
   hideMapLoadingBadge();
-  setMapNotice("Zoom in to see routes", "Pan or zoom the map to load transit.", "neutral", "center");
-  setBackendStatus("Routes render from vector tiles for the area you are viewing.");
+  setMapNotice(
+    "No transit routes here yet",
+    "If transit routes exist in this area they will load automatically.",
+    "neutral",
+    "center"
+  );
+  setBackendStatus("No routes rendered for the current viewport.");
 }
 
 function fitToArea(area) {
