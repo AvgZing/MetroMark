@@ -451,6 +451,13 @@ async function loadVisibleRouteStopCounts() {
     return false;
   }
 
+  // Defer at global scale — thousands of stop-count lookups aren't useful
+  // until the user is zoomed in enough to see individual routes.
+  const zoom = appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
+  if (zoom < (typeof BACKFILL_MIN_ZOOM !== "undefined" ? BACKFILL_MIN_ZOOM : 8)) {
+    return false;
+  }
+
   const candidateMap = new Map();
   for (const line of getShownLines()) {
     candidateMap.set(line.lineKey, line);
@@ -575,6 +582,13 @@ async function loadVisibleRouteHeadways() {
     return false;
   }
 
+  // Frequency isn't meaningful at global scale; defer the auto-load until the
+  // user is zoomed in enough to read individual routes.
+  const zoom = appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
+  if (zoom < (typeof BACKFILL_MIN_ZOOM !== "undefined" ? BACKFILL_MIN_ZOOM : 8)) {
+    return false;
+  }
+
   const candidates = getShownLines().filter((line) => {
     if (!line || !line.lineKey) {
       return false;
@@ -585,6 +599,9 @@ async function loadVisibleRouteHeadways() {
     if (appState.inFlightHeadwayLineKeys.has(line.lineKey)) {
       return false;
     }
+    if (appState.headwayBulkAttemptedKeys.has(line.lineKey)) {
+      return false;
+    }
     return true;
   });
 
@@ -592,14 +609,43 @@ async function loadVisibleRouteHeadways() {
     return false;
   }
 
-  const maxCandidates = Math.min(candidates.length, 12);
+  // Bulk cache-only lookup: one (or a few chunked) request(s) for all visible
+  // lines instead of one request per route. Only lines already cached in
+  // Postgres return headway here; the rest load individually on focus.
+  const keys = candidates.map((line) => line.lineKey);
+  keys.forEach((key) => appState.headwayBulkAttemptedKeys.add(key));
+
+  const BULK_CHUNK = 500;
+  const chunks = [];
+  for (let i = 0; i < keys.length; i += BULK_CHUNK) {
+    chunks.push(keys.slice(i, i + BULK_CHUNK));
+  }
+
   const results = await Promise.all(
-    candidates.slice(0, maxCandidates).map((line) =>
-      ensureLineHeadwayLoaded(line.lineKey, { forceRefresh: false, silent: true }).catch(() => false)
+    chunks.map((chunk) =>
+      apiRequest(`/api/transit/route-headway/bulk?${new URLSearchParams({ lineKeys: chunk.join(",") })}`, { method: "GET" })
+        .then((payload) => payload?.headwayByLineKey || {})
+        .catch(() => ({}))
     )
   );
 
-  if (results.some(Boolean)) {
+  let applied = 0;
+  for (const headwayByLineKey of results) {
+    for (const [lineKey, hw] of Object.entries(headwayByLineKey)) {
+      const didUpdate = applyHeadwayUpdateToCachedTransit(lineKey, {
+        headwayBestMinutes: Number(hw.headwayBestMinutes),
+        frequencyBucket: String(hw.frequencyBucket || "unknown"),
+        headwaySource: String(hw.headwaySource || "postgres"),
+        headwayChecked: 1,
+        headwayFallback: Number(hw.headwayFallback || 0)
+      });
+      if (didUpdate) {
+        applied += 1;
+      }
+    }
+  }
+
+  if (applied > 0) {
     renderLineList();
     renderProgress();
     renderFrequencyFilterBar();
@@ -608,7 +654,7 @@ async function loadVisibleRouteHeadways() {
     }
   }
 
-  return true;
+  return applied > 0;
 }
 
 

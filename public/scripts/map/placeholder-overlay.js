@@ -4,6 +4,12 @@
 // cover an area. Sits below the PMTiles route layers; cleared automatically
 // when no data is available for a viewport.
 
+// Master switch for the placeholder UNDERLAY (the muted visual underneath the
+// routes). When false, the underlay is not rendered, but the placeholder data
+// is still fetched and cached because the auto-backfill gap detection reads it.
+// Set to true to show the underlay again.
+const PLACEHOLDER_UNDERLAY_ENABLED = false;
+
 var PLACEHOLDER_SOURCE = "routes-placeholder";
 var PLACEHOLDER_LAYER = "routes-placeholder-layer";
 var PLACEHOLDER_GEOJSON = null;
@@ -23,11 +29,22 @@ function clearPlaceholderLayer() {
 }
 
 function renderPlaceholderLayer(geojson) {
+  if (!PLACEHOLDER_UNDERLAY_ENABLED) {
+    // Underlay disabled — keep PLACEHOLDER_GEOJSON for the backfill gap signal.
+    return;
+  }
+
   if (!appState.map || !appState.mapReady || !geojson) return;
 
   var hasRoutes = Array.isArray(geojson.features) && geojson.features.length > 0;
   if (!hasRoutes) {
     clearPlaceholderLayer();
+    return;
+  }
+
+  // If the archive already renders routes in this viewport, the underlay is
+  // redundant — rendering both doubles the draw work (the big globe-scale cost).
+  if (typeof renderedLineCount === "function" && renderedLineCount() > 0) {
     return;
   }
 
@@ -98,7 +115,19 @@ function renderPlaceholderLayer(geojson) {
 }
 
 function applyPlaceholderLayerFilter() {
+  if (!PLACEHOLDER_UNDERLAY_ENABLED) {
+    // Underlay disabled — keep PLACEHOLDER_GEOJSON for the backfill gap signal.
+    return;
+  }
+
   if (!PLACEHOLDER_GEOJSON || !appState.map || !appState.map.getSource(PLACEHOLDER_SOURCE)) return;
+
+  // Drop the underlay once the archive renders routes here (e.g. after a
+  // backfill completes or when panning back over a covered city).
+  if (typeof renderedLineCount === "function" && renderedLineCount() > 0) {
+    clearPlaceholderLayer();
+    return;
+  }
 
   var activeKeys = appState.activeModeKeys;
   var routeTypes = [];
@@ -138,7 +167,15 @@ function applyPlaceholderLayerFilter() {
 }
 
 async function fetchPlaceholder(rawBbox, zoom) {
+  // Always fetch: the placeholder data drives the auto-backfill gap detection.
+  // Only the underlay RENDERING is gated by PLACEHOLDER_UNDERLAY_ENABLED.
   if (!rawBbox || !appState.map) return;
+
+  // At global scale fetching the whole world's skeleton is expensive and the
+  // archive (or nothing) is the right visual — skip it below z4.
+  if (Number(zoom || 0) < 4) {
+    return;
+  }
 
   var bboxStr = rawBbox.slice();
   bboxStr[0] = Math.max(-180, Math.min(180, bboxStr[0]));
@@ -164,6 +201,9 @@ async function fetchPlaceholder(rawBbox, zoom) {
     var response = await apiRequest("/api/transit/tile-placeholder?" + params.toString(), { method: "GET" });
     var geojson = response?.routesGeoJson;
     if (geojson && Array.isArray(geojson.features) && geojson.features.length > 0) {
+      // Always cache the data: it drives the auto-backfill gap detection even
+      // when the underlay rendering is disabled.
+      PLACEHOLDER_GEOJSON = geojson;
       renderPlaceholderLayer(geojson);
     }
   } catch {

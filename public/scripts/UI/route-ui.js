@@ -129,20 +129,49 @@ function lineIntersectsCurrentViewport(line) {
     return false;
   }
 
-  const features = Array.isArray(appState.transit?.routesGeoJson?.features)
-    ? appState.transit.routesGeoJson.features
-    : [];
-  const routeFeature = features.find((feature) => String(feature?.properties?.line_key || "").trim() === lineKey);
-  if (!routeFeature) {
-    return false;
-  }
-
   const viewportBbox = typeof normalizeBboxArray === "function" ? normalizeBboxArray(appState.currentViewportBbox) : null;
-  if (!viewportBbox || typeof geometryIntersectsBbox !== "function") {
+  if (!viewportBbox) {
     return true;
   }
 
-  return geometryIntersectsBbox(routeFeature.geometry, viewportBbox);
+  // At global scale the viewport covers essentially the whole map — every
+  // loaded line intersects it, so skip the per-line geometry work entirely.
+  if (viewportBbox[2] - viewportBbox[0] > 180 || viewportBbox[3] - viewportBbox[1] > 170) {
+    return true;
+  }
+
+  // Cache each line's bounding box (the geometry is stable between tile
+  // rebuilds) so repeated filtering — shown lines, list, progress, filter
+  // chips — doesn't recompute it for every line on every pass.
+  if (line._geometryBbox === undefined) {
+    const features = Array.isArray(appState.transit?.routesGeoJson?.features)
+      ? appState.transit.routesGeoJson.features
+      : [];
+    const routeFeature = features.find((feature) => String(feature?.properties?.line_key || "").trim() === lineKey);
+    if (!routeFeature || typeof collectCoordsFromGeometry !== "function") {
+      line._geometryBbox = null;
+      return false;
+    }
+
+    const bbox = { minLng: Infinity, minLat: Infinity, maxLng: -Infinity, maxLat: -Infinity };
+    collectCoordsFromGeometry(routeFeature.geometry, bbox);
+    if (!Number.isFinite(bbox.minLng)) {
+      line._geometryBbox = null;
+      return true;
+    }
+    line._geometryBbox = [bbox.minLng, bbox.minLat, bbox.maxLng, bbox.maxLat];
+  }
+
+  if (!line._geometryBbox) {
+    return true;
+  }
+
+  return !(
+    line._geometryBbox[2] < viewportBbox[0] ||
+    line._geometryBbox[0] > viewportBbox[2] ||
+    line._geometryBbox[3] < viewportBbox[1] ||
+    line._geometryBbox[1] > viewportBbox[3]
+  );
 }
 
 function lineIsVisible(line, options = {}) {

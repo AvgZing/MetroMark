@@ -359,6 +359,40 @@ async function getRouteHeadway(lineKey, options = {}) {
   };
 }
 
+async function getRouteHeadwaysBulk(lineKeys, options = {}) {
+  const keys = Array.isArray(lineKeys)
+    ? lineKeys.map((key) => sanitizeText(String(key || ""))).filter(Boolean).slice(0, 500)
+    : [];
+
+  const headwayByLineKey = {};
+  if (!keys.length) {
+    return { headwayByLineKey };
+  }
+
+  let meta = new Map();
+  try {
+    meta = await db.getRouteMetadatasByLineKeys(keys);
+  } catch {
+    return { headwayByLineKey };
+  }
+
+  for (const [lineKey, routeMeta] of meta) {
+    const bm = Number(routeMeta?.headwayBestMinutes);
+    if (!Number.isFinite(bm) || bm <= 0) {
+      continue;
+    }
+    headwayByLineKey[lineKey] = {
+      headwayBestMinutes: bm,
+      frequencyBucket: String(routeMeta.frequencyBucket || "unknown"),
+      headwaySource: String(routeMeta.headwaySource || "postgres"),
+      headwayChecked: 1,
+      headwayFallback: Number(routeMeta.headwayFallback || 0)
+    };
+  }
+
+  return { headwayByLineKey };
+}
+
 function buildFeedFingerprint(payload) {
   const lineSummaries = Array.isArray(payload?.lineSummaries) ? payload.lineSummaries : [];
   if (!lineSummaries.length) {
@@ -915,6 +949,7 @@ module.exports = {
   getCityFeedFingerprint,
   getRouteStopsTransit,
   getRouteHeadway,
+  getRouteHeadwaysBulk,
   getTransitlandMetrics,
   TRANSIT_CACHE_PREFIX
 };

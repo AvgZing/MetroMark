@@ -4,7 +4,8 @@ const db = require("../processors/data");
 const { authMiddleware } = require("../processors/supabase/auth");
 const {
   getRouteStopsTransit,
-  getRouteHeadway
+  getRouteHeadway,
+  getRouteHeadwaysBulk
 } = require("../processors/transitland");
 const { getTilePlaceholderGeojson } = require("../sources/transitland/tile-placeholder");
 const {
@@ -53,6 +54,31 @@ router.get("/transit/route-stops", async (req, res) => {
   } catch (error) {
     return res.status(400).json({
       error: "Route stop fetch failed.",
+      detail: error.message
+    });
+  }
+});
+
+router.get("/transit/route-headway/bulk", async (req, res) => {
+  const requestStart = Date.now();
+  const lineKeys = String(req.query.lineKeys || "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter(Boolean);
+
+  if (!lineKeys.length) {
+    return res.status(400).json({ error: "lineKeys query parameter is required." });
+  }
+
+  try {
+    const result = await getRouteHeadwaysBulk(lineKeys, { requestSource: "user" });
+    return res.json(withTransitlandMetrics({
+      ...result,
+      serverTimingMs: Date.now() - requestStart
+    }));
+  } catch (error) {
+    return res.status(400).json({
+      error: "Bulk headway lookup failed.",
       detail: error.message
     });
   }
