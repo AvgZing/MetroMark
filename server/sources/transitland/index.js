@@ -23,9 +23,7 @@ const {
   fetchStopsForRoute
 } = require("./fetch");
 const {
-  normalizeBboxForCache,
-  toBboxString,
-  bboxCenter
+  toBboxString
 } = require("./bbox");
 const {
   frequencyBucketFromHeadwayMinutes,
@@ -912,46 +910,9 @@ async function getCityFeedFingerprint(slug, options = {}) {
   };
 }
 
-async function getBboxTransit(rawBbox, options = {}) {
-  const zoom = Number(options.zoom);
-  const bboxInfo = normalizeBboxForCache(rawBbox, zoom, {
-    // Cache-only requests are Postgres overlap lookups and should work for broad views.
-    // Transitland-fetching requests still obey BBOX_MAX_SPAN_DEGREES.
-    allowWideBbox: Boolean(options.cacheOnly)
-  });
-  const stopLocationTypes = normalizeStopLocationTypes(options.stopLocationTypes);
-  const routeTypes = normalizeRouteTypes(options.routeTypes);
-  const routeTypeKey = routeTypes.length ? routeTypes.join("-") : "all";
-
-  const area = {
-    key: `${bboxInfo.areaKey}:route-catalog:route-types:${routeTypeKey}`,
-    kind: "bbox",
-    name: "Visible Area",
-    country: "",
-    center: bboxCenter(bboxInfo.bbox),
-    bbox: bboxInfo.bbox,
-    snapStep: bboxInfo.step,
-    routeTypes
-  };
-
-  const result = await getTransitForArea(area, {
-    ...options,
-    stopLocationTypes,
-    routeTypes
-  });
-  return {
-    ...result,
-    normalizedBbox: bboxInfo.bbox,
-    snapStep: bboxInfo.step,
-    stopLocationTypes,
-    routeTypes
-  };
-}
-
 module.exports = {
   getCityTransit,
   getCityFeedFingerprint,
-  getBboxTransit,
   getRouteStopsTransit,
   getRouteHeadway,
   getTransitlandMetrics,

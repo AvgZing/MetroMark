@@ -2,14 +2,11 @@ const express = require("express");
 
 const db = require("../processors/data");
 const { authMiddleware } = require("../processors/supabase/auth");
-const { getCityBySlug } = require("../processors/city-presets");
 const {
-  getCityTransit,
   getRouteStopsTransit,
   getRouteHeadway
 } = require("../processors/transitland");
 const { getTilePlaceholderGeojson } = require("../sources/transitland/tile-placeholder");
-const { handleBboxRequest } = require("../sources/transitland/bbox-pipeline");
 const {
   asBoolean,
   parseStopTypes,
@@ -19,88 +16,14 @@ const {
 
 const router = express.Router();
 
-router.get("/transit/city/:slug", async (req, res) => {
-  const city = getCityBySlug(req.params.slug);
-  if (!city) {
-    return res.status(404).json({ error: "Unknown city slug." });
-  }
-
-  try {
-    const stopTypes = parseStopTypes(req.query.stopTypes);
-    const routeTypes = parseRouteTypes(req.query.routeTypes);
-    const data = await getCityTransit(city.slug, {
-      forceRefresh: asBoolean(req.query.refresh),
-      zoom: Number(req.query.zoom),
-      stopLocationTypes: stopTypes,
-      routeTypes,
-      requestSource: "user"
-    });
-
-    if (!data) {
-      return res.status(404).json({ error: "No transit data available for this city." });
-    }
-
-    return res.json(withTransitlandMetrics({
-      cacheStatus: data.cacheStatus,
-      cacheKey: data.cacheKey,
-      cacheExpiresAt: data.cacheExpiresAt || null,
-      cacheVerifiedAt: data.cacheVerifiedAt || null,
-      feedFingerprint: data.feedFingerprint || "",
-      stopLocationTypes: data.stopLocationTypes || [0, 1],
-      routeTypes: data.routeTypes || [],
-      ...data.payload
-    }));
-  } catch (error) {
-    return res.status(502).json({
-      error: "City transit fetch failed.",
-      detail: error.message
-    });
-  }
-});
-
-router.get("/transit/bbox", async (req, res) => {
-  const requestStart = Date.now();
-  const bboxRaw = String(req.query.bbox || "").trim();
-  if (!bboxRaw) {
-    return res.status(400).json({ error: "bbox query parameter is required." });
-  }
-
-  const zoom = Number(req.query.zoom);
-
-  try {
-    const data = await handleBboxRequest(bboxRaw, {
-      forceRefresh: asBoolean(req.query.refresh),
-      cacheOnly: asBoolean(req.query.cacheOnly),
-      debug: asBoolean(req.query.debug),
-      zoom,
-      stopLocationTypes: parseStopTypes(req.query.stopTypes),
-      routeTypes: parseRouteTypes(req.query.routeTypes),
-      requestSource: "user"
-    });
-
-    const serverTimingMs = Date.now() - requestStart;
-    if (serverTimingMs > 500) {
-      console.log(`[perf] /api/transit/bbox took ${serverTimingMs}ms (cacheOnly=${req.query.cacheOnly || 0}, zoom=${zoom})`);
-    }
-
-    return res.json(withTransitlandMetrics({
-      serverTimingMs,
-      cacheStatus: data.cacheStatus,
-      cacheKey: data.cacheKey,
-      cacheExpiresAt: data.cacheExpiresAt || null,
-      normalizedBbox: data.normalizedBbox,
-      snapStep: data.snapStep,
-      stopLocationTypes: data.stopLocationTypes || [0, 1],
-      routeTypes: data.routeTypes || [],
-      ...data.payload
-    }));
-  } catch (error) {
-    return res.status(400).json({
-      serverTimingMs: Date.now() - requestStart,
-      error: "Visible-area transit fetch failed.",
-      detail: error.message
-    });
-  }
+router.get("/transit/bbox", (req, res) => {
+  return res.status(410).json({
+    error: "This endpoint is retired.",
+    detail:
+      "Live viewport transit queries were replaced by the PMTiles tile pipeline (data/tiles/routes.pmtiles). " +
+      "Missing areas are fetched on demand via /api/tiles/backfill; offline city builds still run through " +
+      "npm run harvest:core and npm run build:tiles."
+  });
 });
 
 router.get("/transit/route-stops", async (req, res) => {

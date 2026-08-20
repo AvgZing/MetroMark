@@ -186,23 +186,6 @@ function initializeMap() {
       initZoomReadout();
     }
 
-    appState.map.addLayer({
-      id: "routes-vector-layer",
-      type: "line",
-      source: "routes-vector",
-      "source-layer": "routes",
-      layout: {
-        "line-cap": "round",
-        "line-join": "round"
-      },
-      paint: {
-        "line-color": "#ff5cc8",
-        "line-width": 2.4,
-        "line-opacity": 0.9,
-        "line-dasharray": [1.6, 1.2]
-      }
-    });
-
     appState.map.addSource("focus-mask", {
       type: "geojson",
       data: focusMaskFeatureCollection(false)

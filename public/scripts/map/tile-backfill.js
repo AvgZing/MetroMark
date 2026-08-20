@@ -38,7 +38,7 @@ function renderedLineCount() {
   }
   try {
     const features = appState.map.queryRenderedFeatures({
-      layers: ["routes-main-vector", "routes-background-main-vector", "routes-casing-vector", "routes-vector-layer"]
+      layers: ["routes-main-vector", "routes-background-main-vector", "routes-casing-vector"]
     });
     return distinctLineKeys(features).size;
   } catch {
