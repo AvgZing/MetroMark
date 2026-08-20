@@ -104,6 +104,16 @@ body.line-view-open .map-overlay-controls {
   backdrop-filter: blur(10px);
 }
 
+/* Gently pulse the notice card while a background task (e.g. tile backfill) is running */
+.map-notice.is-loading .map-notice-card {
+  animation: map-notice-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes map-notice-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 .map-notice-title {
   margin: 0;
   font-size: 18px;

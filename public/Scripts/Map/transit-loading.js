@@ -46,14 +46,8 @@ function updateLoadingStatus() {
     return;
   }
 
-  if (hasRoutes) {
-    const focusLabel = appState.focusedLineKey ? "Focused route stop view." : "Select a route to load stops.";
-    hideMapLoadingBadge();
-    clearMapNotice();
-    setBackendStatus(focusLabel);
-    return;
-  }
-
+  // A backfill in progress must keep its notice visible even if the user pans
+  // (routes from the previous city are still rendered, so hasRoutes is true).
   if (backfillInFlight) {
     hideMapLoadingBadge();
     setMapNotice(
@@ -63,6 +57,14 @@ function updateLoadingStatus() {
       "center"
     );
     setBackendStatus("Fetching routes for this viewport from Transitland…");
+    return;
+  }
+
+  if (hasRoutes) {
+    const focusLabel = appState.focusedLineKey ? "Focused route stop view." : "Select a route to load stops.";
+    hideMapLoadingBadge();
+    clearMapNotice();
+    setBackendStatus(focusLabel);
     return;
   }
 

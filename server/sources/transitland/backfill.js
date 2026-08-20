@@ -16,7 +16,8 @@ const backfillStats = {
   updatedRoutes: 0,
   lastAt: null,
   lastBbox: null,
-  lastError: null
+  lastError: null,
+  current: null
 };
 
 function lineKeyOf(feature) {
@@ -122,6 +123,14 @@ async function runBackfill(bboxArray, options = {}) {
   const t0 = Date.now();
   const forceRefresh = Boolean(options.forceRefresh);
 
+  backfillStats.current = {
+    stage: "fetching",
+    message: "Fetching routes from Transitland…",
+    fetchedRoutes: 0,
+    addedRoutes: 0,
+    startedAt: new Date().toISOString()
+  };
+
   try {
     const result = await fetchRoutesAndStopsForBbox(bboxArray, {
       includeAllTypes: true,
@@ -135,6 +144,14 @@ async function runBackfill(bboxArray, options = {}) {
     const features = normalized.map(routeToFeature).filter(Boolean);
     const merged = mergeBackfillFeatures(features, { overwrite: forceRefresh });
 
+    backfillStats.current = {
+      stage: "rebuilding",
+      message: `Rebuilding route tiles (${features.length} routes fetched, +${merged.added} new)…`,
+      fetchedRoutes: features.length,
+      addedRoutes: merged.added,
+      startedAt: new Date().toISOString()
+    };
+
     let built = null;
     if (merged.added > 0 || merged.updated > 0) {
       built = await buildPmtiles({ log: { log: () => {} } });
@@ -142,6 +159,7 @@ async function runBackfill(bboxArray, options = {}) {
       built = await buildPmtiles({ log: { log: () => {} } });
     }
 
+    backfillStats.current = null;
     const elapsedMs = Date.now() - t0;
     backfillStats.count += 1;
     backfillStats.totalMs += elapsedMs;
@@ -164,6 +182,7 @@ async function runBackfill(bboxArray, options = {}) {
     };
   } catch (error) {
     backfillStats.lastError = String(error?.message || error);
+    backfillStats.current = null;
     throw error;
   }
 }

@@ -82,6 +82,9 @@ function lineFromRouteFeature(feature) {
   };
 }
 
+var lastRouteHoverAt = 0;
+var lastRouteHoverPoint = null;
+
 function onRouteHoverMove(event) {
   if (!hoverInteractionsEnabled()) {
     onRouteHoverLeave();
@@ -91,6 +94,20 @@ function onRouteHoverMove(event) {
   if (!appState.routeHoverPopup || !appState.map) {
     return;
   }
+
+  // Throttle the rendered-feature query: over a dense (global-scale) viewport
+  // this runs on every mousemove and can be very expensive. Keep the existing
+  // popup unless the pointer moved meaningfully and enough time has passed.
+  const now = performance.now();
+  const point = event.point;
+  const movedEnough =
+    !lastRouteHoverPoint ||
+    Math.abs(point.x - lastRouteHoverPoint.x) + Math.abs(point.y - lastRouteHoverPoint.y) > 3;
+  if (now - lastRouteHoverAt < 50 || !movedEnough) {
+    return;
+  }
+  lastRouteHoverAt = now;
+  lastRouteHoverPoint = point;
 
   if (appState.hoverPopup) {
     appState.hoverPopup.remove();
@@ -323,14 +340,42 @@ function initializeMap() {
           2.4
         ],
         "line-opacity": [
-          "case",
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          1,
           [
-            "all",
-            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
-            ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 0]
+            "case",
+            [
+              "all",
+              ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
+              ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 0]
+            ],
+            0.3,
+            0
           ],
-          0.9,
-          0
+          5,
+          [
+            "case",
+            [
+              "all",
+              ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
+              ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 0]
+            ],
+            0.55,
+            0
+          ],
+          9,
+          [
+            "case",
+            [
+              "all",
+              ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
+              ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 0]
+            ],
+            0.9,
+            0
+          ]
         ]
       }
     });
@@ -405,14 +450,42 @@ function initializeMap() {
           5.2
         ],
         "line-opacity": [
-          "case",
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          1,
           [
-            "all",
-            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
-            ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+            "case",
+            [
+              "all",
+              ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
+              ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+            ],
+            0.12,
+            0
           ],
-          0.38,
-          0
+          5,
+          [
+            "case",
+            [
+              "all",
+              ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
+              ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+            ],
+            0.22,
+            0
+          ],
+          9,
+          [
+            "case",
+            [
+              "all",
+              ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
+              ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+            ],
+            0.38,
+            0
+          ]
         ]
       }
     });
@@ -477,14 +550,42 @@ function initializeMap() {
           3.6
         ],
         "line-opacity": [
-          "case",
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          1,
           [
-            "all",
-            ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
-            ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+            "case",
+            [
+              "all",
+              ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
+              ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+            ],
+            0.35,
+            0
           ],
-          0.96,
-          0
+          5,
+          [
+            "case",
+            [
+              "all",
+              ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
+              ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+            ],
+            0.6,
+            0
+          ],
+          9,
+          [
+            "case",
+            [
+              "all",
+              ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1],
+              ["==", ["coalesce", ["to-number", ["feature-state", "focused"]], 0], 1]
+            ],
+            0.96,
+            0
+          ]
         ]
       }
     });

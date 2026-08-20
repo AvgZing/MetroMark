@@ -12,6 +12,7 @@ var BACKFILL_MIN_ZOOM = 8;
 var BACKFILL_COOLDOWN_MS = 20000;
 var BACKFILL_WAIT_MS = 2500;
 var backfillCheckTimer = null;
+var backfillProgressTimer = null;
 
 function distinctLineKeys(features) {
   const keys = new Set();
@@ -113,6 +114,39 @@ async function maybeBackfillViewport() {
   requestBackfill(bbox, { forceRefresh: false });
 }
 
+async function pollBackfillProgress() {
+  try {
+    const payload = await apiRequest("/api/tiles/backfill/status", { method: "GET" });
+    if (payload && payload.inFlight && typeof setMapNotice === "function") {
+      setMapNotice(
+        "Loading new routes for this area…",
+        payload.message || "Fetching from Transitland and rebuilding tiles. This may take a moment.",
+        "neutral",
+        "center"
+      );
+      const notice = document.getElementById("mapNotice");
+      if (notice) {
+        notice.classList.add("is-loading");
+      }
+    }
+  } catch {
+    // Non-critical — polling is best-effort
+  }
+}
+
+function startBackfillProgressPolling() {
+  stopBackfillProgressPolling();
+  pollBackfillProgress().catch(() => {});
+  backfillProgressTimer = setInterval(() => pollBackfillProgress().catch(() => {}), 2000);
+}
+
+function stopBackfillProgressPolling() {
+  if (backfillProgressTimer) {
+    clearInterval(backfillProgressTimer);
+    backfillProgressTimer = null;
+  }
+}
+
 async function requestBackfill(bbox, options = {}) {
   const t0 = performance.now();
   appState.tileBackfillInFlight = true;
@@ -128,6 +162,8 @@ async function requestBackfill(bbox, options = {}) {
   if (typeof setBackendStatus === "function") {
     setBackendStatus("Fetching routes for this viewport from Transitland…");
   }
+
+  startBackfillProgressPolling();
 
   try {
     const payload = await apiRequest("/api/tiles/backfill", {
@@ -151,6 +187,7 @@ async function requestBackfill(bbox, options = {}) {
     if (typeof clearMapNotice === "function") {
       clearMapNotice();
     }
+    stopBackfillProgressPolling();
     if (typeof setStatus === "function") {
       const added = Number(payload?.addedRoutes || 0);
       const updated = Number(payload?.updatedRoutes || 0);
@@ -172,6 +209,7 @@ async function requestBackfill(bbox, options = {}) {
     return payload;
   } catch (error) {
     appState.tileBackfillLastError = String(error?.message || error);
+    stopBackfillProgressPolling();
     if (typeof clearMapNotice === "function") {
       clearMapNotice();
     }

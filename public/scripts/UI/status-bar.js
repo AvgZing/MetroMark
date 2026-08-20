@@ -27,6 +27,7 @@ function clearMapNotice() {
     return;
   }
 
+  dom.mapNotice.classList.remove("is-loading");
   dom.mapNotice.hidden = true;
   dom.mapNotice.innerHTML = "";
 }

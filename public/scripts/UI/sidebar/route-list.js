@@ -98,7 +98,14 @@ function renderLineList() {
 
   const fragment = document.createDocumentFragment();
 
-  routeListLines.forEach((line) => {
+  // Cap the number of DOM rows rendered at once. At global scale the visible
+  // set can be thousands of routes; rendering all of them at once is the
+  // biggest cause of UI lag. Search still reaches any route.
+  const MAX_ROUTE_LIST_ROWS = 300;
+  const renderLines = routeListLines.slice(0, MAX_ROUTE_LIST_ROWS);
+  const totalRouteCount = routeListLines.length;
+
+  renderLines.forEach((line) => {
     const row = document.createElement("div");
     row.className = "line-item";
 
@@ -328,6 +335,13 @@ function renderLineList() {
 
     fragment.append(row);
   });
+
+  if (totalRouteCount > MAX_ROUTE_LIST_ROWS) {
+    const note = document.createElement("p");
+    note.className = "microcopy";
+    note.textContent = `Showing ${MAX_ROUTE_LIST_ROWS} of ${totalRouteCount} routes — refine with search or zoom in to narrow the list.`;
+    fragment.append(note);
+  }
 
   dom.lineList.append(fragment);
 }

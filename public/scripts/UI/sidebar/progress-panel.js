@@ -86,7 +86,12 @@ function renderProgress() {
 
   dom.lineProgressList.innerHTML = "";
 
-  for (const row of rows) {
+  // Cap the per-route progress rows to keep the panel usable when thousands of
+  // routes are visible at global scale. The overall progress summary stays exact.
+  const MAX_PROGRESS_ROWS = 120;
+  const renderRows = rows.slice(0, MAX_PROGRESS_ROWS);
+
+  for (const row of renderRows) {
     const wrapper = document.createElement("div");
     wrapper.className = "line-progress-row";
 
@@ -138,5 +143,12 @@ function renderProgress() {
     wrapper.append(meter);
 
     dom.lineProgressList.append(wrapper);
+  }
+
+  if (rows.length > MAX_PROGRESS_ROWS) {
+    const note = document.createElement("p");
+    note.className = "microcopy";
+    note.textContent = `Showing ${MAX_PROGRESS_ROWS} of ${rows.length} routes — zoom in to narrow the list.`;
+    dom.lineProgressList.append(note);
   }
 }

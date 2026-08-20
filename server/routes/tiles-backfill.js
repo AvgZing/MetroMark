@@ -48,6 +48,19 @@ router.post("/tiles/backfill", async (req, res) => {
   }
 });
 
+router.get("/tiles/backfill/status", (req, res) => {
+  const stats = getBackfillStats();
+  return res.json({
+    inFlight: Boolean(stats.current),
+    stage: stats.current?.stage || null,
+    message: stats.current?.message || null,
+    fetchedRoutes: stats.current?.fetchedRoutes || 0,
+    addedRoutes: stats.current?.addedRoutes || 0,
+    startedAt: stats.current?.startedAt || null,
+    lastError: stats.lastError || null
+  });
+});
+
 router.get("/tiles/stats", (req, res) => {
   const transitland = getTransitlandMetrics();
   return res.json({
