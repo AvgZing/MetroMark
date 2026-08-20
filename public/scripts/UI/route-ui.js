@@ -151,7 +151,13 @@ function lineIsVisible(line, options = {}) {
     return false;
   }
 
-  if (override !== "on" && !lineIntersectsCurrentViewport(line)) {
+  // Manual "on" override forces visibility regardless of viewport, reviews,
+  // or filters — so it renders on the map and counts everywhere consistently.
+  if (override === "on") {
+    return true;
+  }
+
+  if (!lineIntersectsCurrentViewport(line)) {
     return false;
   }
 

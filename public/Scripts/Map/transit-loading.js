@@ -50,7 +50,7 @@ function updateLoadingStatus() {
     const focusLabel = appState.focusedLineKey ? "Focused route stop view." : "Select a route to load stops.";
     hideMapLoadingBadge();
     clearMapNotice();
-    setBackendStatus(`${appState.lineSummaries.length} on-screen routes visible. ${focusLabel}`);
+    setBackendStatus(focusLabel);
     return;
   }
 

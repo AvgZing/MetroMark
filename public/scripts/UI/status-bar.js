@@ -278,6 +278,21 @@ function restoreMapView(view) {
   });
 }
 
+function mapViewChanged(view) {
+  if (!appState.map || !view) {
+    return true;
+  }
+
+  const center = appState.map.getCenter();
+  return (
+    Math.abs(center.lng - view.center[0]) > 0.0001 ||
+    Math.abs(center.lat - view.center[1]) > 0.0001 ||
+    Math.abs(appState.map.getZoom() - view.zoom) > 0.01 ||
+    Math.abs(appState.map.getBearing() - view.bearing) > 0.1 ||
+    Math.abs(appState.map.getPitch() - view.pitch) > 0.1
+  );
+}
+
 function setUserStatus(title, subtitle, options = {}) {
   appState.userStatus = {
     title: String(title || "").trim() || "No route selected.",

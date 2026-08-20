@@ -1,82 +1,68 @@
 // Automatic gap detection + feed-in backfill for the PMTiles pipeline.
 //
-// A viewport is considered "complete" when its tiles are covered by the
-// routes.pmtiles archive. When a user pans to an area that Transitland has
-// data for (the placeholder underlay shows routes) but the archive does not
-// cover, we fetch the missing routes once, save them to the NDJSON store,
-// rebuild the archive, and reload the vector source — all without a page
-// reload. Repeated views of the same area are skipped (server-side dedup).
+// Completeness is judged by comparing the placeholder underlay (Transitland's
+// ground truth for the viewport) against what the routes.pmtiles archive
+// currently renders. When Transitland has significantly more routes in the
+// viewport than the archive, we fetch the missing routes once, save them to
+// the NDJSON store, rebuild the archive, and reload the vector source — all
+// without a page reload. Repeated views of the same area are skipped
+// (coarse-bbox dedup client-side + line_key dedup server-side).
 
 var BACKFILL_MIN_ZOOM = 8;
 var BACKFILL_COOLDOWN_MS = 20000;
 var BACKFILL_WAIT_MS = 2500;
 var backfillCheckTimer = null;
-var pmtilesArchive = null;
-var pmtilesArchiveHeader = null;
 
-function viewportHasVectorCoverage() {
-  if (!appState.map || !appState.mapReady) {
-    return true;
+function distinctLineKeys(features) {
+  const keys = new Set();
+  for (const feature of features || []) {
+    const key = String(feature?.properties?.line_key || "").trim();
+    if (key) {
+      keys.add(key);
+    }
   }
-  try {
-    const layers = ["routes-main-vector", "routes-background-main-vector", "routes-casing-vector", "routes-vector-layer"];
-    return appState.map.queryRenderedFeatures({ layers }).length > 0;
-  } catch {
-    return true;
-  }
+  return keys;
 }
 
-function placeholderHasRoutes() {
+function placeholderLineCount() {
   const geojson = (typeof PLACEHOLDER_GEOJSON !== "undefined") ? PLACEHOLDER_GEOJSON : null;
-  return Boolean(geojson && Array.isArray(geojson.features) && geojson.features.length > 0);
-}
-
-function getPmtilesArchive() {
-  if (pmtilesArchive) {
-    return pmtilesArchive;
+  if (!geojson || !Array.isArray(geojson.features)) {
+    return 0;
   }
-  const version = appState.vectorSourceVersion || 0;
-  pmtilesArchive = new pmtiles.PMTiles(`/api/tiles/routes.pmtiles?v=${version}`);
-  return pmtilesArchive;
+  return distinctLineKeys(geojson.features).size;
 }
 
-function resetPmtilesArchiveCache() {
-  pmtilesArchive = null;
-  pmtilesArchiveHeader = null;
-}
-
-async function getArchiveHeader() {
-  if (pmtilesArchiveHeader) {
-    return pmtilesArchiveHeader;
+function renderedLineCount() {
+  if (!appState.map || !appState.mapReady) {
+    return 0;
   }
-  pmtilesArchiveHeader = await getPmtilesArchive().getHeader();
-  return pmtilesArchiveHeader;
-}
-
-async function tileExistsInArchive(z, x, y) {
   try {
-    const result = await getPmtilesArchive().getZxy(z, x, y);
-    return Boolean(result && result.data && result.data.byteLength > 0);
+    const features = appState.map.queryRenderedFeatures({
+      layers: ["routes-main-vector", "routes-background-main-vector", "routes-casing-vector", "routes-vector-layer"]
+    });
+    return distinctLineKeys(features).size;
   } catch {
+    return 0;
+  }
+}
+
+function hasIncompleteCoverage() {
+  const placeholderCount = placeholderLineCount();
+  const renderedCount = renderedLineCount();
+
+  // Transitland has no data here (ocean/rural) — nothing to backfill.
+  if (placeholderCount === 0) {
     return false;
   }
-}
 
-async function archiveCoversViewport(bbox, zoom) {
-  if (typeof bboxCenter !== "function" || typeof lngLatToTile !== "function") {
+  // Nothing rendered but Transitland has routes → clear gap.
+  if (renderedCount === 0) {
     return true;
   }
-  try {
-    const header = await getArchiveHeader();
-    const minZoom = Number(header?.minZoom ?? 0);
-    const maxZoom = Number.isFinite(Number(header?.maxZoom)) ? Number(header.maxZoom) : 14;
-    const checkZoom = Math.max(minZoom, Math.min(Math.round(Number(zoom) || minZoom), maxZoom));
-    const center = bboxCenter(bbox);
-    const tile = lngLatToTile(center[0], center[1], checkZoom);
-    return await tileExistsInArchive(checkZoom, tile.x, tile.y);
-  } catch {
-    return true;
-  }
+
+  // Partial coverage: Transitland has significantly more routes here than we
+  // currently render (e.g. a few through-running lines vs. a whole network).
+  return placeholderCount > renderedCount * 2 + 3;
 }
 
 function coarseBboxKey(bbox) {
@@ -109,10 +95,7 @@ async function maybeBackfillViewport() {
   if (Date.now() < Number(appState.tileBackfillCooldownUntil || 0)) {
     return;
   }
-  if (viewportHasVectorCoverage()) {
-    return;
-  }
-  if (!placeholderHasRoutes()) {
+  if (!hasIncompleteCoverage()) {
     return;
   }
 
@@ -123,12 +106,6 @@ async function maybeBackfillViewport() {
 
   const key = coarseBboxKey(bbox);
   if (appState.tileBackfillBboxes.has(key)) {
-    return;
-  }
-
-  // Intelligent check: only fetch when the archive genuinely lacks this area.
-  const covered = await archiveCoversViewport(bbox, zoom);
-  if (covered) {
     return;
   }
 
@@ -217,7 +194,6 @@ function reloadVectorSource() {
   }
 
   appState.vectorSourceVersion = (Number(appState.vectorSourceVersion || 0) + 1);
-  resetPmtilesArchiveCache();
 
   const source = appState.map.getSource("routes-vector");
   const url = `pmtiles:///api/tiles/routes.pmtiles?v=${appState.vectorSourceVersion}`;

@@ -142,7 +142,10 @@ function initializeMap() {
     antialias: true
   });
 
-  appState.map.addControl(new maplibregl.NavigationControl(), "bottom-right");
+  appState.map.addControl(new maplibregl.NavigationControl({ showCompass: false, showZoom: true }), "bottom-right");
+  appState.map.dragRotate.disable();
+  appState.map.touchZoomRotate.disableRotation();
+  appState.map.keyboard.disableRotation();
   appState.hoverPopup = new maplibregl.Popup({
     closeButton: false,
     closeOnClick: false,

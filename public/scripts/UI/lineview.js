@@ -594,7 +594,9 @@ function restoreLineViewReturnState() {
     return;
   }
 
-  if (saved.mapView) {
+  // Only restore the map view if the user hasn't moved the map since opening
+  // line view. If they panned elsewhere, preserve their new location.
+  if (saved.mapView && typeof mapViewChanged === "function" && !mapViewChanged(saved.mapView)) {
     restoreMapView(saved.mapView);
   }
 

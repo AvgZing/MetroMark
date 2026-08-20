@@ -132,12 +132,13 @@ async function getTilePlaceholderGeojson(bbox, zoom, routeTypes) {
     return emptyResponse();
   }
 
-  // Camera-lens following user zoom: low zoom = minimal tiles for wide
-  // country/globe coverage of the major transit skeleton.
+  // Fetch at the user's zoom (capped at 11) so the tiles align with the
+  // viewport — this keeps the placeholder's route count comparable to what the
+  // archive renders, which gap detection relies on.
   const [minLon, minLat, maxLon, maxLat] = bbox;
   const userZoom = Number.isFinite(Number(zoom)) ? Number(zoom) : 5;
-  const tileZoom = Math.max(5, Math.min(12, Math.round(userZoom)));
-  const MAX_TILES = userZoom < 4 ? 40 : userZoom < 6 ? 30 : userZoom < 9 ? 20 : 10;
+  const tileZoom = Math.max(5, Math.min(11, Math.round(userZoom)));
+  const MAX_TILES = 64;
 
   // Snapped cache key using floor/ceil so small pans within a cell don't
   // change the key. Wider cells at low zoom prevent boundary-crossing

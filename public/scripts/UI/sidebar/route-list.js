@@ -57,7 +57,7 @@ function renderLineList() {
 
   const query = String(appState.lineSearchQuery || "").trim().toLowerCase();
   const hasQuery = Boolean(query);
-  const visibleLines = getShownLines({ ignoreSearch: true });
+  const visibleCount = getShownLines({ ignoreSearch: true }).length;
   const routeListLines = getRouteListLines();
   const overrideCount = routeListLines.filter((line) => Boolean(lineVisibilityOverride(line.lineKey))).length;
 
@@ -70,11 +70,10 @@ function renderLineList() {
     } else {
       dom.routeListSummary.textContent =
         overrideCount > 0
-          ? `Filtered routes (${visibleLines.length} visible, ${overrideCount} overrides)`
-          : `Filtered routes (${visibleLines.length} visible)`;
+          ? `Filtered routes (${visibleCount} visible, ${overrideCount} overrides)`
+          : `Filtered routes (${visibleCount} visible)`;
     }
   }
-
   if (dom.routeListDropdown && hasQuery) {
     dom.routeListDropdown.open = true;
   }
