@@ -127,6 +127,23 @@ create table if not exists public.route_ordering_vote (
 create index if not exists idx_route_ordering_vote_line on public.route_ordering_vote (line_key);
 create index if not exists idx_route_ordering_vote_city on public.route_ordering_vote (city_slug);
 
+create table if not exists public.route_review (
+  line_key text primary key,
+  city_slug text,
+  problematic_override boolean,
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_route_review_city on public.route_review (city_slug);
+
+create table if not exists public.agency_review (
+  city_slug text not null,
+  operator_name text not null,
+  allowed_override boolean,
+  updated_at timestamptz not null default now(),
+  primary key (city_slug, operator_name)
+);
+
 create or replace function public.metromark_zoom_tolerance(target_zoom integer)
 returns double precision
 language sql

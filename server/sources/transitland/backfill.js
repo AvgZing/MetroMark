@@ -196,6 +196,7 @@ function getBackfillStats() {
 
 module.exports = {
   runBackfill,
+  mergeBackfillFeatures,
   getBackfillStats,
   totalRoutesInArchive,
   BACKFILL_FILE

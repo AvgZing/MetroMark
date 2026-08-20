@@ -218,6 +218,39 @@ async function initializeLocalPostgres() {
 )`,
       `create index if not exists idx_route_ordering_vote_line on public.route_ordering_vote (line_key)`,
       `create index if not exists idx_route_ordering_vote_city on public.route_ordering_vote (city_slug)`,
+      `create table if not exists public.route_metadata (
+  line_key text primary key,
+  route_onestop_id text not null default '',
+  line_name text not null default '',
+  line_short_name text not null default '',
+  line_long_name text not null default '',
+  operator_name text not null default '',
+  mode text not null default '',
+  route_type integer,
+  route_feed_id text not null default '',
+  service_tier text not null default '',
+  frequency_bucket text not null default 'unknown',
+  headway_best_minutes double precision,
+  headway_source text not null default '',
+  headway_checked integer not null default 0,
+  color text not null default '',
+  stop_count integer not null default 0,
+  updated_at timestamptz not null default now()
+)`,
+      `create table if not exists public.route_review (
+  line_key text primary key,
+  city_slug text,
+  problematic_override boolean,
+  updated_at timestamptz not null default now()
+)`,
+      `create index if not exists idx_route_review_city on public.route_review (city_slug)`,
+      `create table if not exists public.agency_review (
+  city_slug text not null,
+  operator_name text not null,
+  allowed_override boolean,
+  updated_at timestamptz not null default now(),
+  primary key (city_slug, operator_name)
+)`,
     ];
 
     for (const statement of statements) {

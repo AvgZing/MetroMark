@@ -37,9 +37,9 @@ if ($before -ne $after) {
     npm install
   }
 
-  # Restart prod server task if it already exists.
-  schtasks /Run /TN "MetroMark-StartProd" | Out-Null
-  Write-Host "[sync] Triggered MetroMark-StartProd task."
+  # Restart the host app (server + harvester loop) via the startup script.
+  Start-Process cmd -ArgumentList '/c', 'call operations\start-metromark.bat'
+  Write-Host "[sync] Triggered operations\start-metromark.bat."
 } else {
   Write-Host "[sync] No changes pulled."
 }
