@@ -89,6 +89,32 @@ async function getRouteStopsTransit(lineKey, options = {}) {
   }
 
   if (cacheOnly) {
+    if (summaryOnly) {
+      // Cold route-stops cache: fall back to stored route_metadata.stop_count
+      // (cheap SQL) so summary queries report a count without a Transitland
+      // fetch. The harvesters and any full route-stops fetch populate this.
+      try {
+        const metaMap = await db.getRouteMetadatasByLineKeys([normalizedLineKey]);
+        const meta = metaMap.get(normalizedLineKey);
+        const storedCount = Number(meta?.stopCount || 0);
+        if (storedCount > 0) {
+          return {
+            payload: {
+              lineSummaries: [{
+                lineKey: normalizedLineKey,
+                stopCount: storedCount
+              }]
+            },
+            cacheStatus: "stale-hit",
+            cacheKey: `route:${normalizedLineKey}:types:${stopTypeKey}`,
+            stopLocationTypes
+          };
+        }
+      } catch {
+        // fall through to miss
+      }
+    }
+
     return {
       payload: null,
       cacheStatus: "miss",

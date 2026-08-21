@@ -201,6 +201,9 @@ function refreshUiFromState() {
   if (typeof loadVisibleRouteHeadways === "function") {
     loadVisibleRouteHeadways().catch(() => {});
   }
+  if (typeof applyUnderlayModeFilter === "function") {
+    applyUnderlayModeFilter();
+  }
   const elapsed = performance.now() - t0;
   if (elapsed > 50) {
     console.log(`[perf] refreshUiFromState: ${elapsed.toFixed(1)}ms`);

@@ -13,13 +13,14 @@
  * HTTPS or http://localhost.
  */
 
-const VERSION = "2";
+const VERSION = "3";
 const APP_SHELL_CACHE = `metromark-shell-v${VERSION}`;
 const TILES_CACHE = `metromark-tiles-v${VERSION}`;
 const RUNTIME_CACHE = `metromark-runtime-v${VERSION}`;
 const API_CACHE = `metromark-api-v${VERSION}`;
 const TILES_PATHNAME = "/api/tiles/routes.pmtiles";
 const NAV_TIMEOUT_MS = 3000;
+const API_TIMEOUT_MS = 20000;
 const TILE_REVALIDATE_MS = 10 * 60 * 1000;
 const API_STALE_MS = 5 * 60 * 1000;
 
@@ -340,7 +341,9 @@ async function apiStaleWhileRevalidate(request, event) {
   }
 
   try {
-    const response = await fetchWithTimeout(request, NAV_TIMEOUT_MS);
+    // Slow first-request API calls (e.g. the coverage probe at low zoom) need
+    // a much longer budget than navigations.
+    const response = await fetchWithTimeout(request, API_TIMEOUT_MS);
     if (response.ok) {
       await cache.put(request, stampResponse(response.clone()));
     }

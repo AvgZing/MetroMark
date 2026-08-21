@@ -2,7 +2,7 @@
 
 ## Login model
 - Admin console and manual override editor both require a session login.
-- Login uses `ADMIN_USERNAME` and `ADMIN_PASSWORD` from the environment.
+- Login uses the Supabase account whose email matches `ADMIN_EMAIL` (the bootstrap admin, granted the admin role on login); the password lives in Supabase, not the env.
 - The browser stores the admin session token in `sessionStorage`, not `localStorage`.
 - Reopen the browser or tab to require a fresh login.
 

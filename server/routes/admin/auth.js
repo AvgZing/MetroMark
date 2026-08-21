@@ -48,28 +48,22 @@ function getAdminSession(req) {
   return { token, ...session };
 }
 
-// Admin accounts live in Supabase (profiles.role = 'admin'). The env-backed
-// account (ADMIN_EMAIL + ADMIN_PASSWORD) is the bootstrap admin: those exact
-// credentials always grant access and are auto-promoted on login, so the env
-// default admin works even before the startup seed runs.
+// Admin accounts live in Supabase (profiles.role = 'admin'). The env var
+// ADMIN_EMAIL designates the bootstrap admin: that account is granted the
+// admin role on login (best-effort, via seedDefaultAdmin), and its password is
+// authenticated by Supabase like any other account.
 async function loginAdminAccount(email, password) {
   const normalizedEmail = normalizeEmailSafe(email);
-  const bootstrapMatch =
-    normalizedEmail &&
-    normalizedEmail === normalizeEmailSafe(config.ADMIN_EMAIL) &&
-    String(password || "") === String(config.ADMIN_PASSWORD || "");
+  const isBootstrapEmail = Boolean(
+    normalizedEmail && normalizedEmail === normalizeEmailSafe(config.ADMIN_EMAIL)
+  );
 
-  if (bootstrapMatch) {
+  if (isBootstrapEmail) {
     try {
       await db.seedDefaultAdmin();
     } catch (error) {
       console.warn("[admin-auth] bootstrap admin seed failed:", error.message);
     }
-    return {
-      email: normalizedEmail,
-      role: "admin",
-      source: "env-bootstrap"
-    };
   }
 
   const result = await db.loginAccount(email, password);
@@ -82,7 +76,8 @@ async function loginAdminAccount(email, password) {
   return {
     email: user.email,
     role: user.role,
-    source: "supabase-role"
+    source: "supabase-role",
+    bootstrap: isBootstrapEmail
   };
 }
 

@@ -52,6 +52,10 @@ function setAdminSession(token) {
   }
 }
 
+function clearAdminSession() {
+  setAdminSession("");
+}
+
 function setAdminLocked(locked) {
   if (els.adminLoginShell) {
     els.adminLoginShell.hidden = !locked;
@@ -404,7 +408,7 @@ function bindEvents() {
       });
       setAdminSession(result.token);
       els.sessionEmail.textContent = result.email || email;
-      els.sessionSource.textContent = result.source === "env-bootstrap" ? "env bootstrap admin" : "Supabase admin";
+      els.sessionSource.textContent = result.bootstrap ? "env-designated admin" : "Supabase admin";
       setAdminLocked(false);
       els.loginStatusMessage.textContent = "Logged in.";
       await refreshAll();

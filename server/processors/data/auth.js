@@ -366,7 +366,6 @@ async function seedDefaultAdmin() {
     return { skipped: true, reason: "ADMIN_EMAIL is not set" };
   }
 
-  const password = String(config.ADMIN_PASSWORD || "");
   if (!hasSupabaseConfig) {
     return { skipped: true, reason: "Supabase is not configured" };
   }
@@ -375,35 +374,11 @@ async function seedDefaultAdmin() {
   try {
     existing = await getUserByEmail(email);
   } catch {
-    // Fall through to create path.
+    return { skipped: true, reason: "Unable to look up admin account (Supabase unreachable)" };
   }
 
   if (!existing) {
-    if (!password) {
-      return { skipped: true, reason: "ADMIN_EMAIL account does not exist and ADMIN_PASSWORD is not set" };
-    }
-
-    const { serviceClient } = requireSupabaseClients();
-    const createResult = await serviceClient.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { display_name: "MetroMark Admin" }
-    });
-
-    if (createResult.error) {
-      throw new Error(`Unable to create default admin: ${createResult.error.message}`);
-    }
-
-    const createdUser = createResult.data.user;
-    await ensureProfile(createdUser, {
-      displayName: "MetroMark Admin",
-      role: "admin",
-      isActive: true,
-      createdAtIso: createdUser.created_at
-    });
-    await markProfileLogin(createdUser.id);
-    return { email, created: true, role: "admin" };
+    return { skipped: true, reason: "ADMIN_EMAIL account does not exist in Supabase yet" };
   }
 
   await ensureProfile(

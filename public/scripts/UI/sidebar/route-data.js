@@ -232,6 +232,12 @@ function applyRouteStopCountSummaryToCachedTransit(lineKey, stopCount) {
   return updated;
 }
 
+// Stop-count lookups for lines that have no stored count yet are retried on a
+// short cooldown (not permanently blacklisted), so counts appear as soon as the
+// harvesters or a route-stops fetch populate route_metadata.
+const ROUTE_STOP_COUNT_COOLDOWN_MS = 5 * 60 * 1000;
+const routeStopCountLastAttemptAt = new Map();
+
 async function loadRouteStopCountSummary(lineKey, options = {}) {
   const normalizedLineKey = String(lineKey || "").trim();
   if (!normalizedLineKey) {
@@ -247,11 +253,12 @@ async function loadRouteStopCountSummary(lineKey, options = {}) {
     return true;
   }
 
-  if (appState.routeStopCountLoadAttempts.has(normalizedLineKey) || appState.inFlightRouteStopCountKeys.has(normalizedLineKey)) {
+  const lastAttempt = routeStopCountLastAttemptAt.get(normalizedLineKey) || 0;
+  if (appState.inFlightRouteStopCountKeys.has(normalizedLineKey) || Date.now() - lastAttempt < ROUTE_STOP_COUNT_COOLDOWN_MS) {
     return false;
   }
+  routeStopCountLastAttemptAt.set(normalizedLineKey, Date.now());
 
-  appState.routeStopCountLoadAttempts.add(normalizedLineKey);
   appState.inFlightRouteStopCountKeys.add(normalizedLineKey);
 
   try {
@@ -327,7 +334,8 @@ async function loadVisibleRouteStopCounts() {
       return false;
     }
 
-    if (appState.routeStopCountLoadAttempts.has(line.lineKey)) {
+    const lastAttempt = routeStopCountLastAttemptAt.get(line.lineKey) || 0;
+    if (Date.now() - lastAttempt < ROUTE_STOP_COUNT_COOLDOWN_MS) {
       return false;
     }
 

@@ -56,7 +56,6 @@ module.exports = {
   STATION_HUB_SNAP_MAX_METERS: asInt(process.env.STATION_HUB_SNAP_MAX_METERS, 180),
   BBOX_MAX_SPAN_DEGREES: asFloat(process.env.BBOX_MAX_SPAN_DEGREES, 2.2),
   ADMIN_EMAIL: String(process.env.ADMIN_EMAIL || process.env.ADMIN_USERNAME || process.env.ADMIN_USER || "").trim(),
-  ADMIN_PASSWORD: String(process.env.ADMIN_PASSWORD || process.env.ADMIN_PASS || "").trim(),
   HARVEST_DAILY_REST_LIMIT: asInt(process.env.HARVEST_DAILY_REST_LIMIT, 250),
   HARVEST_DAILY_VECTOR_LIMIT: asInt(process.env.HARVEST_DAILY_VECTOR_LIMIT, 2500),
   HARVEST_DAILY_ROUTING_LIMIT: asInt(process.env.HARVEST_DAILY_ROUTING_LIMIT, 250),

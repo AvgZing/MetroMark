@@ -30,7 +30,6 @@ const appState = {
   loadedLineSummaries: [],
   lineStopsCache: new Map(),
   routeStopsAutoLoadAttempts: new Map(),
-  routeStopCountLoadAttempts: new Set(),
   inFlightLineStopKeys: new Set(),
   inFlightRouteStopCountKeys: new Set(),
   inFlightHeadwayLineKeys: new Set(),

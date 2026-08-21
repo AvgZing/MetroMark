@@ -10,7 +10,7 @@ const {
   MAX_ZOOM,
   MAX_CELL_FAILURES
 } = require("./harvest-grid");
-const { accumulateRoutes } = require("./harvest-routes");
+const { accumulateRoutes, countStopsPerLine } = require("./harvest-routes");
 
 async function harvestCities(state, newFeatures) {
   let processed = 0;
@@ -30,7 +30,7 @@ async function harvestCities(state, newFeatures) {
       });
       const routes = normalizeRoutes(Array.isArray(result.routes) ? result.routes : []);
       processed += 1;
-      accumulateRoutes(routes, newFeatures);
+      accumulateRoutes(routes, newFeatures, countStopsPerLine(result.stops, routes));
       state.cityIndex += 1;
       log(`City ${state.cityIndex}/${WORLD_CITIES.length}: ${city.name} (${routes.length} routes)`);
     } catch (error) {
@@ -85,7 +85,7 @@ async function harvestGaps(state, newFeatures) {
         if (z < MAX_ZOOM) {
           state.queue.push(...childrenOf(z, x, y));
         }
-        accumulateRoutes(routes, newFeatures);
+        accumulateRoutes(routes, newFeatures, countStopsPerLine(result.stops, routes));
       } else {
         state.emptyCells += 1;
       }

@@ -208,9 +208,6 @@ function bindEvents() {
     if (appState.routeStopsAutoLoadAttempts) {
       appState.routeStopsAutoLoadAttempts.clear();
     }
-    if (appState.routeStopCountLoadAttempts) {
-      appState.routeStopCountLoadAttempts.clear();
-    }
     appState.inFlightLineStopKeys.clear();
     if (appState.inFlightRouteStopCountKeys) {
       appState.inFlightRouteStopCountKeys.clear();

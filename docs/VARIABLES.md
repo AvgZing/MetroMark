@@ -139,7 +139,7 @@ Stored in `route_override` table and edited via admin override page:
 
 ### Admin Login Session
 - The admin console and override editor create a short-lived browser session after login.
-- The login form uses `ADMIN_USERNAME` and `ADMIN_PASSWORD` from the environment.
+- The login form uses the Supabase account whose email matches `ADMIN_EMAIL` (the env-designated bootstrap admin; its password lives in Supabase, not the env). Any account with `profiles.role = 'admin'` also works.
 - The session token is stored in `sessionStorage` for the current tab only.
 
 ### Route Review (Problematic Geometry & Agency Allow/Block)
