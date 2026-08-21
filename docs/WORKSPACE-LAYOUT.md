@@ -22,11 +22,11 @@
 
 ### Server (`server/`)
 - `index.js`, `app.js`
-- `admin/` — config.js, harvest-core.js, harvest-headway.js, backup-nonrecoverable.js
+- `admin/` — config.js, harvest-headway.js, backup-nonrecoverable.js
 - `routes/` — Express route handlers (admin, auth, catalog, health, helpers, presets,
   progress, tiles, tiles-backfill, transit)
-  - `routes/admin/` — auth (account admin login), stats (dashboard), actions (harvest/backup/
-    rebuild-tiles/backfill/queue-city), accounts (grant/revoke admin role), overrides, reviews
+  - `routes/admin/` — auth (account admin login), stats (dashboard), actions (backup/
+    rebuild-tiles/backfill), accounts (grant/revoke admin role), overrides, reviews
 - `processors/` — Postgres+Supabase data access layer, spatial, city-presets, transitland
   (reexport), postgres/, supabase/
 - `sources/transitland/` — Transitland API interface (index.js, fetch.js, routes.js,
@@ -38,7 +38,6 @@
 ## Non-critical (`operations/`)
 - `harvest-world.js`, `world-cities.js` — world harvester (Phase 1 cities, Phase 2 gaps)
 - `run-harvesters.bat`, `start-metromark.bat` — background harvester loop + host startup
-- `windows/` — Windows/PowerShell helper scripts
 - SQL schema files (postgres, supabase baselines + changes)
 - `state/` — resumable world-harvest progress (gitignored)
 - `Logs/` — server + harvester logs (gitignored; written by `start-metromark.bat`)

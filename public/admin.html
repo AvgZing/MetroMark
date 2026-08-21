@@ -99,25 +99,6 @@
         </article>
 
         <article class="card">
-          <h2>Harvest State</h2>
-          <dl id="harvestStats" class="kv"></dl>
-          <h3>Pending Queue</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>City</th>
-                <th>Status</th>
-                <th>Pending</th>
-                <th>Priority</th>
-                <th>Updated</th>
-                <th>Error</th>
-              </tr>
-            </thead>
-            <tbody id="queueBody"></tbody>
-          </table>
-        </article>
-
-        <article class="card">
           <h2>Accounts &amp; Admin Access</h2>
           <div id="accountStats" class="kv"></div>
           <table>
@@ -154,14 +135,8 @@
       <section class="card">
         <h2>Operations</h2>
         <div class="action-grid">
-          <button id="runHarvestBtn" type="button">Run Harvest Cycle</button>
           <button id="runBackupBtn" type="button">Run Nonrecoverable Backup</button>
           <button id="rebuildTilesBtn" type="button">Rebuild Tiles</button>
-          <div class="inline-action">
-            <label for="queueCitySelect">Queue City Refresh</label>
-            <select id="queueCitySelect"></select>
-            <button id="queueCityBtn" type="button">Queue</button>
-          </div>
         </div>
 
         <h3>Update Routes for Viewport (Data Correction)</h3>

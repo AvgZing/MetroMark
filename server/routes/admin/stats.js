@@ -31,7 +31,6 @@ router.get("/admin/stats", async (req, res) => {
     } catch (error) {
       accountStats = { unavailable: true, reason: error.message };
     }
-    const harvestSummary = await db.getHarvestSummary();
     const cacheStats = await db.getCacheStats();
     const dbFileStats = await db.getDatabaseFileStats();
     const coverageStats = await db.getRouteMetadataCoverageStats();
@@ -79,13 +78,6 @@ router.get("/admin/stats", async (req, res) => {
         },
         backgroundHarvestAllowed: usageState.backgroundAllowed
       },
-      harvest: {
-        activeCachedCities: harvestSummary.activeCachedCities,
-        pendingHarvests: harvestSummary.pendingHarvests,
-        inProgress: harvestSummary.inProgress,
-        ready: harvestSummary.ready,
-        totalCities: harvestSummary.totalCities
-      },
       accounts: accountStats,
       cache: cacheStats,
       archive: {
@@ -102,7 +94,6 @@ router.get("/admin/stats", async (req, res) => {
       },
       system: {
         supabaseReachable: Boolean(accountStats && !accountStats.unavailable),
-        harvestEnabled: Boolean(config.HARVEST_ENABLED),
         serviceWorkerEnabled: Boolean(config.SW_ENABLED),
         appEnv: config.APP_ENV,
         envFile: config.ENV_FILE
@@ -148,25 +139,6 @@ router.get("/admin/stats", async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       error: "Unable to read admin stats.",
-      detail: error.message
-    });
-  }
-});
-
-router.get("/admin/harvest/queue", async (req, res) => {
-  if (!(await isAdminAuthorized(req))) {
-    res.status(403).json({ error: "Admin authorization required." });
-    return;
-  }
-
-  try {
-    const limit = Math.max(1, Number(req.query.limit || 20));
-    const pending = await db.listPendingHarvestCities(limit);
-    const summary = await db.getHarvestSummary();
-    return res.json({ pending, summary });
-  } catch (error) {
-    return res.status(500).json({
-      error: "Unable to load harvest queue.",
       detail: error.message
     });
   }

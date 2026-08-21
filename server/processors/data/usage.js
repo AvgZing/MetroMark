@@ -1,4 +1,4 @@
-const { localQuery, assertLocalConfigured } = require("./core");
+const { localQuery, dbPath, assertLocalConfigured } = require("./core");
 const { normalizeText, normalizeUsageRow, utcDateKey } = require("./utils");
 
 function dayKeyFromTimestamp(epochSeconds) {
@@ -130,11 +130,25 @@ async function getUsageHistory(days = 7) {
   })).reverse();
 }
 
+async function getDatabaseFileStats() {
+  assertLocalConfigured();
+  const result = await localQuery("select pg_database_size(current_database())::bigint as size_bytes");
+  const bytesValue = Number(result.rows?.[0]?.size_bytes || 0);
+
+  return {
+    dbPath,
+    exists: true,
+    sizeBytes: Number.isFinite(bytesValue) ? Math.max(0, bytesValue) : 0,
+    modifiedAtMs: Date.now()
+  };
+}
+
 module.exports = {
   dayKeyFromTimestamp,
   getUsageForDay,
   getTodayUsage,
   incrementUsage,
   getDailyUsageCapsState,
-  getUsageHistory
+  getUsageHistory,
+  getDatabaseFileStats
 };

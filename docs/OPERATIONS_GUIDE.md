@@ -47,14 +47,14 @@
 ## Production Deployment (Windows 11)
 - Two env profiles: `.env.development` and `.env.production`.
 - Start: `npm run start:dev` / `npm run start:prod`.
-- Operational jobs: `npm run harvest:core`, `npm run backup:nonrecoverable`.
+- Operational jobs: `npm run harvest:world`, `npm run harvest:headway`, `npm run backup:nonrecoverable` (or the `operations/run-harvesters.bat` loop).
 - Use separate Supabase projects for dev and production.
 - Apply schema from SQL files in `scripts/`.
 
-## Windows Task Scheduler
-- `scripts/windows/register-prod-tasks.ps1` automates scheduling.
-- Harvest every 30 min, backup daily at 02:15.
-- GitHub sync every 10 min via `scripts/windows/sync-from-github.ps1`.
+## Windows Host Operation (bat-based)
+- Start at login: put a shortcut to `operations\start-metromark.bat` in the Startup folder (`Win+R` → `shell:startup`), or add a Task Scheduler task (trigger: At startup; "restart on failure") for crash recovery.
+- `start-metromark.bat` first syncs from GitHub `origin/main` (best-effort `git pull --ff-only` + `npm ci` when changes land — offline-safe), then starts the web app (Express server) and the harvester loop (`operations\run-harvesters.bat`: world + headway, daily-quota-aware).
+- Backups are not run by any bat — use the admin dashboard "Run Nonrecoverable Backup" button or `npm run backup:nonrecoverable:prod`.
 
 ## Production Readiness Checklist
 1. Populate `.env.production` with real production keys.
@@ -63,5 +63,5 @@
 4. Verify account register/login and progress write/read.
 5. Run one manual harvest and one backup.
 6. Verify `/admin` values.
-7. Enable scheduler tasks.
-8. Confirm GitHub sync task pulls and restarts correctly.
+7. Add `operations\start-metromark.bat` to Startup (or a Task Scheduler task).
+8. Confirm `start-metromark.bat` starts the app + harvester loop, and that the dashboard backup button works.

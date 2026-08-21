@@ -27,19 +27,14 @@ const els = {
   routeCoverage: document.getElementById("routeCoverage"),
   tilesServed: document.getElementById("tilesServed"),
   systemHealth: document.getElementById("systemHealth"),
-  harvestStats: document.getElementById("harvestStats"),
   storageStats: document.getElementById("storageStats"),
   accountStats: document.getElementById("accountStats"),
   performanceStats: document.getElementById("performanceStats"),
   transitlandStats: document.getElementById("transitlandStats"),
-  accountsBody: document.getElementById("accountsBody"),
-  accountsStatus: document.getElementById("accountsStatus"),
-  runHarvestBtn: document.getElementById("runHarvestBtn"),
   runBackupBtn: document.getElementById("runBackupBtn"),
   rebuildTilesBtn: document.getElementById("rebuildTilesBtn"),
-  queueCitySelect: document.getElementById("queueCitySelect"),
-  queueCityBtn: document.getElementById("queueCityBtn"),
-  queueBody: document.getElementById("queueBody"),
+  accountsBody: document.getElementById("accountsBody"),
+  accountsStatus: document.getElementById("accountsStatus"),
   actionLog: document.getElementById("actionLog"),
 };
 
@@ -180,37 +175,6 @@ function renderUsageHistory(history) {
   }
 }
 
-function renderQueue(rows) {
-  els.queueBody.innerHTML = "";
-  const list = Array.isArray(rows) ? rows : [];
-  if (!list.length) {
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 6;
-    td.textContent = "No pending city harvests.";
-    tr.appendChild(td);
-    els.queueBody.appendChild(tr);
-    return;
-  }
-  for (const entry of list) {
-    const tr = document.createElement("tr");
-    const cells = [
-      entry.cityName || entry.citySlug,
-      entry.harvestStatus || "",
-      entry.pendingRefresh ? "yes" : "no",
-      String(entry.harvestPriority || ""),
-      entry.updatedAt ? new Date(entry.updatedAt * 1000).toLocaleString() : "",
-      entry.lastError || ""
-    ];
-    for (const value of cells) {
-      const td = document.createElement("td");
-      td.textContent = value;
-      tr.appendChild(td);
-    }
-    els.queueBody.appendChild(tr);
-  }
-}
-
 function renderAccounts(accounts) {
   els.accountsBody.innerHTML = "";
   const list = Array.isArray(accounts) ? accounts : [];
@@ -274,17 +238,6 @@ function renderAccounts(accounts) {
   }
 }
 
-function renderCityOptions(cities) {
-  const list = Array.isArray(cities) ? cities : [];
-  els.queueCitySelect.innerHTML = "";
-  for (const city of list) {
-    const option = document.createElement("option");
-    option.value = city.slug;
-    option.textContent = `${city.name} (${city.slug})`;
-    els.queueCitySelect.appendChild(option);
-  }
-}
-
 function fmtMb(bytes) {
   return `${(Number(bytes || 0) / (1024 * 1024)).toFixed(1)} MB`;
 }
@@ -329,18 +282,9 @@ async function refreshStats() {
 
   renderKv(els.systemHealth, [
     { label: "Supabase", value: payload.system?.supabaseReachable ? "reachable" : "unreachable" },
-    { label: "Harvest", value: payload.system?.harvestEnabled ? "enabled" : "disabled" },
     { label: "Service Worker", value: payload.system?.serviceWorkerEnabled ? "enabled" : "disabled" },
     { label: "App Env", value: payload.system?.appEnv || "-" },
     { label: "Env File", value: payload.system?.envFile || "-" }
-  ]);
-
-  renderKv(els.harvestStats, [
-    { label: "Active Cached Cities", value: payload.harvest?.activeCachedCities },
-    { label: "Pending Harvests", value: payload.harvest?.pendingHarvests },
-    { label: "In Progress", value: payload.harvest?.inProgress },
-    { label: "Ready", value: payload.harvest?.ready },
-    { label: "Total Cities", value: payload.harvest?.totalCities }
   ]);
 
   renderKv(els.storageStats, [
@@ -398,17 +342,6 @@ async function refreshAccounts() {
   }
 }
 
-async function refreshQueue() {
-  const payload = await apiRequest("/api/admin/harvest/queue?limit=50", { method: "GET" });
-  renderQueue(payload.pending);
-}
-
-async function refreshCities() {
-  const response = await fetch("/api/catalog/cities");
-  const data = await response.json().catch(() => ({ cities: [] }));
-  renderCityOptions(data.cities || []);
-}
-
 async function refreshAll() {
   if (!state.token) {
     setAdminLocked(true);
@@ -416,7 +349,7 @@ async function refreshAll() {
     return;
   }
   try {
-    await Promise.all([refreshStats(), refreshQueue(), refreshAccounts()]);
+    await Promise.all([refreshStats(), refreshAccounts()]);
     setAdminLocked(false);
     setStatus("Admin data refreshed.");
     if (!state.refreshTimer) {
@@ -494,10 +427,6 @@ function bindEvents() {
     refreshAll().catch(() => {});
   });
 
-  els.runHarvestBtn.addEventListener("click", () => {
-    runAction("harvest", () => apiRequest("/api/admin/actions/harvest-core", { method: "POST" }));
-  });
-
   els.runBackupBtn.addEventListener("click", () => {
     runAction("backup", () => apiRequest("/api/admin/actions/backup-nonrecoverable", { method: "POST" }));
   });
@@ -507,16 +436,6 @@ function bindEvents() {
       runAction("rebuild-tiles", () => apiRequest("/api/admin/actions/rebuild-tiles", { method: "POST" }));
     });
   }
-
-  els.queueCityBtn.addEventListener("click", () => {
-    const slug = String(els.queueCitySelect.value || "").trim();
-    if (!slug) {
-      return;
-    }
-    runAction(`queue-city:${slug}`, () =>
-      apiRequest(`/api/admin/actions/queue-city/${encodeURIComponent(slug)}`, { method: "POST" })
-    );
-  });
 
   const bboxInput = document.getElementById("viewportBboxInput");
   const updateBtn = document.getElementById("updateViewportBtn");
@@ -571,7 +490,6 @@ async function init() {
   els.adminEmailInput.value = "";
   els.adminPasswordInput.value = "";
   bindEvents();
-  await refreshCities();
 
   if (state.token) {
     try {

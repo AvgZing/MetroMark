@@ -299,7 +299,7 @@ data/tiles/routes.pmtiles      single MVT archive served by GET /api/tiles/route
 MapLibre "routes-vector" source (pmtiles:// protocol, source-layer "routes") + feature-state visibility
 ```
 
-- **Harvesting:** `npm run harvest:core` / `harvest-world` (operations/) fetch cities and write NDJSON + `route_metadata`; `build-pmtiles.js` runs tippecanoe over the NDJSON files.
+- **Harvesting:** `harvest-world` (operations/) + `harvest-headway` fetch cities/headway and write NDJSON + `route_metadata`; `build-pmtiles.js` runs tippecanoe over the NDJSON files.
 - **On-demand backfill:** the client probes `GET /api/transit/coverage` on each moveend for Transitland's route count in the viewport, renders the ground-truth network as a faint `routes-underlay` line layer below the archive, and `tile-backfill.js` compares the count to what the archive renders. On a full or partial gap it calls `/api/tiles/backfill`, which fetches Transitland routes for the viewport bbox, merges missing `line_key`s into `routes-feed.ndjson` (server-side dedup; seed-owned lines preserved unless `forceRefresh`), rebuilds the archive, and the client reloads the vector source. Coverage responses are cached in Postgres (90-day, snapped keys; separate count vs geometry entries).
 - **Metadata:** `route_metadata` (Postgres) supplies names/colors/headway/stop counts; vector-metadata.js merges it into map feature properties.
 - **Stops:** rendered on demand per focused route via `/api/transit/route-stops` (GeoJSON `stops` source).
@@ -366,8 +366,6 @@ Postgres is the local cache/harvest database (see `operations/local-postgres-sch
 - `public.transit_cache` - Transitland API response cache (city catalogs, route stops, headway, vector tiles)
 - `public.route_metadata` - Per-route metadata (name, operator, mode, color, headway, frequency, stop count)
 - `public.route_geometry_lod` - Level-of-detail route geometries (fractions, detail views)
-- `public.harvest_city_state` - Per-city harvest status/queue
-- `public.harvest_job_log` - Audit trail of harvest runs
 - `public.usage_log` - Daily Transitland API usage counters (cap enforcement)
 - `public.stop_translation` - Stop ID normalization map (upstream stop id → stable key)
 - `public.station_override` - Manual stop coordinate/name corrections

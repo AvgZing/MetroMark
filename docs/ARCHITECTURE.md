@@ -42,7 +42,7 @@ Key reason:
 Responsibilities:
 - `route_metadata` (per-route names/colors/headway/stop counts) and `transit_cache` (cached Transitland API responses).
 - `route_geometry_lod` (route geometries for fractions/detail).
-- Daily usage counters and harvest queue state (`usage_log`, `harvest_city_state`, `harvest_job_log`).
+- Daily usage counters (`usage_log`).
 - Translation and override/review tables (`stop_translation`, `station_override`, `route_override`, `route_ordering_vote`, `route_review`, `agency_review`).
 
 ### Supabase (auth + user data)
@@ -61,7 +61,7 @@ Why this production target:
 **Flow:**
 ```
 Transitland API (REST /routes + trips)
-   │  harvesters (npm run harvest:core, harvest-world) + on-demand /api/tiles/backfill
+   │  harvesters (harvest-world + on-demand /api/tiles/backfill)
    ▼
 data/tiles/geo/*.ndjson            line_key-keyed GeoJSON features (durable source of truth)
    │  scripts/build/build-pmtiles.js (tippecanoe over all NDJSON files)
@@ -126,10 +126,9 @@ Dedup behavior:
 
 **Admin-only endpoints (session- or role-guarded):**
 - GET /api/admin/stats
-- GET /api/admin/harvest/queue
-- POST /api/admin/actions/harvest-core
+- GET /api/admin/accounts / POST /api/admin/accounts/:userId/role
 - POST /api/admin/actions/backup-nonrecoverable
-- POST /api/admin/actions/queue-city/:slug
+- POST /api/admin/actions/rebuild-tiles
 - POST /api/admin/overrides/station
 - GET/POST/DELETE /api/admin/overrides/route (incl. /:lineKey)
 - GET/POST /api/admin/reviews/route

@@ -27,3 +27,9 @@ create table if not exists public.agency_review (
   updated_at timestamptz not null default now(),
   primary key (city_slug, operator_name)
 );
+
+-- 2026-08-21: drop the legacy core-city harvest system (superseded by the
+-- world harvester, operations/harvest-world.js). Its queue/audit tables are no
+-- longer read or written by any code.
+drop table if exists public.harvest_city_state;
+drop table if exists public.harvest_job_log;

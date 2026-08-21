@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "metromark",
   "version": "0.1.0",
   "private": true,
@@ -10,8 +10,6 @@
     "start:dev": "set METROMARK_ENV_FILE=.env.development&& node --watch server/index.js",
     "dev": "node --watch server/index.js",
     "check": "node --check server/index.js",
-    "harvest:core": "set METROMARK_ENV_FILE=.env.development&& node server/admin/harvest-core.js",
-    "harvest:core:prod": "set METROMARK_ENV_FILE=.env.production&& node server/admin/harvest-core.js",
     "harvest:headway": "set METROMARK_ENV_FILE=.env.development&& node server/admin/harvest-headway.js",
     "harvest:headway:prod": "set METROMARK_ENV_FILE=.env.production&& node server/admin/harvest-headway.js",
     "harvest:world": "set METROMARK_ENV_FILE=.env.development&& node operations/harvest-world.js",

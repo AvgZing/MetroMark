@@ -23,18 +23,6 @@ function asFloat(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function asStringArray(value, fallback = []) {
-  const raw = String(value || "").trim();
-  if (!raw) {
-    return fallback;
-  }
-
-  return raw
-    .split(",")
-    .map((entry) => String(entry || "").trim())
-    .filter(Boolean);
-}
-
 module.exports = {
   ENV_FILE: envFilePath,
   APP_ENV: String(process.env.APP_ENV || "development").trim().toLowerCase(),
@@ -69,27 +57,8 @@ module.exports = {
   BBOX_MAX_SPAN_DEGREES: asFloat(process.env.BBOX_MAX_SPAN_DEGREES, 2.2),
   ADMIN_EMAIL: String(process.env.ADMIN_EMAIL || process.env.ADMIN_USERNAME || process.env.ADMIN_USER || "").trim(),
   ADMIN_PASSWORD: String(process.env.ADMIN_PASSWORD || process.env.ADMIN_PASS || "").trim(),
-  HARVEST_ENABLED: String(process.env.HARVEST_ENABLED || "1") === "1",
   HARVEST_DAILY_REST_LIMIT: asInt(process.env.HARVEST_DAILY_REST_LIMIT, 250),
   HARVEST_DAILY_VECTOR_LIMIT: asInt(process.env.HARVEST_DAILY_VECTOR_LIMIT, 2500),
   HARVEST_DAILY_ROUTING_LIMIT: asInt(process.env.HARVEST_DAILY_ROUTING_LIMIT, 250),
-  HARVEST_BATCH_CITY_LIMIT: asInt(process.env.HARVEST_BATCH_CITY_LIMIT, 3),
-  HARVEST_ROUTE_LIMIT_PER_CITY: asInt(process.env.HARVEST_ROUTE_LIMIT_PER_CITY, 150),
-  HARVEST_ROUTE_STOP_BATCH_SIZE: asInt(process.env.HARVEST_ROUTE_STOP_BATCH_SIZE, 12),
-  HARVEST_CORE_CITY_SLUGS: asStringArray(
-    process.env.HARVEST_CORE_CITY_SLUGS,
-    [
-      "seattle",
-      "new-york",
-      "san-francisco",
-      "paris",
-      "london",
-      "chicago",
-      "minneapolis-st-paul",
-      "vancouver-bc",
-      "portland",
-      "los-angeles"
-    ]
-  ),
   BACKUP_OUTPUT_DIR: String(process.env.BACKUP_OUTPUT_DIR || "data/backups").trim() || "data/backups"
 };

@@ -29,35 +29,6 @@ create table if not exists public.usage_log (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.harvest_city_state (
-  city_slug text primary key,
-  city_name text not null,
-  harvest_priority integer not null default 100,
-  harvest_status text not null default 'pending',
-  last_geometry_harvest_at timestamptz,
-  last_stops_harvest_at timestamptz,
-  last_verified_at timestamptz,
-  last_feed_fingerprint text,
-  last_cache_key text,
-  pending_refresh boolean not null default true,
-  last_error text,
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_harvest_status_priority on public.harvest_city_state (harvest_status, harvest_priority, updated_at);
-create index if not exists idx_harvest_pending_refresh on public.harvest_city_state (pending_refresh, updated_at);
-
-create table if not exists public.harvest_job_log (
-  id bigint generated always as identity primary key,
-  city_slug text not null,
-  phase text not null,
-  status text not null,
-  detail text,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_harvest_job_city_created on public.harvest_job_log (city_slug, created_at desc);
-
 create table if not exists public.stop_translation (
   input_stop_id text primary key,
   stable_key text not null,

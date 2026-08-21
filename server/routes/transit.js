@@ -21,8 +21,8 @@ router.get("/transit/bbox", (req, res) => {
     error: "This endpoint is retired.",
     detail:
       "Live viewport transit queries were replaced by the PMTiles tile pipeline (data/tiles/routes.pmtiles). " +
-      "Missing areas are fetched on demand via /api/tiles/backfill; offline city builds still run through " +
-      "npm run harvest:core and npm run build:tiles."
+      "Missing areas are fetched on demand via /api/tiles/backfill; world coverage builds up through " +
+      "npm run harvest:world (operations/run-harvesters.bat)."
   });
 });
 

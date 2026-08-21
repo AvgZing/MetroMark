@@ -2,7 +2,7 @@
 
 This directory is **maintenance/operations tooling** — it is not part of the
 web app itself. It drives the data pipeline (harvesters + startup) on the
-MetroMark host PC, and holds the SQL schema + Windows helper scripts.
+MetroMark host PC, and holds the SQL schema.
 
 ## Layout
 
@@ -13,7 +13,6 @@ operations/
   run-harvesters.bat     # Background loop: runs the harvesters, waits, repeats
   start-metromark.bat    # Host startup: web app + harvester loop (Startup shortcut)
   README.md
-  windows/               # Windows/PowerShell helper scripts
   local-postgres-schema.sql / local-postgres-changes.sql  # Local DB baseline + migrations
   supabase-baseline.sql / supabase-changes.sql            # Supabase baseline + migrations
   state/world-harvest.json # Resumable world-harvest progress (gitignored)
@@ -80,7 +79,6 @@ directory.
 
 ```
 npm run harvest:world        # one world-harvest pass (stops at daily caps)
-npm run harvest:core         # targeted city-preset harvest (dev)
 npm run harvest:headway      # fill missing cached headway (dev)
 npm run backup:nonrecoverable:prod
 ```

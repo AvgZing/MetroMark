@@ -7,7 +7,6 @@ const stations = require("./stations");
 const visits = require("./visits");
 const presets = require("./presets");
 const usage = require("./usage");
-const harvest = require("./harvest");
 const overrides = require("./overrides");
 
 module.exports = {
@@ -29,9 +28,9 @@ module.exports = {
   setCache: cache.setCache,
   getRouteGeometryLod: geometry.getRouteGeometryLod,
   upsertRouteGeometryLod: geometry.upsertRouteGeometryLod,
-  getRouteGeometriesByBbox: geometry.getRouteGeometriesByBbox,
   getRouteMetadatasByLineKeys: metadata.getRouteMetadatasByLineKeys,
   setRouteMetadata: metadata.setRouteMetadata,
+  getRouteMetadataCoverageStats: metadata.getRouteMetadataCoverageStats,
   getFractionOnRoute: geometry.getFractionOnRoute,
   clearCacheByPrefix: cache.clearCacheByPrefix,
   getCacheStats: cache.getCacheStats,
@@ -67,17 +66,6 @@ module.exports = {
   incrementUsage: usage.incrementUsage,
   getDailyUsageCapsState: usage.getDailyUsageCapsState,
   getUsageHistory: usage.getUsageHistory,
-  getRouteMetadataCoverageStats: metadata.getRouteMetadataCoverageStats,
-  ensureCityHarvestState: harvest.ensureCityHarvestState,
-  getCityHarvestState: harvest.getCityHarvestState,
-  listPendingHarvestCities: harvest.listPendingHarvestCities,
-  markHarvestInProgress: harvest.markHarvestInProgress,
-  markGeometryHarvested: harvest.markGeometryHarvested,
-  markStopsHarvested: harvest.markStopsHarvested,
-  queueCityRefresh: harvest.queueCityRefresh,
-  markCityVerified: harvest.markCityVerified,
-  markCityHarvestError: harvest.markCityHarvestError,
-  logHarvestJob: harvest.logHarvestJob,
-  getHarvestSummary: harvest.getHarvestSummary,
-  getDatabaseFileStats: harvest.getDatabaseFileStats
+  getDatabaseFileStats: usage.getDatabaseFileStats,
+  getRouteMetadataCoverageStats: metadata.getRouteMetadataCoverageStats
 };

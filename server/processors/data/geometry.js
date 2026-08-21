@@ -164,59 +164,8 @@ async function upsertRouteGeometryLod(lineKey, zoomLevel, geometry, options = {}
   };
 }
 
-async function getRouteGeometriesByBbox(bbox, zoom) {
-  assertLocalConfigured();
-
-  if (!Array.isArray(bbox) || bbox.length !== 4) {
-    return [];
-  }
-
-  const numericZoom = Number(zoom);
-  if (!Number.isFinite(numericZoom)) {
-    return [];
-  }
-
-  const [minLon, minLat, maxLon, maxLat] = bbox.map((value) => Number(value));
-  if ([minLon, minLat, maxLon, maxLat].some((value) => !Number.isFinite(value))) {
-    return [];
-  }
-
-  // For each route intersecting the bbox, get the highest-detail geometry.
-  // DISTINCT ON (line_key) with ORDER BY zoom_level DESC ensures we get
-  // the best available geometry per route. LOD simplification happens
-  // at the application layer (simplifyGeometryForZoom), not at query time.
-  const { rows } = await localQuery(
-    `select distinct on (line_key)
-       line_key,
-       zoom_level,
-       source_hash,
-       updated_at,
-       ST_AsGeoJSON(geometry)::json as geometry_geojson
-     from public.route_geometry_lod
-     where ST_Intersects(geometry, ST_MakeEnvelope($1, $2, $3, $4, 4326))
-     order by line_key, zoom_level desc`,
-    [minLon, minLat, maxLon, maxLat]
-  );
-
-  if (!rows || !rows.length) {
-    return [];
-  }
-
-  return rows.map((row) => {
-    const geometry = normalizeGeometryFromStorageRow(row);
-    return {
-      lineKey: normalizeText(row.line_key),
-      zoomLevel: Number(row.zoom_level),
-      sourceHash: normalizeText(row.source_hash),
-      updatedAt: toEpochSeconds(row.updated_at),
-      geometry
-    };
-  }).filter((entry) => entry.geometry);
-}
-
 module.exports = {
   getRouteGeometryLod,
   getFractionOnRoute,
-  upsertRouteGeometryLod,
-  getRouteGeometriesByBbox
+  upsertRouteGeometryLod
 };
