@@ -1,12 +1,12 @@
 // Automatic gap detection + feed-in backfill for the PMTiles pipeline.
 //
-// Completeness is judged by comparing the placeholder underlay (Transitland's
-// ground truth for the viewport) against what the routes.pmtiles archive
-// currently renders. When Transitland has significantly more routes in the
-// viewport than the archive, we fetch the missing routes once, save them to
-// the NDJSON store, rebuild the archive, and reload the vector source — all
-// without a page reload. Repeated views of the same area are skipped
-// (coarse-bbox dedup client-side + line_key dedup server-side).
+// Completeness is judged by comparing the coverage probe (Transitland's
+// ground-truth route count for the viewport, never rendered) against what the
+// routes.pmtiles archive currently renders. When Transitland has routes here
+// that the archive is missing (full or partial gap), we fetch the missing
+// routes once, save them to the NDJSON store, rebuild the archive, and reload
+// the vector source — all without a page reload. Repeated views of the same
+// area are skipped (coarse-bbox dedup client-side + line_key dedup server-side).
 
 var BACKFILL_MIN_ZOOM = 8;
 var BACKFILL_COOLDOWN_MS = 20000;
@@ -25,14 +25,6 @@ function distinctLineKeys(features) {
   return keys;
 }
 
-function placeholderLineCount() {
-  const geojson = (typeof PLACEHOLDER_GEOJSON !== "undefined") ? PLACEHOLDER_GEOJSON : null;
-  if (!geojson || !Array.isArray(geojson.features)) {
-    return 0;
-  }
-  return distinctLineKeys(geojson.features).size;
-}
-
 function renderedLineCount() {
   if (!appState.map || !appState.mapReady) {
     return 0;
@@ -47,12 +39,16 @@ function renderedLineCount() {
   }
 }
 
+function coverageLineCount() {
+  return Number(appState.transitCoverageCount || 0);
+}
+
 function hasIncompleteCoverage() {
-  const placeholderCount = placeholderLineCount();
+  const coverageCount = coverageLineCount();
   const renderedCount = renderedLineCount();
 
   // Transitland has no data here (ocean/rural) — nothing to backfill.
-  if (placeholderCount === 0) {
+  if (coverageCount === 0) {
     return false;
   }
 
@@ -63,7 +59,7 @@ function hasIncompleteCoverage() {
 
   // Partial coverage: Transitland has significantly more routes here than we
   // currently render (e.g. a few through-running lines vs. a whole network).
-  return placeholderCount > renderedCount * 2 + 3;
+  return coverageCount > renderedCount * 2 + 3;
 }
 
 function coarseBboxKey(bbox) {
@@ -197,7 +193,9 @@ async function requestBackfill(bbox, options = {}) {
           "ok",
           `${payload.totalRoutesInArchive} routes now in the archive.`
         );
-      } else {
+      } else if (options.forceRefresh) {
+        // User/admin-initiated refresh: report the no-op. Auto-backfill stays
+        // quiet so scanning the map doesn't spam toasts for covered areas.
         setStatus("No new routes to load for this area.", "ok", "This area is already covered.");
       }
     }

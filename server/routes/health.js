@@ -10,6 +10,7 @@ router.get("/health", (req, res) => {
   res.json(withTransitlandMetrics({
     status: "ok",
     app: "MetroMark",
+    swEnabled: config.SW_ENABLED,
     hasTransitlandKey: Boolean(config.TRANSITLAND_API_KEY),
     hasLocalPostgres: hasLocalPostgresConfig(),
     transitlandRequestTimeoutMs: config.TRANSITLAND_REQUEST_TIMEOUT_MS,

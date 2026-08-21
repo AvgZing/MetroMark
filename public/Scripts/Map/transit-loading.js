@@ -5,14 +5,11 @@ async function onMapMoveEnd() {
 
   appState.currentViewportBbox = typeof mapBoundsToBbox === "function" ? mapBoundsToBbox() : null;
 
-  // The placeholder underlay is the "Transitland has routes here" signal used by
-  // gap detection, so wait for it before scheduling the backfill check.
-  if (typeof fetchPlaceholder === "function") {
-    try {
-      await fetchPlaceholder(appState.currentViewportBbox, appState.map.getZoom());
-    } catch {
-      // Non-critical
-    }
+  // Refresh the Transitland underlay + coverage count for this viewport before
+  // deciding whether a backfill is needed (the backfill check runs after
+  // moveend).
+  if (typeof updateUnderlay === "function") {
+    await updateUnderlay();
   }
 
   if (typeof refreshUiFromState === "function") {

@@ -38,6 +38,7 @@ function asStringArray(value, fallback = []) {
 module.exports = {
   ENV_FILE: envFilePath,
   APP_ENV: String(process.env.APP_ENV || "development").trim().toLowerCase(),
+  SW_ENABLED: String(process.env.SW_ENABLED || (String(process.env.APP_ENV || "development").trim().toLowerCase() === "production" ? "1" : "0")).trim() === "1",
   PORT: asInt(process.env.PORT, 8080),
   SUPABASE_URL: String(process.env.SUPABASE_URL || "").trim(),
   SUPABASE_ANON_KEY: String(process.env.SUPABASE_ANON_KEY || "").trim(),

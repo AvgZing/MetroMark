@@ -12,9 +12,10 @@
 ## 1) Browser App (public)
 
 Responsibilities:
-- Render map and transit overlays.
-- Display and filter route list.
-- Merge multiple loaded area payloads into one continuous overlay.
+- Render the PMTiles route vector source and transit overlays via MapLibre GL.
+- Display and filter route list (mode/frequency/search/manual overrides).
+- Focus a route to load its stops and line-view ordering.
+- Trigger on-demand tile backfill for uncovered viewports (`/api/tiles/backfill`).
 - Handle auth forms and session token storage.
 - Toggle station visited state.
 
@@ -24,7 +25,8 @@ The browser never directly calls Transitland.
 
 Responsibilities:
 - Auth endpoints backed by Supabase Auth token flow.
-- Transitland proxy and normalized city/bbox caching.
+- Serve the PMTiles archive, tile stats, and feed-in backfill (NDJSON merge + archive rebuild).
+- Transitland proxy for harvesters, route stops, and headway lookups.
 - Station-to-line assignment logic.
 - Station dedup clustering logic (same-name points within radius).
 - Cross-line station hub centralization with optional route snapping.
@@ -32,53 +34,59 @@ Responsibilities:
 - Internal admin actions and runtime operations endpoints.
 
 Key reason:
-- Keeps API keys and expensive API logic on server side.
+- Keeps API keys, harvesting, and tile builds on the server side.
 
-## 3) Supabase Postgres + PostGIS
+## 3) Postgres Layers
 
+### Local cache/harvest database (PostGIS)
+Responsibilities:
+- `route_metadata` (per-route names/colors/headway/stop counts) and `transit_cache` (cached Transitland API responses).
+- `route_geometry_lod` (route geometries for fractions/detail).
+- Daily usage counters and harvest queue state (`usage_log`, `harvest_city_state`, `harvest_job_log`).
+- Translation and override/review tables (`stop_translation`, `station_override`, `route_override`, `route_ordering_vote`, `route_review`, `agency_review`).
+
+### Supabase (auth + user data)
 Responsibilities:
 - User accounts through Supabase Auth (`auth.users`) + profile metadata (`public.profiles`).
-- Cached transit payloads.
-- Daily usage counters and harvest queue state.
-- Translation and override layer tables.
+- User progress (`user_station_visit`) and filter presets (`user_filter_presets`).
 
 Why this production target:
 - Managed Postgres with durability and backups.
-- PostGIS extension for geospatial cache and future spatial queries.
-- Clean account/auth boundary for public rollout.
+- PostGIS extension for geospatial queries and geometry storage.
 
-## Transit Data Fetching (Bbox-Primary with Postgres Data Store)
+## Route Geometry: Offline Tile Pipeline (PMTiles)
 
-**Purpose:** Postgres holds a persistent local copy of Transitland data organized by geographic bbox. This reduces Transitland API calls by querying Postgres first; Transitland is only called when data isn't found in Postgres.
+**Purpose:** Route geometry is harvested from Transitland offline, stored as NDJSON, and compiled once into a single PMTiles vector archive. The browser map reads that archive directly — there is no live viewport REST fetching from Transitland.
+
+**Flow:**
+```
+Transitland API (REST /routes + trips)
+   │  harvesters (npm run harvest:core, harvest-world) + on-demand /api/tiles/backfill
+   ▼
+data/tiles/geo/*.ndjson            line_key-keyed GeoJSON features (durable source of truth)
+   │  scripts/build/build-pmtiles.js (tippecanoe over all NDJSON files)
+   ▼
+data/tiles/routes.pmtiles          single MVT archive (source-layer "routes")
+   ▼
+MapLibre "routes-vector" source (pmtiles:// protocol) → routes/casing/hit layers
+```
 
 **Client-side flow:**
-1. User opens map or moves/zooms map
-2. Frontend calculates viewport bounding box
-3. Frontend converts map zoom to tile zoom (0-13): `tileZoom = floor(mapZoom / 3)`
-4. Frontend generates viewport tile requests: all tiles intersecting bbox at that zoom level
-5. Frontend generates unique data keys: `tile:Z:X:Y`
+1. Map loads the `routes-vector` source from `pmtiles:///api/tiles/routes.pmtiles` (Range requests; the service worker caches the archive and serves 206 slices).
+2. Route geometry renders as vector tiles; feature-state (`visible`/`focused`) drives styling.
+3. `vector-metadata.js` merges `route_metadata` (name, color, headway, stop count) into rendered feature properties; `lineSummaries` power the sidebar list.
+4. Stops are GeoJSON on the `stops` source, loaded on demand per focused route via `/api/transit/route-stops`.
 
-**Server-side Postgres-primary + Transitland-fallback flow:**
-1. Client requests `/api/transit/bbox` with `bbox=minLon,minLat,maxLon,maxLat&zoom=Z&cacheOnly=1`
-2. For each requested tile Z:X:Y:
-   - **Exact lookup:** Query Postgres `transit_cache` table for exact key `tile:Z:X:Y`
-   - **Data miss:** Check for spatial overlaps using `getCacheByBbox()` with PostGIS `ST_Intersects` against `bbox_geom`
-   - **Still nothing:** If zoom >= 10 AND not cacheOnly, queue Transitland API fetch (deferred 250ms)
-   - **Data found:** Return stored payload from Postgres
-3. Transitland fetches (if queued) store payload in Postgres with `bbox_geom` populated for future spatial lookups
-4. All responses returned to client for local filtering by geometry intersection
+**Coverage / backfill:**
+- Harvested cities are pre-baked into the archive. On each moveend, the client's `underlay.js` asks `GET /api/transit/coverage?bbox&zoom` for Transitland's distinct route count in the viewport (sampled from vector tiles, cached in Postgres) and renders the ground-truth network as a faint line **underlay** (`routes-underlay` layer) below the archive's routes.
+- `tile-backfill.js` compares that coverage count against what the archive renders (`hasIncompleteCoverage`): no Transitland routes → nothing to do; Transitland has routes but the archive renders none → clear gap; Transitland has significantly more routes than rendered → partial gap. Either gap triggers `POST /api/tiles/backfill` with the bbox.
+- `runBackfill` fetches Transitland routes for the bbox, merges missing `line_key`s into `routes-feed.ndjson` (server-side dedup; seed-owned lines skipped unless `forceRefresh`), rebuilds the archive via tippecanoe, and the client reloads the vector source (`?v=` bump) — all without a page reload.
+- Repeated views are throttled client-side (coarse-bbox dedup + cooldown) and deduped server-side by `line_key`.
 
 **Key behavior:**
-- Postgres is the primary data source (local copy of Transitland data)
-- Transitland is only called when data isn't in Postgres (at zoom 10+ with data miss)
-- Spatial lookups allow lower zoom levels to find data from higher zoom Postgres stores
-- No city selection required for viewport display
-- Data available immediately within viewport geometry once in Postgres
-
-**Initial page load expectations:**
-- Fresh Postgres (first visit): Map shows "Zoom in..." until Transitland fetches at zoom 10+
-- Populated Postgres (after first data fetch): Map shows data at all zoom levels via spatial lookups
-- Single line visible at zoom 5: Indicates Postgres already contains data from previous session
+- The browser never calls Transitland directly; the API server is the only Transitland client.
+- Postgres (`route_metadata`, `transit_cache`, `route_geometry_lod`) supplies metadata, cached API responses, and per-route details; the archive supplies geometry.
+- `GET /api/transit/bbox` is retired (HTTP 410); `GET /api/transit/city/:slug` was removed.
 
 ## Station Identity Strategy
 
@@ -102,25 +110,33 @@ Dedup behavior:
 **Client-facing endpoints:**
 - GET /api/health
 - GET /api/catalog/cities (city presets for filter dropdowns)
-- GET /api/transit/bbox?bbox=...&zoom=Z&cacheOnly=1 (main viewport data fetching)
-- POST /api/auth/register
-- POST /api/auth/login
-- GET /api/auth/me
-- GET /api/progress
-- POST /api/progress/toggle
-- POST /api/progress/clear-route
+- GET /api/tiles/routes.pmtiles (Range-aware PMTiles archive streaming)
+- GET /api/tiles/stats
+- POST /api/tiles/backfill (on-demand feed-in for uncovered viewports)
+- GET /api/tiles/backfill/status
+- GET /api/transit/route-stops?lineKey=... (per-route stops)
+- GET /api/transit/route-headway?lineKey=... (per-route headway)
+- GET /api/transit/route-headway/bulk?lineKeys=... (bulk cached headway)
+- POST /api/transit/stop-fractions (fractions along route geometry)
 - GET /api/transit/reviews (route review metadata)
+- POST /api/transit/route-ordering/vote (community ordering preference)
+- POST /api/auth/register / POST /api/auth/login / GET /api/auth/me
+- GET /api/progress / POST /api/progress / POST /api/progress/clear-route
+- GET /api/presets / POST /api/presets / DELETE /api/presets/:name
 
-**Admin-only endpoints (guarded by optional admin key):**
+**Admin-only endpoints (session- or role-guarded):**
 - GET /api/admin/stats
 - GET /api/admin/harvest/queue
 - POST /api/admin/actions/harvest-core
 - POST /api/admin/actions/backup-nonrecoverable
-- POST /api/admin/actions/queue-city/:slug (harvest trigger for specific city)
+- POST /api/admin/actions/queue-city/:slug
 - POST /api/admin/overrides/station
+- GET/POST/DELETE /api/admin/overrides/route (incl. /:lineKey)
+- GET/POST /api/admin/reviews/route
+- GET/POST /api/admin/reviews/agencies
 
-**Legacy/deprecated endpoints (kept for backward compatibility):**
-- GET /api/transit/city/:slug (admin use only; client uses bbox instead)
+**Retired endpoints (clear-error stubs):**
+- GET /api/transit/bbox → HTTP 410 (replaced by the PMTiles pipeline + /api/tiles/backfill)
 
 ## Storage and Security Baseline
 

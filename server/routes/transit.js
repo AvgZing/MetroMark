@@ -7,11 +7,10 @@ const {
   getRouteHeadway,
   getRouteHeadwaysBulk
 } = require("../processors/transitland");
-const { getTilePlaceholderGeojson } = require("../sources/transitland/tile-placeholder");
+const { getTransitCoverageForBbox } = require("../sources/transitland/coverage");
 const {
   asBoolean,
   parseStopTypes,
-  parseRouteTypes,
   withTransitlandMetrics
 } = require("./helpers");
 
@@ -188,21 +187,28 @@ router.post("/transit/route-ordering/vote", authMiddleware, async (req, res) => 
   }
 });
 
-router.get("/transit/tile-placeholder", async (req, res) => {
-  console.log("[tile-placeholder] REQUEST:", req.query.bbox, req.query.zoom);
+router.get("/transit/coverage", async (req, res) => {
   const bboxRaw = String(req.query.bbox || "").trim();
-  if (!bboxRaw) return res.status(400).json({ error: "bbox is required" });
+  if (!bboxRaw) {
+    return res.status(400).json({ error: "bbox is required" });
+  }
+
   const bbox = bboxRaw.split(",").map((value) => Number(value.trim()));
   const zoom = Number(req.query.zoom);
-  const routeTypes = String(req.query.routeTypes || "").trim()
-    .split(",")
-    .map((value) => Number(value.trim()))
-    .filter(Number.isFinite);
-  const result = await getTilePlaceholderGeojson(bbox, Number.isFinite(zoom) ? zoom : 5, routeTypes.length ? routeTypes : null);
-  return res.json(withTransitlandMetrics({
-    ...result,
-    serverTimingMs: Date.now() - req.startTime
-  }));
+  const includeGeometry = String(req.query.includeGeometry || "").trim() === "1";
+
+  try {
+    const result = await getTransitCoverageForBbox(bbox, Number.isFinite(zoom) ? zoom : 5, { includeGeometry });
+    return res.json(withTransitlandMetrics({
+      ...result,
+      serverTimingMs: Date.now() - (req.startTime || Date.now())
+    }));
+  } catch (error) {
+    return res.status(400).json({
+      error: "Coverage probe failed.",
+      detail: error.message
+    });
+  }
 });
 
 module.exports = router;

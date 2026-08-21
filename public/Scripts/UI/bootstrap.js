@@ -334,8 +334,81 @@ function bindEvents() {
   });
 }
 
+async function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+
+  const query = new URLSearchParams(window.location.search);
+  const forced = String(query.get("sw") || "").trim();
+  if (forced === "0") {
+    return;
+  }
+  if (forced === "1") {
+    await registerSw();
+    return;
+  }
+
+  let swEnabled = false;
+  try {
+    const healthResponse = await fetch("/api/health", { cache: "no-store" });
+    if (healthResponse.ok) {
+      const payload = await healthResponse.json();
+      swEnabled = Boolean(payload.swEnabled);
+    }
+  } catch {
+    // Health unreachable — skip SW registration rather than blocking startup.
+  }
+
+  if (swEnabled) {
+    await registerSw();
+  }
+}
+
+function monitorServiceWorkerUpdates(registration) {
+  registration.addEventListener("updatefound", () => {
+    const installing = registration.installing;
+    if (!installing) {
+      return;
+    }
+    installing.addEventListener("statechange", () => {
+      if (installing.state === "installed" && navigator.serviceWorker.controller) {
+        // A newer app version is installed and waiting; surface an event the
+        // UI can hook to offer a reload.
+        window.dispatchEvent(new CustomEvent("metromark:update-available"));
+        console.info("[sw] A new version is available — reload to apply.");
+      }
+    });
+  });
+
+  // Re-check for updates whenever the app comes back into view (feels like an
+  // app re-opening rather than a stale cached tab).
+  const checkForUpdates = () => {
+    registration.update().catch(() => {});
+  };
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      checkForUpdates();
+    }
+  });
+  window.addEventListener("pageshow", checkForUpdates);
+}
+
+async function registerSw() {
+  try {
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    monitorServiceWorkerUpdates(registration);
+    if (registration.waiting) {
+      registration.waiting.postMessage({ type: "SKIP_WAITING" });
+    }
+  } catch (error) {
+    console.warn("[sw] Service worker registration failed:", error);
+  }
+}
+
 async function init() {
   const initT0 = performance.now();
+  registerServiceWorker();
   document.body.classList.remove("app-ready");
   setTheme(appState.theme);
   syncMobilePanelLayout();

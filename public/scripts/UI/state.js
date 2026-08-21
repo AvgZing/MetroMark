@@ -21,6 +21,7 @@ const appState = {
   cities: [],
   transit: null,
   currentViewportBbox: null,
+  transitCoverageCount: 0,
   lastMapFeatureStateSignature: "",
   lastStopsSourceKey: "",
   mapRouteFeatureStateCache: new Map(),

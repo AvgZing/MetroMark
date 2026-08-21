@@ -12,9 +12,9 @@
     method-loop.js, method-main.js, method-ushape.js, ranking.js, spatial.js
   - `UI/sidebar/` — filters-routes.js, filter-bar.js, filter-presets.js, map-data.js,
     progress-panel.js, route-list.js, routes-focus.js
-- `Scripts/Map/` — interactions.js, transit-loading.js, map-sources.js, map-stops.js,
-  vector-metadata.js, tile-backfill.js, placeholder-overlay.js, viewport-cache.js,
-  geometry-utils.js, zoom-readout.js
+- `Scripts/Map/` — interactions.js, map-events.js, route-layer-defs.js, transit-loading.js,
+  map-sources.js, map-stops.js, vector-metadata.js, tile-backfill.js, underlay.js,
+  viewport-cache.js, geometry-utils.js, zoom-readout.js
 - `Scripts/Admin/` — admin.js, admin-override.js
 - `Assets/` — images, icons, fonts
 
@@ -27,7 +27,8 @@
   (reexport), postgres/, supabase/
 - `sources/transitland/` — Transitland API interface (index.js, fetch.js, routes.js,
   headway.js, payload.js, stops.js, geometry.js, backfill.js, bbox.js, route-features.js,
-  helpers.js, metrics.js, network.js, tile-placeholder.js)
+  helpers.js, metrics.js, network.js, vector-tiles.js, coverage.js, transport.js, trips.js,
+  fingerprint.js, ordering.js, route-stops.js, route-headway.js)
 - `scripts/build/` — build-pmtiles.js (tippecanoe archive build), export-transitland-geojson.js
 
 ## Non-critical (`operations/`)

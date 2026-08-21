@@ -4,56 +4,73 @@ This document catalogs all major variables, objects, and data structures used th
 
 ---
 
-## State Management (`core-state-ui.js`)
+## State Management (`UI/state.js`)
+
+`appState` is a single global object (defined in `public/scripts/UI/state.js`) shared across the map/UI scripts. Key fields:
 
 ### User & Session
-- **`state.token`** - Auth token (localStorage or sessionStorage)
-- **`state.user`** - Current user object `{ email, displayName, id, role }`
-- **`state.initialCitySlug`** - Active city slug for filter presets (stored in localStorage)
+- **`appState.token`** - Auth token (localStorage or sessionStorage)
+- **`appState.user`** - Current user object `{ email, displayName, id, role }`
+- **`appState.initialCitySlug`** - Active city slug for filter presets (stored in localStorage)
 
 ### Map & Viewport
-- **`state.map`** - MapLibre GL instance
-- **`state.mapReady`** - Boolean flag when map DOM is loaded
-- **`state.mapMode`** - Current map style ('streets' or 'satellite')
+- **`appState.map`** - MapLibre GL instance
+- **`appState.mapReady`** - Boolean flag when map DOM is loaded
+- **`appState.mapMode`** - Current map style ('streets' or 'satellite')
+- **`appState.currentViewportBbox`** - Current map viewport bbox [minLon, minLat, maxLon, maxLat]
+- **`appState.vectorSourceVersion`** - Integer bumped to reload the PMTiles vector source (`?v=` cache-buster)
+- **`appState.lastTileMetadataSignature`** - Signature used to skip redundant vector-metadata rebuilds
 
 ### Route Filtering & Visibility
-- **`state.activeModeKeys`** - Set of active mode filter keys (e.g., 'bus', 'metro', 'rail')
-- **`state.activeFrequencyKeys`** - Set of active frequency filters (e.g., 'frequent', 'regular')
-- **`state.manualLineVisibility`** - Map of lineKey → 'on'/'off' visibility overrides (viewport-clipped)
-- **`state.showPrivateOperators`** - Boolean to show/hide private operators
-- **`state.showProblematicGeometries`** - Boolean to show/hide routes with bad geometry
-- **`state.showAllStops`** - Boolean to show all stops or route-linked only
-- **`state.lineSearchQuery`** - Current search string for route filtering
-- **`state.currentViewportBbox`** - Current map viewport bbox [minLon, minLat, maxLon, maxLat]
+- **`appState.activeModeKeys`** - Set of active mode filter keys (e.g., 'bus', 'metro', 'rail')
+- **`appState.activeFrequencyKeys`** - Set of active frequency filters (e.g., 'frequent', 'regular')
+- **`appState.manualLineVisibility`** - Map of lineKey → 'on'/'off' visibility overrides (viewport-clipped)
+- **`appState.showPrivateOperators`** - Boolean to show/hide private operators
+- **`appState.showProblematicGeometries`** - Boolean to show/hide routes with bad geometry
+- **`appState.showAllStops`** - Boolean to show all stops or route-linked only
+- **`appState.lineSearchQuery`** - Current search string for route filtering
 
 ### Route & Stop Data Storage
-- **`state.lineSummaries`** - Array of combined/merged route summaries visible in current view
-- **`state.areaCache`** - Map of areaKey (e.g., "bbox:1:2:3:4:modes:all") → fetched transit data from Postgres
-- **`state.lineStopsCache`** - Map of routeStopCacheKey → fetched stops data for a route from Postgres
-- **`state.inFlightAreaKeys`** - Set of currently fetching area keys (Postgres queries in progress)
-- **`state.inFlightLineStopKeys`** - Set of currently fetching route-stop keys (Postgres queries in progress)
+- **`appState.lineSummaries`** - Array of route summaries (the currently visible set, from vector metadata)
+- **`appState.loadedLineSummaries`** - Array of all loaded route summaries (superset of `lineSummaries`)
+- **`appState.lineStopsCache`** - Map of `routeStopCacheKey(lineKey)` → fetched route-stop payloads
+- **`appState.inFlightLineStopKeys`** - Set of route-stop keys currently being fetched
+- **`appState.routeStopCountLoadAttempts`** - Set of lineKeys already attempted for stop-count summaries
+- **`appState.inFlightRouteStopCountKeys`** - Set of lineKeys with an in-flight stop-count fetch
+- **`appState.inFlightHeadwayLineKeys`** - Set of lineKeys with an in-flight headway fetch
+- **`appState.headwayBulkAttemptedKeys`** - Set of lineKeys already queried via the bulk headway endpoint
 
 ### Active Routes & Data
-- **`state.cities`** - Array of available city preset objects (for filter presets)
-- **`state.transit`** - Combined GeoJSON: `{ routesGeoJson, stopsGeoJson }` visible in current viewport
-- **`state.focusedLineKey`** - Currently selected/focused route lineKey (empty if none)
-- **`state.visibleAreaKeys`** - Set of cached area keys visible in current viewport
-- **`state.requestedAreaKeys`** - Set of area keys the client is requesting data for
+- **`appState.cities`** - Array of available city preset objects (for filter presets)
+- **`appState.transit`** - Combined GeoJSON: `{ routesGeoJson, stopsGeoJson }` for feature-state/visibility work
+- **`appState.focusedLineKey`** - Currently selected/focused route lineKey (empty if none)
+
+### Tile Backfill (PMTiles feed-in)
+- **`appState.transitCoverageCount`** - Transitland's distinct route count for the current viewport (from `GET /api/transit/coverage`, set by `underlay.js` on moveend)
+- **`appState.tileBackfillCount`** / **`tileBackfillTotalMs`** / **`tileBackfillAddedRoutes`** - Backfill run metrics
+- **`appState.tileBackfillInFlight`** - Boolean; a backfill request is in progress
+- **`appState.tileBackfillCooldownUntil`** - Epoch ms; skip new backfills until this time
+- **`appState.tileBackfillBboxes`** - Set of coarse-bbox keys already backfilled this session
+- **`appState.tileBackfillLastError`** - Last backfill error message
+- **`appState.tilesStats`** - Latest `/api/tiles/stats` payload (archive size, tile count)
 
 ### User Progress & Visits
-- **`state.visitedByLine`** - Map of lineKey → Set of stationKeys user has visited
-- **`state.userStatus`** - Current panel info: `{ title, subtitle, details[], progress, routeLineKey }`
-- **`state.userStatusPinnedKind`** - 'station' if pinning a stop, '' if unpinned
+- **`appState.visitedByLine`** - Map of lineKey → Set of stationKeys user has visited
+- **`appState.userStatus`** - Current panel info: `{ title, subtitle, details[], progress, routeLineKey }`
+- **`appState.userStatusPinnedKind`** - 'station' if pinning a stop, '' if unpinned
 
 ### Line View (Detail Panel)
-- **`state.lineViewOpen`** - Boolean; line view panel is visible
-- **`state.lineViewLineKey`** - lineKey of route displayed in line view
-- **`state.lineViewReturn`** - Saved state to restore when closing line view
+- **`appState.lineViewOpen`** - Boolean; line view panel is visible
+- **`appState.lineViewLineKey`** - lineKey of route displayed in line view
+- **`appState.lineViewReturn`** - Saved state to restore when closing line view
+- **`appState.lineViewOrderingMode`** / **`lineViewOrderingReversed`** / **`lineViewOrderingResolved`** - Active route-ordering mode, reversal flag, and resolved (non-auto) mode
+- **`appState.lineViewOrderingPreferencesByLineKey`** - Map of lineKey → `{ mode, reversed }` user preference
+- **`appState.lineViewOrderingVoteClickSetsByLineKey`** - Map of lineKey → Set of stopKeys clicked (vote trigger)
 
 ### UI State
-- **`state.mobilePanelsOpen`** - Boolean; sidebar is visible on mobile
-- **`state.activePopup`** - 'account' or '' (only one popup at a time)
-- **`state.routeSelectPopup`** - Popup instance for route selection on map
+- **`appState.mobilePanelsOpen`** - Boolean; sidebar is visible on mobile
+- **`appState.activePopup`** - 'account' or '' (only one popup at a time)
+- **`appState.routeSelectPopup`** - Popup instance for route selection on map
 
 ---
 
@@ -163,19 +180,23 @@ User-saved configuration stored per-city:
 
 ## Cache Keys & Identifiers
 
-### Area Data Key
-Format: `areaKey = "{bbox}:modes:{modeCacheKey}"` (e.g., "1:2:3:4:modes:3-2")
-- `{bbox}` = snapped bounding box from viewport
-- `modeCacheKey` = "-".join(sorted routeTypes) or "all"
-- Purpose: Unique identifier for Postgres data store lookups; tracks what transit data has been fetched from Postgres
-
 ### Route Stop Data Key
 Format: `routeStopCacheKey(lineKey) = `${lineKey}:stops`
-- Purpose: Unique identifier for Postgres queries; tracks which route stops have been fetched from Postgres
+- Purpose: Unique key for `appState.lineStopsCache` and the server's route-stops cache entries.
+
+### Transit Cache Keys (Postgres `transit_cache`)
+Server-side `cache_key` prefixes written by the Transitland sources:
+- `transit-v4:city:{slug}:route-catalog:route-types:{key}` - Per-city route catalog payloads (harvest/admin)
+- `transit-v4:route:{lineKey}:types:{types}` - Per-route stops payloads
+- `transit-v4:headway:{lookupKey}` - Route headway summaries
+- `transit-v4:routes-tile:{z}:{x}:{y}` - Vector-tile headway payloads
 
 ### Stop Key (Unique Stop Identifier)
-- Within a specific route context: `stationKey`
+- Within a specific route context: `stationKey` (normalized name + rounded coords, see `stableStationKey`)
 - For deduplication across routes: `${lineKey}|${stationKey}` (stopKey)
+
+### Route Line Key
+- Primary identity for routes across the NDJSON store, `route_metadata`, feature-state, and the map: `lineKey` (canonical onestop id or generated `operator:shortname`).
 
 ---
 
@@ -259,16 +280,46 @@ lineIsVisible(line, viewportBbox) =
 
 ---
 
+## Tile Pipeline
+
+Route geometry flows **offline** from Transitland into a locally-built PMTiles archive:
+
+```
+Transitland API
+   │  (REST /routes + /routes/{id}/trips; harvesters + on-demand backfill)
+   ▼
+data/tiles/geo/*.ndjson        durable route-geometry source of truth (line_key per NDJSON row)
+   │  (scripts/build/export-transitland-geojson.js → route-features.js)
+   ▼
+tippecanoe (build-pmtiles.js)  builds the vector tile archive
+   ▼
+data/tiles/routes.pmtiles      single MVT archive served by GET /api/tiles/routes.pmtiles (Range-aware)
+   ▼
+MapLibre "routes-vector" source (pmtiles:// protocol, source-layer "routes") + feature-state visibility
+```
+
+- **Harvesting:** `npm run harvest:core` / `harvest-world` (operations/) fetch cities and write NDJSON + `route_metadata`; `build-pmtiles.js` runs tippecanoe over the NDJSON files.
+- **On-demand backfill:** the client probes `GET /api/transit/coverage` on each moveend for Transitland's route count in the viewport, renders the ground-truth network as a faint `routes-underlay` line layer below the archive, and `tile-backfill.js` compares the count to what the archive renders. On a full or partial gap it calls `/api/tiles/backfill`, which fetches Transitland routes for the viewport bbox, merges missing `line_key`s into `routes-feed.ndjson` (server-side dedup; seed-owned lines preserved unless `forceRefresh`), rebuilds the archive, and the client reloads the vector source. Coverage responses are cached in Postgres (90-day, snapped keys; separate count vs geometry entries).
+- **Metadata:** `route_metadata` (Postgres) supplies names/colors/headway/stop counts; vector-metadata.js merges it into map feature properties.
+- **Stops:** rendered on demand per focused route via `/api/transit/route-stops` (GeoJSON `stops` source).
+
 ## API Endpoints & Data Store
 
-### Transit Data API
-- **GET `/api/transit/bbox?bbox=...&zoom=...`** - Viewport-specific transit
-- **GET `/api/transit/route-stops?lineKey=...`** - Stops for a single route
-- **GET `/api/transit/reviews?citySlug=...`** - Route & agency review settings
-- Response includes: `lineSummaries[]`, `routesGeoJson`, `stopsGeoJson`, `city`
+### Tile & Backfill API
+- **GET `/api/tiles/routes.pmtiles`** - Range-aware streaming of the PMTiles archive (`application/x-protobuf`)
+- **GET `/api/tiles/stats`** - Archive stats (size, tile count, requests)
+- **POST `/api/tiles/backfill`** - Feed-in backfill for a `{ bbox, zoom }`; rebuilds the archive when new routes are merged
+- **GET `/api/tiles/backfill/status`** - Backfill progress (stages `fetching` / `rebuilding`)
 
-### Legacy / Compatibility Endpoint
-- **GET `/api/transit/city/:slug`** - Legacy/admin compatibility path; main client runtime should use bbox endpoint
+### Transit Data API
+- **GET `/api/transit/coverage?bbox=...&zoom=...`** - Transitland's distinct route count for the viewport (gap-detection probe)
+- **GET `/api/transit/route-stops?lineKey=...&stopTypes=...`** - Stops for a single route (route membership)
+- **GET `/api/transit/route-headway?lineKey=...`** - Headway summary for one route
+- **GET `/api/transit/route-headway/bulk?lineKeys=a,b,c`** - Cached headway for many routes (one query)
+- **POST `/api/transit/stop-fractions`** - ST_LineLocatePoint fractions for stops on a route
+- **GET `/api/transit/reviews?citySlug=...`** - Route & agency review settings
+- **POST `/api/transit/route-ordering/vote`** - Record a signed-in route-ordering preference vote
+- **GET `/api/transit/bbox`** - **Retired (HTTP 410)**: replaced by the PMTiles pipeline; kept only to return a clear error.
 
 ### Admin Override API
 - **GET `/api/admin/overrides/route?citySlug=...`** - List route overrides
@@ -309,18 +360,22 @@ lineIsVisible(line, viewportBbox) =
 - `"metromark_[presetName]"` - Serialized preset snapshot (auto-named)
 
 ### PostgreSQL Data Store Tables
-Postgres serves as the primary local copy of Transitland data to reduce API calls. All Transitland-sourced data is stored here and re-fetched from Postgres instead of calling Transitland repeatedly.
+Postgres is the local cache/harvest database (see `operations/local-postgres-schema.sql`). Transitland data is harvested into it and into the NDJSON store to reduce API calls; the runtime map reads the PMTiles archive.
 
-- `public.transit_cache` - Local copy of Transitland routes/stops payloads organized by area bbox
-- `public.station_override` - Manual stop coordinate corrections
-- `public.route_override` - Manual route property edits
-- `public.route_review` - Route quality/validity flags
-- `public.agency_review` - Operator allow/block list
-- `public.visited_station` - User progress tracking (independent of Transitland)
-- `public.filter_preset` - User filter snapshots per city
-- `public.harvest_job_log` - Audit trail of data refreshes
-- `public.stop_translation` - Stop ID normalization map
-- `public.route_geometry_lod` - Simplified geometries for zoom levels
+- `public.transit_cache` - Transitland API response cache (city catalogs, route stops, headway, vector tiles)
+- `public.route_metadata` - Per-route metadata (name, operator, mode, color, headway, frequency, stop count)
+- `public.route_geometry_lod` - Level-of-detail route geometries (fractions, detail views)
+- `public.harvest_city_state` - Per-city harvest status/queue
+- `public.harvest_job_log` - Audit trail of harvest runs
+- `public.usage_log` - Daily Transitland API usage counters (cap enforcement)
+- `public.stop_translation` - Stop ID normalization map (upstream stop id → stable key)
+- `public.station_override` - Manual stop coordinate/name corrections
+- `public.route_override` - Manual route property edits (incl. `orderingMode`)
+- `public.route_ordering_vote` - Community route-ordering preference votes
+- `public.route_review` - Problematic-geometry review flags
+- `public.agency_review` - Operator allow/block flags
+
+Supabase (`operations/supabase-baseline.sql`) holds the auth/user tables: `profiles`, `user_station_visit` (progress), `user_filter_presets`.
 
 ---
 
@@ -357,4 +412,7 @@ Postgres serves as the primary local copy of Transitland data to reduce API call
 
 ## Deprecated / Legacy
 
-None currently documented. Variables listed above are active.
+The viewport bbox transit pipeline has been removed:
+- Client-side area/bbox fetching (`areaCache`, `inFlightAreaKeys`, `visibleAreaKeys`, `requestedAreaKeys`) no longer exists; the map renders from the PMTiles vector source.
+- `GET /api/transit/bbox` is a retired stub returning HTTP 410.
+- `GET /api/transit/city/:slug` was removed; use the tile pipeline + `/api/tiles/backfill`.
