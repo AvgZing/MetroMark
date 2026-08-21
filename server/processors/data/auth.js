@@ -1,4 +1,5 @@
 const {
+  config,
   hasSupabaseConfig,
   requireSupabaseClients,
   initializeLocalPostgres,
@@ -314,6 +315,105 @@ async function getAccountStats() {
   };
 }
 
+async function listProfiles() {
+  assertConfigured();
+  const { serviceClient } = requireSupabaseClients();
+
+  const { data, error } = await serviceClient
+    .from("profiles")
+    .select("id,email,display_name,role,is_active,last_login_at,created_at")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`Unable to list profiles: ${error.message}`);
+  }
+
+  return (data || []).map((row) => normalizeProfileRow(row, null));
+}
+
+async function setProfileRole(userId, role, isActive) {
+  assertConfigured();
+  const { serviceClient } = requireSupabaseClients();
+
+  const safeUserId = normalizeText(userId);
+  if (!safeUserId) {
+    throw new Error("userId is required.");
+  }
+
+  const safeRole = role === "admin" || role === "user" ? role : "user";
+  const updates = { role: safeRole };
+  if (typeof isActive === "boolean") {
+    updates.is_active = isActive;
+  }
+
+  const { data, error } = await serviceClient
+    .from("profiles")
+    .update(updates)
+    .eq("id", safeUserId)
+    .select("id,email,display_name,role,is_active,last_login_at,created_at")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Unable to update profile role: ${error.message}`);
+  }
+
+  return normalizeProfileRow(data || null, null);
+}
+
+async function seedDefaultAdmin() {
+  const email = normalizeEmail(config.ADMIN_EMAIL);
+  if (!email) {
+    return { skipped: true, reason: "ADMIN_EMAIL is not set" };
+  }
+
+  const password = String(config.ADMIN_PASSWORD || "");
+  if (!hasSupabaseConfig) {
+    return { skipped: true, reason: "Supabase is not configured" };
+  }
+
+  let existing = null;
+  try {
+    existing = await getUserByEmail(email);
+  } catch {
+    // Fall through to create path.
+  }
+
+  if (!existing) {
+    if (!password) {
+      return { skipped: true, reason: "ADMIN_EMAIL account does not exist and ADMIN_PASSWORD is not set" };
+    }
+
+    const { serviceClient } = requireSupabaseClients();
+    const createResult = await serviceClient.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { display_name: "MetroMark Admin" }
+    });
+
+    if (createResult.error) {
+      throw new Error(`Unable to create default admin: ${createResult.error.message}`);
+    }
+
+    const createdUser = createResult.data.user;
+    await ensureProfile(createdUser, {
+      displayName: "MetroMark Admin",
+      role: "admin",
+      isActive: true,
+      createdAtIso: createdUser.created_at
+    });
+    await markProfileLogin(createdUser.id);
+    return { email, created: true, role: "admin" };
+  }
+
+  await ensureProfile(
+    { id: existing.id, email, user_metadata: { display_name: existing.displayName } },
+    { role: "admin", isActive: true }
+  );
+  const profile = await setProfileRole(existing.id, "admin", true);
+  return { email, created: false, role: profile?.role || "admin" };
+}
+
 module.exports = {
   initializeStorage,
   registerAccount,
@@ -323,5 +423,8 @@ module.exports = {
   verifyUser,
   getUserByEmail,
   getUserById,
-  getAccountStats
+  getAccountStats,
+  listProfiles,
+  setProfileRole,
+  seedDefaultAdmin
 };

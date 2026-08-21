@@ -5,6 +5,15 @@ const { createApp } = require("./app");
 async function startServer() {
   await db.initializeStorage();
 
+  try {
+    const seedResult = await db.seedDefaultAdmin();
+    if (!seedResult?.skipped) {
+      console.log(`Default admin ensured: ${seedResult.email} (role=${seedResult.role})`);
+    }
+  } catch (error) {
+    console.warn(`Default admin seed skipped: ${error.message}`);
+  }
+
   const app = createApp();
 
   app.listen(config.PORT, () => {

@@ -324,3 +324,149 @@
     flex-direction: column;
   }
 }
+
+.auth-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.auth-shell .auth-card {
+  width: 100%;
+  max-width: 380px;
+}
+
+.auth-shell input {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #d8cfc0);
+  border-radius: 8px;
+}
+
+.override-hint-panel p {
+  margin: 0;
+}
+
+.override-edit-panel h2 {
+  margin-top: 0;
+}
+
+.override-edit-panel label {
+  display: block;
+  margin-top: 10px;
+  font-size: 0.8rem;
+  color: var(--muted, #5a5a5a);
+}
+
+.override-edit-panel input,
+.override-edit-panel select {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line, #d8cfc0);
+  border-radius: 8px;
+  margin-top: 2px;
+}
+
+.override-edit-panel .review-setting {
+  margin-top: 12px;
+}
+
+.override-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.btn-danger {
+  color: #ffffff;
+  background: #c0392b;
+}
+
+.operator-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line, #e5e0d5);
+  font-size: 0.85rem;
+}
+
+.operator-row .btn {
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.manual-edits-log {
+  max-height: 280px;
+  overflow: auto;
+}
+
+.manual-edit-row {
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line, #e5e0d5);
+}
+
+.manual-edit-row p {
+  margin: 2px 0;
+  font-size: 0.82rem;
+}
+
+.manual-edit-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--muted, #5a5a5a);
+}
+
+.manual-edit-kind {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.map-overlay-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+}
+
+.route-stops-list {
+  max-height: 220px;
+  overflow: auto;
+  margin-top: 6px;
+}
+
+.stop-order-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line, #e5e0d5);
+  font-size: 0.82rem;
+}
+
+.stop-order-pos {
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--muted, #5a5a5a);
+  width: 22px;
+}
+
+.stop-order-name {
+  flex: 1;
+}
+
+.stop-order-row button {
+  width: 26px;
+  height: 24px;
+  font-size: 0.8rem;
+}
+
+#batchStatus {
+  margin-top: 8px;
+}

@@ -90,6 +90,7 @@ const appState = {
   transitlandRoutingApiFailureCount: 0,
   routeReviewsByCity: new Map(),
   agencyReviewsByCity: new Map(),
+  routeOverridesByCity: new Map(),
   lastTileMetadataSignature: "",
   tileBackfillCount: 0,
   tileBackfillTotalMs: 0,

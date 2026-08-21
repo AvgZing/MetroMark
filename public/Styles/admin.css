@@ -197,3 +197,133 @@ pre {
     grid-column: auto;
   }
 }
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.kpi-card {
+  padding: 14px 16px;
+}
+
+.kpi-label {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kpi-value {
+  margin: 6px 0 2px;
+  font-size: 1.9rem;
+  font-weight: 700;
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--text);
+}
+
+.kpi-sub {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.session-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+.session-row .row {
+  margin-left: auto;
+}
+
+.usage-bar-row {
+  margin-bottom: 12px;
+}
+
+.usage-bar-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+
+.usage-bar-track {
+  height: 10px;
+  border-radius: 6px;
+  background: #e4e0d6;
+  overflow: hidden;
+}
+
+.usage-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  background: #177ca2;
+  transition: width 0.4s ease;
+}
+
+.usage-bar-fill.is-reached {
+  background: #c0392b;
+}
+
+.role-admin {
+  font-weight: 700;
+  color: #1e5f4e;
+}
+
+#accountsBody td {
+  vertical-align: middle;
+}
+
+#accountsBody button {
+  font-size: 0.78rem;
+  padding: 4px 10px;
+}
+
+.usage-history-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+}
+
+.usage-history-day {
+  width: 34px;
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--muted);
+}
+
+.usage-history-track {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: #e9e4da;
+  overflow: hidden;
+  display: flex;
+}
+
+.usage-history-bar {
+  height: 100%;
+}
+
+.usage-history-bar.is-rest {
+  background: #177ca2;
+}
+
+.usage-history-bar.is-vector {
+  background: #d44d1f;
+}
+
+.usage-history-counts {
+  width: 70px;
+  text-align: right;
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--muted);
+  font-size: 0.72rem;
+}

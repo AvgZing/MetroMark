@@ -16,7 +16,7 @@ async function listRouteOverrides(citySlug = "") {
   assertLocalConfigured();
   if (normalizeText(citySlug)) {
     const result = await localQuery(
-      "select line_key, city_slug, payload, updated_at from public.route_override where city_slug = $1 limit 5000",
+      "select line_key, city_slug, payload, updated_at from public.route_override where (city_slug = $1 or city_slug is null) limit 5000",
       [normalizeText(citySlug)]
     );
     return result.rows || [];

@@ -1,729 +1,1058 @@
 const SESSION_KEY = "metromark_admin_session_token";
 
-const state = {
-  adminKey: sessionStorage.getItem(SESSION_KEY) || "",
-  overrideKey: "",
-  map: null,
-  mapReady: false,
-  routes: [],
-  currentRouteTransit: null,
-  currentOverride: null,
-  selectedLineKey: "",
-  selectedCitySlug: "",
-  editedStops: [],
-  mapMode: "streets",
-  draggingStopIndex: null,
-  currentRouteReview: null,
-  operatorReviews: new Map(),
-  cityOperators: new Set()
+const MODE_LABELS = {
+  0: "Tram", 1: "Metro", 2: "Rail", 3: "Bus", 4: "Ferry",
+  5: "Cable Tram", 6: "Aerial", 7: "Funicular", 11: "Trolleybus", 12: "Monorail"
 };
 
 const els = {
-  overrideMap: document.getElementById("overrideMap"),
-  overrideStreetsModeBtn: document.getElementById("overrideStreetsModeBtn"),
-  overrideSatelliteModeBtn: document.getElementById("overrideSatelliteModeBtn"),
-  overrideLineKey: document.getElementById("overrideLineKey"),
-  loadOverrideRouteBtn: document.getElementById("loadOverrideRouteBtn"),
-  overrideRouteSelect: document.getElementById("overrideRouteSelect"),
-  overrideStatus: document.getElementById("overrideStatus"),
-  overrideEditPanel: document.getElementById("overrideEditPanel"),
-  overrideAgency: document.getElementById("overrideAgency"),
-  overrideMode: document.getElementById("overrideMode"),
-  overrideFrequency: document.getElementById("overrideFrequency"),
-  overrideOrderingMode: document.getElementById("overrideOrderingMode"),
-  overrideStopsList: document.getElementById("overrideStopsList"),
-  saveOverrideBtn: document.getElementById("saveOverrideBtn"),
-  discardOverrideBtn: document.getElementById("discardOverrideBtn"),
-  problematicGeometryCheckbox: document.getElementById("problematicGeometryCheckbox"),
-  operatorReviewList: document.getElementById("operatorReviewList")
+  adminLoginShell: document.getElementById("adminLoginShell"),
+  adminApp: document.getElementById("adminApp"),
+  adminEmailInput: document.getElementById("adminEmailInput"),
+  adminPasswordInput: document.getElementById("adminPasswordInput"),
+  loginBtn: document.getElementById("loginBtn"),
+  loginStatusMessage: document.getElementById("loginStatusMessage"),
+  logoutBtn: document.getElementById("logoutBtn"),
+  refreshMapBtn: document.getElementById("refreshMapBtn"),
+  routeEditPanel: document.getElementById("routeEditPanel"),
+  stationEditPanel: document.getElementById("stationEditPanel"),
+  routeIdentity: document.getElementById("routeIdentity"),
+  routeName: document.getElementById("routeName"),
+  routeShortName: document.getElementById("routeShortName"),
+  routeLongName: document.getElementById("routeLongName"),
+  routeOperator: document.getElementById("routeOperator"),
+  routeMode: document.getElementById("routeMode"),
+  routeColor: document.getElementById("routeColor"),
+  routeOrdering: document.getElementById("routeOrdering"),
+  routeProblematic: document.getElementById("routeProblematic"),
+  routeStopsList: document.getElementById("routeStopsList"),
+  saveStopOrderBtn: document.getElementById("saveStopOrderBtn"),
+  clearStopOrderBtn: document.getElementById("clearStopOrderBtn"),
+  saveRouteBtn: document.getElementById("saveRouteBtn"),
+  discardRouteBtn: document.getElementById("discardRouteBtn"),
+  routeEditStatus: document.getElementById("routeEditStatus"),
+  hideAllOperatorsBtn: document.getElementById("hideAllOperatorsBtn"),
+  showAllOperatorsBtn: document.getElementById("showAllOperatorsBtn"),
+  batchModeSelect: document.getElementById("batchModeSelect"),
+  batchHideBtn: document.getElementById("batchHideBtn"),
+  batchShowBtn: document.getElementById("batchShowBtn"),
+  batchStatus: document.getElementById("batchStatus"),
+  stationIdentity: document.getElementById("stationIdentity"),
+  stationName: document.getElementById("stationName"),
+  stationLat: document.getElementById("stationLat"),
+  stationLon: document.getElementById("stationLon"),
+  stationNote: document.getElementById("stationNote"),
+  saveStationBtn: document.getElementById("saveStationBtn"),
+  discardStationBtn: document.getElementById("discardStationBtn"),
+  stationEditStatus: document.getElementById("stationEditStatus"),
+  operatorList: document.getElementById("operatorList"),
+  manualEditsLog: document.getElementById("manualEditsLog")
 };
 
-async function getAdminKey() {
-  appState.adminKey = String(sessionStorage.getItem(SESSION_KEY) || "").trim();
+const state = {
+  token: sessionStorage.getItem(SESSION_KEY) || "",
+  map: null,
+  mapReady: false,
+  cities: [],
+  currentCitySlug: "",
+  selectedLineKey: "",
+  selectedStationKey: "",
+  selectedRouteOverride: null,
+  selectedRouteReview: null,
+  operatorsByCity: new Map(),
+  currentRouteStops: [],
+  manualEdits: []
+};
 
-  if (!appState.adminKey) {
-    setStatus("Please log in at /admin first.");
-    return null;
+const EMPTY_FC = { type: "FeatureCollection", features: [] };
+
+function setAdminSession(token) {
+  state.token = String(token || "").trim();
+  if (state.token) {
+    sessionStorage.setItem(SESSION_KEY, state.token);
+  } else {
+    sessionStorage.removeItem(SESSION_KEY);
   }
-
-  return appState.adminKey;
 }
 
-function setStatus(message, kind = "neutral") {
-  if (dom.overrideStatus) {
-    dom.overrideStatus.textContent = message;
-    dom.overrideStatus.className = `override-status status-${kind}`;
+function clearAdminSession() {
+  setAdminSession("");
+}
+
+function setAdminLocked(locked) {
+  if (els.adminLoginShell) {
+    els.adminLoginShell.hidden = !locked;
   }
-  console.log(`[Override] ${message}`);
+  if (els.adminApp) {
+    els.adminApp.hidden = locked;
+  }
+  document.body.classList.toggle("admin-locked", Boolean(locked));
 }
 
 async function apiRequest(path, options = {}) {
-  const key = await getAdminKey();
-  if (!key) throw new Error("Admin key required");
-  
+  const token = String(options.adminKey || state.token || "").trim();
   const response = await fetch(path, {
     method: options.method || "GET",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-      ...(options.headers || {})
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
     },
-    body: options.body ? JSON.stringify(options.body) : undefined
+    body: options.body ? JSON.stringify(options.body) : undefined,
   });
-
-  const data = await response.json().catch(() => ({}));
+  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = data?.error || `Request failed: ${response.status}`;
-    throw new Error(message);
+    throw new Error(payload?.error || `Request failed with status ${response.status}`);
   }
-
-  return data;
+  return payload;
 }
 
-function initializeMap() {
-  if (appState.mapReady) return;
+function setEditStatus(el, message, isError = false) {
+  el.textContent = message;
+  el.style.color = isError ? "#a22828" : "#2e7d32";
+}
 
-  appState.map = new maplibregl.Map({
-    container: dom.overrideMap,
-    style: "https://demotiles.maplibre.org/style.json",
-    center: [-122.33, 47.6],
-    zoom: 11,
+function recordManualEdit(kind, label, detail) {
+  state.manualEdits.unshift({
+    at: new Date().toISOString(),
+    kind,
+    label,
+    detail
+  });
+  renderManualEditsLog();
+}
+
+function renderManualEditsLog() {
+  els.manualEditsLog.innerHTML = "";
+  if (!state.manualEdits.length) {
+    const p = document.createElement("p");
+    p.className = "microcopy";
+    p.textContent = "No manual edits recorded yet.";
+    els.manualEditsLog.append(p);
+    return;
+  }
+  for (const edit of state.manualEdits.slice(0, 60)) {
+    const row = document.createElement("div");
+    row.className = "manual-edit-row";
+    const head = document.createElement("div");
+    head.className = "manual-edit-head";
+    const kind = document.createElement("span");
+    kind.className = "manual-edit-kind";
+    kind.textContent = edit.kind;
+    const at = document.createElement("span");
+    at.className = "manual-edit-at";
+    at.textContent = new Date(edit.at).toLocaleString();
+    head.append(kind, at);
+    const label = document.createElement("p");
+    label.textContent = edit.label;
+    const detail = document.createElement("p");
+    detail.className = "microcopy";
+    detail.textContent = edit.detail || "";
+    row.append(head, label, detail);
+    els.manualEditsLog.append(row);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Map
+// ---------------------------------------------------------------------------
+
+function mapStyle() {
+  return {
+    version: 8,
+    sources: {
+      streets: {
+        type: "raster",
+        tiles: ["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],
+        tileSize: 256,
+        attribution: "© CARTO"
+      },
+      "routes-vector": { type: "vector", url: "pmtiles:///api/tiles/routes.pmtiles" },
+      "routes-underlay": { type: "geojson", data: EMPTY_FC },
+      "routes-edited": { type: "geojson", data: EMPTY_FC },
+      stops: { type: "geojson", data: EMPTY_FC },
+      "stops-edited": { type: "geojson", data: EMPTY_FC }
+    },
+    layers: [
+      { id: "streets-base", type: "raster", source: "streets" },
+      {
+        id: "routes-underlay",
+        type: "line",
+        source: "routes-underlay",
+        paint: { "line-color": "#4f7ea8", "line-width": 1, "line-opacity": 0.15 }
+      },
+      {
+        id: "routes-main",
+        type: "line",
+        source: "routes-vector",
+        "source-layer": "routes",
+        paint: {
+          "line-color": ["coalesce", ["feature-state", "color"], ["get", "color"], "#177ca2"],
+          "line-width": 1.6,
+          "line-opacity": 0.8
+        }
+      },
+      {
+        id: "routes-hit",
+        type: "line",
+        source: "routes-vector",
+        "source-layer": "routes",
+        paint: { "line-color": "#000000", "line-width": 10, "line-opacity": 0 }
+      },
+      {
+        id: "routes-edited",
+        type: "line",
+        source: "routes-edited",
+        paint: {
+          "line-color": "#f59e0b",
+          "line-width": 3,
+          "line-opacity": 0.95,
+          "line-dasharray": [2, 1.2]
+        }
+      },
+      {
+        id: "stops-layer",
+        type: "circle",
+        source: "stops",
+        paint: {
+          "circle-radius": 5.5,
+          "circle-color": "#ffffff",
+          "circle-stroke-color": "#111920",
+          "circle-stroke-width": 1.5
+        }
+      },
+      {
+        id: "stops-edited",
+        type: "circle",
+        source: "stops-edited",
+        paint: {
+          "circle-radius": 8,
+          "circle-color": "#f59e0b",
+          "circle-stroke-color": "#111920",
+          "circle-stroke-width": 1.8
+        }
+      }
+    ]
+  };
+}
+
+function initMap() {
+  if (typeof pmtiles !== "undefined" && typeof maplibregl !== "undefined") {
+    const pmtilesProtocol = new pmtiles.Protocol();
+    maplibregl.addProtocol("pmtiles", pmtilesProtocol.tile);
+  }
+
+  state.map = new maplibregl.Map({
+    container: "overrideMap",
+    style: mapStyle(),
+    center: [-122.335, 47.608],
+    zoom: 10,
     attributionControl: true
   });
+  state.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 
-  appState.map.on("load", () => {
-    appState.mapReady = true;
-    setStatus("Map ready");
-    renderRouteMap();
+  state.map.on("load", () => {
+    state.mapReady = true;
+    updateCurrentCity();
+    bindMapEvents();
+    updateUnderlay();
   });
 
-  appState.map.on("style.load", () => {
-    renderRouteMap();
-  });
-
-  appState.map.on("error", (err) => {
-    console.error("Map error:", err);
-  });
-
-  // Map mode buttons
-  dom.overrideStreetsModeBtn?.addEventListener("click", () => {
-    appState.mapMode = "streets";
-    appState.map.setStyle("https://demotiles.maplibre.org/style.json");
-  });
-
-  dom.overrideSatelliteModeBtn?.addEventListener("click", () => {
-    appState.mapMode = "satellite";
-    appState.map.setStyle("https://demotiles.maplibre.org/styles/osm-bright-gl-style/style-cdn.json").catch(() => {
-      // Fallback to streets if satellite unavailable
-      appState.map.setStyle("https://demotiles.maplibre.org/style.json");
-    });
+  state.map.on("moveend", () => {
+    updateUnderlay();
+    updateCurrentCity();
+    loadOperatorsForViewport();
   });
 }
 
-function routeStopsFromTransitPayload(payload) {
-  const features = Array.isArray(payload?.stopsGeoJson?.features) ? payload.stopsGeoJson.features : [];
-  return features.map((feature, index) => {
-    const coords = Array.isArray(feature?.geometry?.coordinates) ? feature.geometry.coordinates : [];
-    const props = feature?.properties || {};
-    return {
-      key: String(props.station_key || props.stop_id || props.source_sample_id || index).trim(),
-      name: String(props.station_name || props.stop_name || "Unnamed Stop").trim(),
-      lat: Number(coords[1]),
-      lon: Number(coords[0])
-    };
-  });
-}
-
-function renderRouteMap() {
-  if (!appState.map || !appState.mapReady || !appState.currentRouteTransit) {
+function updateCurrentCity() {
+  if (!state.map || !state.mapReady) {
     return;
   }
-
-  const routesGeoJson = appState.currentRouteTransit.routesGeoJson || { type: "FeatureCollection", features: [] };
-  const stopsGeoJson = appState.currentRouteTransit.stopsGeoJson || { type: "FeatureCollection", features: [] };
-
-  const updateSource = (sourceId, data) => {
-    const source = appState.map.getSource(sourceId);
-    if (source && typeof source.setData === "function") {
-      source.setData(data);
-      return true;
-    }
-    return false;
-  };
-
-  if (!updateSource("override-route-source", routesGeoJson)) {
-    if (!appState.map.getSource("override-route-source")) {
-      appState.map.addSource("override-route-source", {
-        type: "geojson",
-        data: routesGeoJson
-      });
-      if (!appState.map.getLayer("override-route-line")) {
-        appState.map.addLayer({
-          id: "override-route-line",
-          type: "line",
-          source: "override-route-source",
-          paint: {
-            "line-color": "#177ca2",
-            "line-width": 4,
-            "line-opacity": 0.9
-          }
-        });
-      }
-    }
-  }
-
-  if (!updateSource("override-stop-source", stopsGeoJson)) {
-    if (!appState.map.getSource("override-stop-source")) {
-      appState.map.addSource("override-stop-source", {
-        type: "geojson",
-        data: stopsGeoJson
-      });
-      if (!appState.map.getLayer("override-stop-circles")) {
-        appState.map.addLayer({
-          id: "override-stop-circles",
-          type: "circle",
-          source: "override-stop-source",
-          paint: {
-            "circle-radius": 5,
-            "circle-color": "#ffffff",
-            "circle-stroke-color": "#177ca2",
-            "circle-stroke-width": 2
-          }
-        });
-      }
-    }
-  }
-
-  const routeFeatures = Array.isArray(routesGeoJson.features) ? routesGeoJson.features : [];
-  const bounds = new maplibregl.LngLatBounds();
-  let hasBounds = false;
-
-  for (const feature of routeFeatures) {
-    const geometry = feature?.geometry;
-    if (!geometry || !Array.isArray(geometry.coordinates)) {
-      continue;
-    }
-
-    const walkCoordinates = (coords) => {
-      if (!Array.isArray(coords)) {
-        return;
-      }
-      if (typeof coords[0] === "number" && typeof coords[1] === "number") {
-        bounds.extend(coords);
-        hasBounds = true;
-        return;
-      }
-      coords.forEach(walkCoordinates);
-    };
-
-    walkCoordinates(geometry.coordinates);
-  }
-
-  if (hasBounds) {
-    appState.map.fitBounds(bounds, { padding: 70, duration: 250, maxZoom: 14 });
-  }
+  const center = state.map.getCenter();
+  const city = state.cities.find((c) => {
+    const [w, s, e, n] = c.bbox || [];
+    return w <= center.lng && center.lng <= e && s <= center.lat && center.lat <= n;
+  }) || state.cities[0] || null;
+  state.currentCitySlug = city ? city.slug : "";
 }
 
-function syncRouteFieldsFromSelection(lineKey) {
-  if (dom.overrideLineKey) {
-    dom.overrideLineKey.value = lineKey;
-  }
-  if (dom.overrideRouteSelect && dom.overrideRouteSelect.value !== lineKey) {
-    dom.overrideRouteSelect.value = lineKey;
-  }
-}
-
-async function loadTransitRoute(lineKey) {
-  const normalizedLineKey = String(lineKey || "").trim();
-  if (!normalizedLineKey) {
-    throw new Error("lineKey is required.");
-  }
-
-  setStatus("Loading route geometry...");
-  const data = await apiRequest(`/api/transit/route-stops?lineKey=${encodeURIComponent(normalizedLineKey)}`);
-  appState.currentRouteTransit = data || null;
-  renderRouteMap();
-  return data;
-}
-
-function replaceEditedStops(nextStops) {
-  appState.editedStops = Array.isArray(nextStops) ? nextStops.map((stop, index) => ({
-    key: String(stop?.key || stop?.station_key || stop?.stop_id || `manual-${index}`).trim(),
-    name: String(stop?.name || stop?.station_name || stop?.stop_name || `Stop ${index + 1}`).trim(),
-    lat: Number(stop?.lat),
-    lon: Number(stop?.lon)
-  })) : [];
-}
-
-function addEditedStop() {
-  appState.editedStops.push({
-    key: `manual-${Date.now()}-${appState.editedStops.length + 1}`,
-    name: `Stop ${appState.editedStops.length + 1}`,
-    lat: null,
-    lon: null
-  });
-  renderStopsList();
-}
-
-function moveEditedStop(index, direction) {
-  const targetIndex = index + direction;
-  if (targetIndex < 0 || targetIndex >= appState.editedStops.length) {
+async function updateUnderlay() {
+  if (!state.mapReady || !state.map) {
     return;
   }
-
-  const [item] = appState.editedStops.splice(index, 1);
-  appState.editedStops.splice(targetIndex, 0, item);
-  renderStopsList();
-}
-
-async function loadRoutes() {
+  const bbox = state.map.getBounds().toArray();
+  const bounds = [bbox[0][0], bbox[0][1], bbox[1][0], bbox[1][1]];
+  const zoom = state.map.getZoom();
   try {
-    setStatus("Loading routes...");
-    const data = await apiRequest("/api/admin/overrides/route");
-    appState.routes = Array.isArray(data.overrides) ? data.overrides : [];
-    renderRouteSelect();
-    setStatus(`Loaded ${appState.routes.length} routes`);
-  } catch (err) {
-    setStatus(`Ã¢Å¡Â  Failed to load routes: ${err.message}`, "error");
-  }
-}
-
-function renderRouteSelect() {
-  if (!dom.overrideRouteSelect) return;
-
-  const selected = dom.overrideRouteSelect.value;
-  dom.overrideRouteSelect.innerHTML = '<option value="">Select a route to edit...</option>';
-
-  appState.routes.forEach((route) => {
-    const option = document.createElement("option");
-    option.value = route.line_key;
-    option.textContent = `${route.line_key} (${route.city_slug})`;
-    dom.overrideRouteSelect.appendChild(option);
-  });
-
-  if (selected) {
-    dom.overrideRouteSelect.value = selected;
-  }
-}
-
-async function loadReviews(citySlug) {
-  try {
-    const data = await apiRequest(`/api/transit/reviews?citySlug=${encodeURIComponent(citySlug)}`);
-    
-    // Load route review
-    const routeReviews = Array.isArray(data.routeReviews) ? data.routeReviews : [];
-    appState.currentRouteReview = routeReviews.find((r) => r.line_key === appState.selectedLineKey) || null;
-    
-    // Load operator reviews
-    appState.operatorReviews.clear();
-    const agencyReviews = Array.isArray(data.agencyReviews) ? data.agencyReviews : [];
-    agencyReviews.forEach((review) => {
-      appState.operatorReviews.set(review.operator_name, review);
+    const params = new URLSearchParams({
+      bbox: bounds.join(","),
+      zoom: String(Math.round(zoom)),
+      includeGeometry: "1"
     });
-    
-    // Collect all operators from the current override to build operator list
-    appState.cityOperators.clear();
-    if (appState.currentOverride?.payload?.agency) {
-      appState.cityOperators.add(appState.currentOverride.payload.agency);
+    const payload = await fetch(`/api/transit/coverage?${params.toString()}`).then((r) => r.json());
+    const source = state.map.getSource("routes-underlay");
+    if (source && payload?.routesGeoJson) {
+      source.setData(payload.routesGeoJson);
     }
-    // Also add operators from all reviews for this city
-    agencyReviews.forEach((review) => {
-      appState.cityOperators.add(review.operator_name);
-    });
-  } catch (err) {
-    console.warn("Failed to load reviews:", err);
-    appState.currentRouteReview = null;
-    appState.operatorReviews.clear();
+  } catch {
+    // non-critical
   }
 }
 
-function renderReviews() {
-  // Render problematic geometry checkbox
-  if (dom.problematicGeometryCheckbox) {
-    dom.problematicGeometryCheckbox.checked = appState.currentRouteReview?.problematic_override === true;
+async function loadCities() {
+  try {
+    const data = await fetch("/api/catalog/cities").then((r) => r.json());
+    state.cities = Array.isArray(data.cities) ? data.cities : [];
+  } catch {
+    state.cities = [];
   }
+}
 
-  // Render operator list
-  if (dom.operatorReviewList) {
-    if (appState.cityOperators.size === 0) {
-      dom.operatorReviewList.innerHTML = '<p class="microcopy">No operators for this city yet.</p>';
+function bindMapEvents() {
+  state.map.on("click", "routes-hit", (event) => {
+    const features = state.map.queryRenderedFeatures(event.point, { layers: ["routes-hit"] });
+    const feature = features && features[0];
+    if (!feature) {
       return;
     }
-
-    dom.operatorReviewList.innerHTML = "";
-    const sortedOperators = Array.from(appState.cityOperators).sort();
-    
-    sortedOperators.forEach((operatorName) => {
-      const review = appState.operatorReviews.get(operatorName);
-      const allowedOverride = review?.allowed_override;
-      
-      const item = document.createElement("div");
-      item.className = "operator-review-item";
-      
-      const nameSpan = document.createElement("span");
-      nameSpan.className = "operator-name";
-      nameSpan.textContent = operatorName;
-      
-      const togglesDiv = document.createElement("div");
-      togglesDiv.className = "operator-review-toggles";
-      
-      // Allow button
-      const allowBtn = document.createElement("button");
-      allowBtn.type = "button";
-      allowBtn.className = "operator-toggle-btn";
-      if (allowedOverride === true) {
-        allowBtn.classList.add("allowed");
-      }
-      allowBtn.textContent = allowedOverride === true ? "Ã¢Å“â€œ" : "Ã¢â‚¬Â¢";
-      allowBtn.title = "Allow operator";
-      allowBtn.addEventListener("click", () => {
-        const newState = allowedOverride === true ? null : true;
-        appState.operatorReviews.set(operatorName, { operator_name: operatorName, allowed_override: newState });
-        renderReviews();
-      });
-      
-      // Block button
-      const blockBtn = document.createElement("button");
-      blockBtn.type = "button";
-      blockBtn.className = "operator-toggle-btn";
-      if (allowedOverride === false) {
-        blockBtn.classList.add("blocked");
-      }
-      blockBtn.textContent = allowedOverride === false ? "Ã¢Å“â€¢" : "Ã¢â‚¬Â¢";
-      blockBtn.title = "Block operator";
-      blockBtn.addEventListener("click", () => {
-        const newState = allowedOverride === false ? null : false;
-        appState.operatorReviews.set(operatorName, { operator_name: operatorName, allowed_override: newState });
-        renderReviews();
-      });
-      
-      togglesDiv.append(allowBtn, blockBtn);
-      item.append(nameSpan, togglesDiv);
-      dom.operatorReviewList.appendChild(item);
-    });
-  }
-}
-
-async function selectRoute(lineKey) {
-  if (!lineKey) {
-    appState.selectedLineKey = "";
-    appState.currentOverride = null;
-    appState.currentRouteTransit = null;
-    dom.overrideEditPanel.hidden = true;
-    renderRouteMap();
-    setStatus("Route deselected");
-    return;
-  }
-
-  try {
-    setStatus("Loading route...");
-    const data = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`);
-    appState.selectedLineKey = lineKey;
-    appState.currentOverride = data.override || null;
-    appState.selectedCitySlug = appState.currentOverride?.city_slug || "";
-
-    const transitData = await loadTransitRoute(lineKey);
-    
-    if (appState.currentOverride && appState.currentOverride.payload) {
-      const payload = appState.currentOverride.payload;
-      dom.overrideAgency.value = payload.agency || "";
-      dom.overrideMode.value = String(payload.mode || "");
-      dom.overrideFrequency.value = payload.frequency || "";
-      if (dom.overrideOrderingMode) {
-        dom.overrideOrderingMode.value = String(payload.orderingMode || "");
-      }
-      replaceEditedStops(payload.stops);
-    } else {
-      // No override yet - load base route data if available
-      dom.overrideAgency.value = "";
-      dom.overrideMode.value = "";
-      dom.overrideFrequency.value = "";
-      if (dom.overrideOrderingMode) {
-        dom.overrideOrderingMode.value = "";
-      }
-      replaceEditedStops(routeStopsFromTransitPayload(transitData));
-    }
-
-    if (!appState.editedStops.length) {
-      replaceEditedStops(routeStopsFromTransitPayload(transitData));
-    }
-
-    // Load reviews for this city
-    if (appState.selectedCitySlug) {
-      await loadReviews(appState.selectedCitySlug);
-    }
-
-    syncRouteFieldsFromSelection(lineKey);
-    renderStopsList();
-    renderReviews();
-    dom.overrideEditPanel.hidden = false;
-    setStatus(`Editing: ${lineKey}`);
-  } catch (err) {
-    setStatus(`Ã¢Å¡Â  Failed to load route: ${err.message}`, "error");
-  }
-}
-
-function renderStopsList() {
-  if (!dom.overrideStopsList) return;
-
-  dom.overrideStopsList.innerHTML = "";
-
-  const toolbar = document.createElement("div");
-  toolbar.className = "override-stops-toolbar";
-
-  const addBtn = document.createElement("button");
-  addBtn.type = "button";
-  addBtn.className = "btn btn-subtle";
-  addBtn.textContent = "Add stop";
-  addBtn.addEventListener("click", addEditedStop);
-
-  const resetBtn = document.createElement("button");
-  resetBtn.type = "button";
-  resetBtn.className = "btn btn-subtle";
-  resetBtn.textContent = "Reset from route";
-  resetBtn.addEventListener("click", () => {
-    replaceEditedStops(routeStopsFromTransitPayload(appState.currentRouteTransit));
-    renderStopsList();
+    selectRouteFromFeature(feature);
   });
 
-  toolbar.append(addBtn, resetBtn);
-  dom.overrideStopsList.appendChild(toolbar);
-
-  appState.editedStops.forEach((stop, index) => {
-    const item = document.createElement("div");
-    item.className = "override-stop-item";
-    if (appState.draggingStopIndex === index) {
-      item.classList.add("is-dragging");
+  state.map.on("click", "stops-layer", (event) => {
+    const features = state.map.queryRenderedFeatures(event.point, { layers: ["stops-layer"] });
+    const feature = features && features[0];
+    if (!feature) {
+      return;
     }
+    selectStationFromFeature(feature);
+  });
 
-    const handle = document.createElement("div");
-    handle.className = "override-stop-drag-handle";
-    handle.textContent = "Ã¢â€¹Â®";
-    handle.draggable = true;
-    handle.addEventListener("dragstart", (e) => {
-      appState.draggingStopIndex = index;
-      e.dataTransfer.effectAllowed = "move";
-      renderStopsList();
+  state.map.on("click", (event) => {
+    const clicked = state.map.queryRenderedFeatures(event.point, {
+      layers: ["routes-hit", "stops-layer"]
     });
-    handle.addEventListener("dragend", () => {
-      appState.draggingStopIndex = null;
-      renderStopsList();
-    });
+    if (!clicked || !clicked.length) {
+      clearSelection();
+    }
+  });
 
-    const fields = document.createElement("div");
-    fields.className = "override-stop-fields";
-
-    const nameInput = document.createElement("input");
-    nameInput.type = "text";
-    nameInput.className = "override-stop-name-input";
-    nameInput.value = stop.name || `Stop ${index + 1}`;
-    nameInput.addEventListener("input", () => {
-      appState.editedStops[index].name = String(nameInput.value || "").trim();
-    });
-
-    const latInput = document.createElement("input");
-    latInput.type = "number";
-    latInput.step = "any";
-    latInput.className = "override-stop-coordinate-input";
-    latInput.placeholder = "Lat";
-    latInput.value = Number.isFinite(Number(stop.lat)) ? String(stop.lat) : "";
-    latInput.addEventListener("input", () => {
-      const value = latInput.value === "" ? null : Number(latInput.value);
-      appState.editedStops[index].lat = Number.isFinite(value) ? value : null;
-    });
-
-    const lonInput = document.createElement("input");
-    lonInput.type = "number";
-    lonInput.step = "any";
-    lonInput.className = "override-stop-coordinate-input";
-    lonInput.placeholder = "Lon";
-    lonInput.value = Number.isFinite(Number(stop.lon)) ? String(stop.lon) : "";
-    lonInput.addEventListener("input", () => {
-      const value = lonInput.value === "" ? null : Number(lonInput.value);
-      appState.editedStops[index].lon = Number.isFinite(value) ? value : null;
-    });
-
-    const orderControls = document.createElement("div");
-    orderControls.className = "override-stop-order-controls";
-
-    const upBtn = document.createElement("button");
-    upBtn.type = "button";
-    upBtn.className = "override-stop-order-btn";
-    upBtn.textContent = "Up";
-    upBtn.disabled = index === 0;
-    upBtn.addEventListener("click", () => moveEditedStop(index, -1));
-
-    const downBtn = document.createElement("button");
-    downBtn.type = "button";
-    downBtn.className = "override-stop-order-btn";
-    downBtn.textContent = "Down";
-    downBtn.disabled = index === appState.editedStops.length - 1;
-    downBtn.addEventListener("click", () => moveEditedStop(index, 1));
-
-    orderControls.append(upBtn, downBtn);
-
-    const deleteBtn = document.createElement("button");
-    deleteBtn.className = "override-stop-delete-btn";
-    deleteBtn.type = "button";
-    deleteBtn.textContent = "Delete";
-    deleteBtn.addEventListener("click", () => {
-      appState.editedStops.splice(index, 1);
-      renderStopsList();
-    });
-
-    item.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      e.dataTransfer.dropEffect = "move";
-    });
-
-    item.addEventListener("drop", (e) => {
-      e.preventDefault();
-      if (appState.draggingStopIndex !== null && appState.draggingStopIndex !== index) {
-        const [dragged] = appState.editedStops.splice(appState.draggingStopIndex, 1);
-        const insertIndex = index > appState.draggingStopIndex ? index - 1 : index;
-        appState.editedStops.splice(insertIndex, 0, dragged);
-        appState.draggingStopIndex = null;
-        renderStopsList();
-      }
-    });
-
-    fields.append(nameInput, latInput, lonInput, orderControls);
-    item.append(handle, fields, deleteBtn);
-    dom.overrideStopsList.appendChild(item);
+  state.map.on("mousemove", (event) => {
+    const hit = state.map.queryRenderedFeatures(event.point, { layers: ["routes-hit", "stops-layer"] });
+    state.map.getCanvas().style.cursor = hit && hit.length ? "pointer" : "";
   });
 }
 
-async function saveOverride() {
-  if (!appState.selectedLineKey) {
-    setStatus("Ã¢Å¡Â  No route selected", "error");
+function featureLineProps(feature) {
+  const p = feature?.properties || {};
+  return {
+    lineKey: String(p.line_key || p.id || "").trim(),
+    lineName: String(p.line_name || ""),
+    lineShortName: String(p.line_short_name || ""),
+    lineLongName: String(p.line_long_name || ""),
+    operatorName: String(p.operator_name || ""),
+    routeType: Number.isFinite(Number(p.route_type)) ? Number(p.route_type) : null,
+    color: String(p.color || ""),
+    routeOnestopId: String(p.route_onestop_id || p.onestop_id || "")
+  };
+}
+
+async function loadStopsForRoute(lineKey) {
+  const source = state.map && state.map.getSource("stops");
+  if (!source) {
+    return;
+  }
+  try {
+    const params = new URLSearchParams({ lineKey, stopTypes: "0,1" });
+    const payload = await fetch(`/api/transit/route-stops?${params.toString()}`).then((r) => r.json());
+    if (Array.isArray(payload?.stopsGeoJson?.features)) {
+      source.setData(payload.stopsGeoJson);
+      state.currentRouteStops = payload.stopsGeoJson.features.slice();
+      renderStopsOrderList();
+    }
+  } catch {
+    // non-critical — stations still editable via other flows
+  }
+}
+
+function renderStopsOrderList() {
+  els.routeStopsList.innerHTML = "";
+  const stops = state.currentRouteStops || [];
+  if (!stops.length) {
+    const p = document.createElement("p");
+    p.className = "microcopy";
+    p.textContent = "No stops loaded for this route yet.";
+    els.routeStopsList.append(p);
+    return;
+  }
+  stops.forEach((feature, index) => {
+    const p = feature.properties || {};
+    const row = document.createElement("div");
+    row.className = "stop-order-row";
+
+    const pos = document.createElement("span");
+    pos.className = "stop-order-pos";
+    pos.textContent = String(index + 1).padStart(2, "0");
+
+    const name = document.createElement("span");
+    name.className = "stop-order-name";
+    name.textContent = String(p.station_name || p.stop_name || p.station_key || "Stop");
+
+    const up = document.createElement("button");
+    up.type = "button";
+    up.textContent = "↑";
+    up.title = "Move up";
+    up.disabled = index === 0;
+    up.addEventListener("click", () => {
+      const arr = state.currentRouteStops;
+      [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
+      renderStopsOrderList();
+    });
+
+    const down = document.createElement("button");
+    down.type = "button";
+    down.textContent = "↓";
+    down.title = "Move down";
+    down.disabled = index === stops.length - 1;
+    down.addEventListener("click", () => {
+      const arr = state.currentRouteStops;
+      [arr[index + 1], arr[index]] = [arr[index], arr[index + 1]];
+      renderStopsOrderList();
+    });
+
+    row.append(pos, name, up, down);
+    els.routeStopsList.append(row);
+  });
+}
+
+async function saveStopOrder() {
+  if (!state.selectedLineKey) {
+    return;
+  }
+  const lineKey = state.selectedLineKey;
+  const stops = (state.currentRouteStops || [])
+    .map((feature) => {
+      const p = feature.properties || {};
+      const coords = feature.geometry?.coordinates || [];
+      return {
+        key: String(p.station_key || ""),
+        name: String(p.station_name || p.stop_name || p.station_key || ""),
+        lat: Number.isFinite(Number(coords[1])) ? Number(coords[1]) : null,
+        lon: Number.isFinite(Number(coords[0])) ? Number(coords[0]) : null
+      };
+    })
+    .filter((entry) => entry.key);
+
+  let payload = {};
+  try {
+    const existing = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "GET" });
+    payload = (existing?.override?.payload || {});
+  } catch {
+    // new override
+  }
+  payload = { ...payload, stops };
+
+  try {
+    await apiRequest("/api/admin/overrides/route", {
+      method: "POST",
+      body: { lineKey, citySlug: state.currentCitySlug, payload }
+    });
+    setEditStatus(els.routeEditStatus, `Stop order saved (${stops.length} stops).`);
+    recordManualEdit("route", `${lineKey} · stop order`, `${stops.length} stops in custom order`);
+  } catch (error) {
+    setEditStatus(els.routeEditStatus, error.message, true);
+  }
+}
+
+async function clearStopOrder() {
+  if (!state.selectedLineKey) {
+    return;
+  }
+  const lineKey = state.selectedLineKey;
+  let payload = {};
+  try {
+    const existing = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "GET" });
+    payload = (existing?.override?.payload || {});
+  } catch {
+    // new override
+  }
+  delete payload.stops;
+
+  try {
+    await apiRequest("/api/admin/overrides/route", {
+      method: "POST",
+      body: { lineKey, citySlug: state.currentCitySlug, payload }
+    });
+    setEditStatus(els.routeEditStatus, "Custom stop order cleared.");
+    recordManualEdit("route", `${lineKey} · stop order`, "cleared custom order");
+  } catch (error) {
+    setEditStatus(els.routeEditStatus, error.message, true);
+  }
+}
+
+async function selectRouteFromFeature(feature) {
+  const props = featureLineProps(feature);
+  state.selectedLineKey = props.lineKey;
+  state.selectedStationKey = "";
+  state.selectedRouteOverride = null;
+  state.selectedRouteReview = null;
+
+  els.stationEditPanel.hidden = true;
+  els.routeEditPanel.hidden = false;
+  els.routeIdentity.textContent = `${props.lineKey}${props.lineName ? " · " + props.lineName : ""}`;
+
+  els.routeName.value = props.lineName;
+  els.routeShortName.value = props.lineShortName;
+  els.routeLongName.value = props.lineLongName;
+  els.routeOperator.value = props.operatorName;
+  els.routeMode.value = props.routeType !== null ? String(props.routeType) : "";
+  els.routeColor.value = props.color;
+  els.routeOrdering.value = "";
+  els.routeProblematic.checked = false;
+  setEditStatus(els.routeEditStatus, "Loaded from tile properties.");
+
+  try {
+    const [overridePayload, reviewsPayload] = await Promise.all([
+      apiRequest(`/api/admin/overrides/route/${encodeURIComponent(state.selectedLineKey)}`, { method: "GET" }),
+      state.currentCitySlug
+        ? apiRequest(`/api/admin/reviews/route?citySlug=${encodeURIComponent(state.currentCitySlug)}`, { method: "GET" })
+        : Promise.resolve({ reviews: [] })
+    ]);
+
+    if (overridePayload?.override) {
+      state.selectedRouteOverride = overridePayload.override;
+      const payload = overridePayload.override.payload || {};
+      if (payload.lineName) els.routeName.value = payload.lineName;
+      if (payload.lineShortName !== undefined) els.routeShortName.value = payload.lineShortName;
+      if (payload.lineLongName !== undefined) els.routeLongName.value = payload.lineLongName;
+      if (payload.operatorName) els.routeOperator.value = payload.operatorName;
+      if (payload.mode !== undefined && payload.mode !== null && payload.mode !== "") els.routeMode.value = String(payload.mode);
+      if (payload.color) els.routeColor.value = payload.color;
+      if (payload.orderingMode) els.routeOrdering.value = payload.orderingMode;
+      setEditStatus(els.routeEditStatus, "Loaded existing override + tile properties.");
+    }
+
+    const review = (reviewsPayload.reviews || []).find((r) => r.line_key === state.selectedLineKey);
+    if (review) {
+      state.selectedRouteReview = review;
+      els.routeProblematic.checked = Boolean(review.problematic_override);
+    }
+
+    loadStopsForRoute(state.selectedLineKey);
+  } catch (error) {
+    setEditStatus(els.routeEditStatus, error.message, true);
+  }
+}
+
+async function selectStationFromFeature(feature) {
+  const p = feature?.properties || {};
+  const stationKey = String(p.station_key || "").trim();
+  const lineKey = String(p.line_key || "").trim();
+  if (!stationKey) {
     return;
   }
 
-  try {
-    setStatus("Saving...");
-    const payload = {
-      agency: dom.overrideAgency.value || null,
-      mode: dom.overrideMode.value ? Number(dom.overrideMode.value) : null,
-      frequency: dom.overrideFrequency.value ? Number(dom.overrideFrequency.value) : null,
-      orderingMode: dom.overrideOrderingMode ? String(dom.overrideOrderingMode.value || "").trim() || null : null,
-      stops: appState.editedStops
-    };
+  state.selectedStationKey = stationKey;
+  state.selectedLineKey = "";
+  els.routeEditPanel.hidden = true;
+  els.stationEditPanel.hidden = false;
+  els.stationIdentity.textContent = `${stationKey}${lineKey ? " · on " + lineKey : ""}`;
 
+  const coords = feature.geometry?.coordinates || [];
+  els.stationName.value = String(p.station_name || "");
+  els.stationLat.value = coords[1] !== undefined ? String(Number(coords[1]).toFixed(6)) : "";
+  els.stationLon.value = coords[0] !== undefined ? String(Number(coords[0]).toFixed(6)) : "";
+  els.stationNote.value = "";
+  setEditStatus(els.stationEditStatus, "Loaded from stop properties.");
+}
+
+function clearSelection() {
+  state.selectedLineKey = "";
+  state.selectedStationKey = "";
+  if (els.routeEditPanel) {
+    els.routeEditPanel.hidden = true;
+  }
+  if (els.stationEditPanel) {
+    els.stationEditPanel.hidden = true;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Saves
+// ---------------------------------------------------------------------------
+
+async function saveRouteEdits() {
+  if (!state.selectedLineKey) {
+    return;
+  }
+  const lineKey = state.selectedLineKey;
+
+  const payload = {};
+  const name = String(els.routeName.value || "").trim();
+  const short = String(els.routeShortName.value || "").trim();
+  const long = String(els.routeLongName.value || "").trim();
+  const operator = String(els.routeOperator.value || "").trim();
+  const modeRaw = String(els.routeMode.value || "").trim();
+  const color = String(els.routeColor.value || "").trim();
+  const ordering = String(els.routeOrdering.value || "").trim();
+
+  if (name) payload.lineName = name;
+  if (short) payload.lineShortName = short;
+  if (long) payload.lineLongName = long;
+  if (operator) payload.operatorName = operator;
+  if (modeRaw) payload.mode = Number(modeRaw);
+  if (color) payload.color = color;
+  if (ordering) payload.orderingMode = ordering;
+
+  try {
     const result = await apiRequest("/api/admin/overrides/route", {
       method: "POST",
-      body: {
-        lineKey: appState.selectedLineKey,
-        citySlug: appState.currentOverride?.city_slug || "",
-        payload
-      }
+      body: { lineKey, citySlug: state.currentCitySlug, payload }
     });
 
-    // Save problematic geometry review
-    const problematicOverride = dom.problematicGeometryCheckbox?.checked === true ? true : false;
+    const problematic = Boolean(els.routeProblematic.checked);
     await apiRequest("/api/admin/reviews/route", {
       method: "POST",
       body: {
-        lineKey: appState.selectedLineKey,
-        citySlug: appState.selectedCitySlug,
-        problematicOverride
+        lineKey,
+        citySlug: state.currentCitySlug,
+        problematicOverride: problematic ? true : null
       }
-    }).catch((err) => console.warn("Failed to save route review:", err));
+    });
 
-    // Save operator allow/deny reviews
-    const agencyReviewsToSave = Array.from(appState.operatorReviews.values()).filter(
-      (review) => review.allowed_override !== null
+    setEditStatus(els.routeEditStatus, "Route edits saved.");
+    recordManualEdit(
+      "route",
+      `${lineKey}${name ? " · " + name : ""}`,
+      [color ? `color ${color}` : "", ordering ? `ordering ${ordering}` : "", modeRaw ? `mode ${MODE_LABELS[Number(modeRaw)] || modeRaw}` : "", problematic ? "disabled-by-default" : ""].filter(Boolean).join(", ")
     );
-    
-    for (const agencyReview of agencyReviewsToSave) {
-      await apiRequest("/api/admin/reviews/agencies", {
-        method: "POST",
-        body: {
-          citySlug: appState.selectedCitySlug,
-          operatorName: agencyReview.operator_name,
-          allowedOverride: agencyReview.allowed_override
-        }
-      }).catch((err) => console.warn(`Failed to save agency review for ${agencyReview.operator_name}:`, err));
-    }
-
-    setStatus("Ã¢Å“â€œ Override and reviews saved successfully");
-    appState.currentOverride = result.override;
-    await loadRoutes();
-  } catch (err) {
-    setStatus(`Ã¢Å¡Â  Failed to save: ${err.message}`, "error");
+    addRouteHighlight(lineKey, result.override?.payload || payload);
+    await loadOperatorsForViewport();
+  } catch (error) {
+    setEditStatus(els.routeEditStatus, error.message, true);
   }
 }
 
-function discardChanges() {
-  selectRoute(appState.selectedLineKey).catch((err) => {
-    setStatus(`Ã¢Å¡Â  Failed to reload: ${err.message}`, "error");
-  });
+async function saveStationEdits() {
+  if (!state.selectedStationKey) {
+    return;
+  }
+  const stationKey = state.selectedStationKey;
+  const body = {
+    stationKey,
+    manualName: String(els.stationName.value || "").trim(),
+    note: String(els.stationNote.value || "").trim()
+  };
+  const lat = Number(els.stationLat.value);
+  const lon = Number(els.stationLon.value);
+  if (Number.isFinite(lat)) body.manualLat = lat;
+  if (Number.isFinite(lon)) body.manualLon = lon;
+
+  try {
+    await apiRequest("/api/admin/overrides/station", {
+      method: "POST",
+      body
+    });
+    setEditStatus(els.stationEditStatus, "Station edits saved.");
+    recordManualEdit(
+      "station",
+      stationKey,
+      [body.manualName ? `name "${body.manualName}"` : "", Number.isFinite(lat) ? `lat ${lat}` : "", Number.isFinite(lon) ? `lon ${lon}` : "", body.note ? `note ${body.note}` : ""].filter(Boolean).join(", ")
+    );
+    addStationHighlight(stationKey, body.manualName, Number.isFinite(lon) ? lon : null, Number.isFinite(lat) ? lat : null);
+  } catch (error) {
+    setEditStatus(els.stationEditStatus, error.message, true);
+  }
 }
 
+function addRouteHighlight(lineKey, payload) {
+  const source = state.map.getSource("routes-edited");
+  if (!source) {
+    return;
+  }
+  const features = source._data?.features || [];
+  const color = String(payload?.color || "").trim();
+  const existing = features.find((f) => f.properties?.line_key === lineKey);
+  const feature = existing || {
+    type: "Feature",
+    id: lineKey,
+    properties: { line_key: lineKey },
+    geometry: null
+  };
+  if (color) {
+    feature.properties.color = color;
+  }
+  if (!existing && state.map) {
+    const q = state.map.queryRenderedFeatures({ layers: ["routes-main"] }).find((f) => String(f.properties?.line_key || "") === lineKey);
+    if (q) {
+      feature.geometry = q.geometry;
+    }
+  }
+  if (!existing) {
+    features.push(feature);
+  }
+  source.setData({ type: "FeatureCollection", features });
+}
+
+function addStationHighlight(stationKey, name, lon, lat) {
+  const source = state.map.getSource("stops-edited");
+  if (!source) {
+    return;
+  }
+  const features = source._data?.features || [];
+  const existing = features.find((f) => f.properties?.station_key === stationKey);
+  if (existing) {
+    existing.properties.station_name = name || existing.properties.station_name;
+    if (Number.isFinite(lon) && Number.isFinite(lat)) {
+      existing.geometry.coordinates = [lon, lat];
+    }
+  } else {
+    features.push({
+      type: "Feature",
+      id: stationKey,
+      geometry: Number.isFinite(lon) && Number.isFinite(lat) ? { type: "Point", coordinates: [lon, lat] } : null,
+      properties: { station_key: stationKey, station_name: name || stationKey }
+    });
+  }
+  source.setData({ type: "FeatureCollection", features });
+}
+
+// ---------------------------------------------------------------------------
+// Operators (batch hide by default)
+// ---------------------------------------------------------------------------
+
+async function loadOperatorsForViewport() {
+  const features = state.map && state.mapReady
+    ? state.map.queryRenderedFeatures({ layers: ["routes-main"] })
+    : [];
+  const operatorNames = new Set();
+  for (const feature of features) {
+    const name = String(feature.properties?.operator_name || "").trim();
+    if (name) {
+      operatorNames.add(name);
+    }
+  }
+
+  let reviews = [];
+  try {
+    if (state.currentCitySlug) {
+      const payload = await apiRequest(`/api/admin/reviews/agencies?citySlug=${encodeURIComponent(state.currentCitySlug)}`, { method: "GET" });
+      reviews = Array.isArray(payload.reviews) ? payload.reviews : [];
+    }
+  } catch {
+    reviews = [];
+  }
+  const reviewByOperator = new Map(reviews.map((r) => [r.operator_name, r]));
+
+  els.operatorList.innerHTML = "";
+  const names = Array.from(operatorNames).sort();
+  if (!names.length) {
+    const p = document.createElement("p");
+    p.className = "microcopy";
+    p.textContent = "No operators in the current viewport (zoom in).";
+    els.operatorList.append(p);
+    return;
+  }
+
+  for (const name of names) {
+    const review = reviewByOperator.get(name);
+    const hidden = review?.allowed_override === false;
+
+    const row = document.createElement("div");
+    row.className = "operator-row";
+
+    const label = document.createElement("span");
+    label.textContent = name;
+    label.title = hidden ? "Hidden by default (users can re-enable)" : "Shown by default";
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "btn " + (hidden ? "btn-danger" : "btn-subtle");
+    toggle.textContent = hidden ? "Shown: click to hide" : "Hide by default";
+    toggle.addEventListener("click", async () => {
+      const nextHidden = !hidden;
+      toggle.disabled = true;
+      try {
+        await apiRequest("/api/admin/reviews/agencies", {
+          method: "POST",
+          body: {
+            citySlug: state.currentCitySlug,
+            operatorName: name,
+            allowedOverride: nextHidden ? false : null
+          }
+        });
+        recordManualEdit(
+          "agency",
+          name,
+          nextHidden ? "Hidden by default (users can re-enable)" : "Un-hidden (default shown)"
+        );
+        await loadOperatorsForViewport();
+      } catch (error) {
+        setEditStatus(els.routeEditStatus || els.stationEditStatus, error.message, true);
+      } finally {
+        toggle.disabled = false;
+      }
+    });
+
+    row.append(label, toggle);
+    els.operatorList.append(row);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Manual edits log (load existing)
+// ---------------------------------------------------------------------------
+
+async function loadExistingEdits() {
+  state.manualEdits = [];
+  try {
+    const [routeOverrides, routeReviews, agencyReviews, stationOverrides] = await Promise.all([
+      apiRequest("/api/admin/overrides/route", { method: "GET" }),
+      state.currentCitySlug ? apiRequest(`/api/admin/reviews/route?citySlug=${encodeURIComponent(state.currentCitySlug)}`, { method: "GET" }) : Promise.resolve({ reviews: [] }),
+      state.currentCitySlug ? apiRequest(`/api/admin/reviews/agencies?citySlug=${encodeURIComponent(state.currentCitySlug)}`, { method: "GET" }) : Promise.resolve({ reviews: [] }),
+      apiRequest("/api/admin/overrides/station", { method: "GET" })
+    ]);
+
+    for (const o of routeOverrides.overrides || []) {
+      state.manualEdits.push({
+        at: o.updated_at ? new Date(o.updated_at).toISOString() : new Date(0).toISOString(),
+        kind: "route",
+        label: o.line_key,
+        detail: Object.keys(o.payload || {}).join(", ")
+      });
+    }
+    for (const r of routeReviews.reviews || []) {
+      if (r.problematic_override !== null) {
+        state.manualEdits.push({
+          at: r.updated_at ? new Date(r.updated_at).toISOString() : new Date(0).toISOString(),
+          kind: "route",
+          label: r.line_key,
+          detail: r.problematic_override ? "disabled by default" : "enabled by default"
+        });
+      }
+    }
+    for (const a of agencyReviews.reviews || []) {
+      if (a.allowed_override !== null) {
+        state.manualEdits.push({
+          at: a.updated_at ? new Date(a.updated_at).toISOString() : new Date(0).toISOString(),
+          kind: "agency",
+          label: a.operator_name,
+          detail: a.allowed_override === false ? "hidden by default" : "shown by default"
+        });
+      }
+    }
+    for (const s of stationOverrides.overrides || []) {
+      state.manualEdits.push({
+        at: s.updatedAt ? new Date(s.updatedAt * 1000).toISOString() : new Date(0).toISOString(),
+        kind: "station",
+        label: s.stableKey,
+        detail: s.manualName || "coordinate override"
+      });
+    }
+  } catch (error) {
+    state.manualEdits.push({ at: new Date().toISOString(), kind: "system", label: "Failed to load existing edits", detail: error.message });
+  }
+  state.manualEdits.sort((a, b) => new Date(b.at) - new Date(a.at));
+  renderManualEditsLog();
+}
+
+// ---------------------------------------------------------------------------
+// Batch operations
+// ---------------------------------------------------------------------------
+
+function visibleRouteFeaturesByMode(modeRaw) {
+  const features = state.map && state.mapReady
+    ? state.map.queryRenderedFeatures({ layers: ["routes-main"] })
+    : [];
+  const mode = modeRaw === "" ? null : Number(modeRaw);
+  const byLineKey = new Map();
+  for (const feature of features) {
+    const lineKey = String(feature.properties?.line_key || "").trim();
+    if (!lineKey || byLineKey.has(lineKey)) {
+      continue;
+    }
+    if (mode !== null && Number(feature.properties?.route_type) !== mode) {
+      continue;
+    }
+    byLineKey.set(lineKey, feature);
+  }
+  return Array.from(byLineKey.values());
+}
+
+async function batchByMode(hide) {
+  const modeRaw = String(els.batchModeSelect.value || "").trim();
+  const features = visibleRouteFeaturesByMode(modeRaw);
+  if (!features.length) {
+    setEditStatus(els.batchStatus, "No matching routes in the viewport.", true);
+    return;
+  }
+  const lineKeys = features.map((f) => String(f.properties?.line_key || "").trim());
+  els.batchHideBtn.disabled = true;
+  els.batchShowBtn.disabled = true;
+  let ok = 0;
+  let failed = 0;
+  try {
+    for (const lineKey of lineKeys) {
+      try {
+        await apiRequest("/api/admin/reviews/route", {
+          method: "POST",
+          body: {
+            lineKey,
+            citySlug: state.currentCitySlug,
+            problematicOverride: hide ? true : null
+          }
+        });
+        ok += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    setEditStatus(els.batchStatus, `${ok} routes ${hide ? "hidden" : "shown"} by default${failed ? `, ${failed} failed` : ""}.`);
+    recordManualEdit(
+      "batch",
+      `${hide ? "Hide" : "Show"} by mode ${modeRaw || "all"}`,
+      `${ok} route(s) ${hide ? "disabled by default" : "enabled by default"}`
+    );
+    await loadOperatorsForViewport();
+  } finally {
+    els.batchHideBtn.disabled = false;
+    els.batchShowBtn.disabled = false;
+  }
+}
+
+async function batchAllOperators(hide) {
+  const features = state.map && state.mapReady
+    ? state.map.queryRenderedFeatures({ layers: ["routes-main"] })
+    : [];
+  const operators = new Set();
+  for (const feature of features) {
+    const name = String(feature.properties?.operator_name || "").trim();
+    if (name) {
+      operators.add(name);
+    }
+  }
+  const names = Array.from(operators);
+  if (!names.length) {
+    return;
+  }
+  els.hideAllOperatorsBtn.disabled = true;
+  els.showAllOperatorsBtn.disabled = true;
+  let ok = 0;
+  try {
+    for (const name of names) {
+      try {
+        await apiRequest("/api/admin/reviews/agencies", {
+          method: "POST",
+          body: {
+            citySlug: state.currentCitySlug,
+            operatorName: name,
+            allowedOverride: hide ? false : null
+          }
+        });
+        ok += 1;
+      } catch {
+        // per-operator failure tolerated
+      }
+    }
+    recordManualEdit("batch", `${hide ? "Hide" : "Show"} all operators`, `${ok} operator(s) updated`);
+    await loadOperatorsForViewport();
+  } finally {
+    els.hideAllOperatorsBtn.disabled = false;
+    els.showAllOperatorsBtn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auth + boot
+// ---------------------------------------------------------------------------
+
 function bindEvents() {
-  dom.loadOverrideRouteBtn?.addEventListener("click", () => {
-    const lineKey = String(dom.overrideLineKey?.value || "").trim();
-    if (!lineKey) {
-      setStatus("Enter a route lineKey first.", "error");
+  els.loginBtn.addEventListener("click", async () => {
+    const email = String(els.adminEmailInput.value || "").trim();
+    const password = String(els.adminPasswordInput.value || "");
+    if (!email || !password) {
+      els.loginStatusMessage.textContent = "Email and password are required.";
       return;
     }
-    selectRoute(lineKey).catch((err) => {
-      setStatus(`Ã¢Å¡Â  Failed to load route: ${err.message}`, "error");
-    });
-  });
-
-  dom.overrideRouteSelect?.addEventListener("change", (e) => {
-    const lineKey = String(e.target.value || "").trim();
-    if (dom.overrideLineKey) {
-      dom.overrideLineKey.value = lineKey;
+    els.loginStatusMessage.textContent = "Signing in...";
+    try {
+      const result = await apiRequest("/api/admin/login", {
+        method: "POST",
+        body: { email, password }
+      });
+      setAdminSession(result.token);
+      setAdminLocked(false);
+      els.loginStatusMessage.textContent = "Logged in.";
+      await bootApp();
+    } catch (error) {
+      clearAdminSession();
+      els.loginStatusMessage.textContent = error.message;
     }
-    selectRoute(lineKey);
   });
 
-  dom.saveOverrideBtn?.addEventListener("click", saveOverride);
-  dom.discardOverrideBtn?.addEventListener("click", discardChanges);
+  els.logoutBtn.addEventListener("click", () => {
+    apiRequest("/api/admin/logout", { method: "POST" }).catch(() => {});
+    clearAdminSession();
+    setAdminLocked(true);
+  });
+
+  els.refreshMapBtn.addEventListener("click", () => {
+    if (state.mapReady) {
+      updateUnderlay();
+      loadOperatorsForViewport();
+      loadExistingEdits();
+    }
+  });
+
+  els.saveRouteBtn.addEventListener("click", saveRouteEdits);
+  els.discardRouteBtn.addEventListener("click", () => {
+    els.routeEditPanel.hidden = true;
+    state.selectedLineKey = "";
+  });
+  els.saveStationBtn.addEventListener("click", saveStationEdits);
+  els.discardStationBtn.addEventListener("click", () => {
+    els.stationEditPanel.hidden = true;
+    state.selectedStationKey = "";
+  });
+
+  els.saveStopOrderBtn.addEventListener("click", saveStopOrder);
+  els.clearStopOrderBtn.addEventListener("click", clearStopOrder);
+
+  els.batchHideBtn.addEventListener("click", () => batchByMode(true));
+  els.batchShowBtn.addEventListener("click", () => batchByMode(false));
+  els.hideAllOperatorsBtn.addEventListener("click", () => batchAllOperators(true));
+  els.showAllOperatorsBtn.addEventListener("click", () => batchAllOperators(false));
+}
+
+async function bootApp() {
+  await loadCities();
+  initMap();
+  state.map.once("load", () => {
+    setTimeout(() => {
+      loadExistingEdits();
+      loadOperatorsForViewport();
+    }, 1500);
+  });
 }
 
 async function init() {
-  try {
-    const key = await getAdminKey();
-    if (!key) {
-      setStatus("Please authenticate at /admin first", "error");
-      return;
-    }
+  els.adminEmailInput.value = "";
+  els.adminPasswordInput.value = "";
+  bindEvents();
 
+  if (state.token) {
     try {
       await apiRequest("/api/admin/session");
-    } catch {
-      sessionStorage.removeItem(SESSION_KEY);
-      appState.adminKey = "";
-      setStatus("Admin session expired. Log in again at /admin.", "error");
+      setAdminLocked(false);
+      await bootApp();
       return;
+    } catch {
+      clearAdminSession();
     }
-
-    bindEvents();
-    initializeMap();
-
-    // Wait for map to be ready before loading routes
-    if (!appState.mapReady) {
-      await new Promise((resolve) => {
-        const checkReady = setInterval(() => {
-          if (appState.mapReady) {
-            clearInterval(checkReady);
-            resolve();
-          }
-        }, 100);
-        setTimeout(() => {
-          clearInterval(checkReady);
-          resolve();
-        }, 3000);
-      });
-    }
-
-    await loadRoutes();
-  } catch (err) {
-    setStatus(`Ã¢Å¡Â  Initialization failed: ${err.message}`, "error");
-    console.error(err);
   }
+  setAdminLocked(true);
 }
 
-document.addEventListener("DOMContentLoaded", init);
+init().catch((error) => {
+  els.loginStatusMessage.textContent = error.message;
+});

@@ -102,7 +102,27 @@ async function setRouteMetadata(lineKey, metadata) {
   return { lineKey: normalizedLineKey };
 }
 
+async function getRouteMetadataCoverageStats() {
+  assertLocalConfigured();
+  const result = await localQuery(
+    `select
+       count(*)::int as total_routes,
+       count(*) filter (where headway_checked = 1)::int as covered_headway,
+       count(distinct operator_name)::int as distinct_operators,
+       count(*) filter (where stop_count > 0)::int as routes_with_stop_counts
+     from public.route_metadata`
+  );
+  const row = result.rows?.[0] || {};
+  return {
+    totalRoutes: Number(row.total_routes || 0),
+    coveredHeadway: Number(row.covered_headway || 0),
+    distinctOperators: Number(row.distinct_operators || 0),
+    routesWithStopCounts: Number(row.routes_with_stop_counts || 0)
+  };
+}
+
 module.exports = {
   getRouteMetadatasByLineKeys,
-  setRouteMetadata
+  setRouteMetadata,
+  getRouteMetadataCoverageStats
 };

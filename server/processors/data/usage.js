@@ -111,10 +111,30 @@ async function getDailyUsageCapsState(limits) {
   };
 }
 
+async function getUsageHistory(days = 7) {
+  assertLocalConfigured();
+  const safeDays = Math.max(1, Math.min(30, Number(days || 7)));
+  const result = await localQuery(
+    `select day_key, rest_api_calls, vector_tile_calls, routing_api_calls
+     from public.usage_log
+     order by day_key desc
+     limit $1`,
+    [safeDays]
+  );
+
+  return (result.rows || []).map((row) => ({
+    dayKey: String(row.day_key || "").slice(0, 10),
+    restApiCalls: Number(row.rest_api_calls || 0),
+    vectorTileCalls: Number(row.vector_tile_calls || 0),
+    routingApiCalls: Number(row.routing_api_calls || 0)
+  })).reverse();
+}
+
 module.exports = {
   dayKeyFromTimestamp,
   getUsageForDay,
   getTodayUsage,
   incrementUsage,
-  getDailyUsageCapsState
+  getDailyUsageCapsState,
+  getUsageHistory
 };

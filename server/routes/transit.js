@@ -147,10 +147,12 @@ router.get("/transit/reviews", async (req, res) => {
   try {
     const routeReviews = await db.listRouteReviews(citySlug);
     const agencyReviews = await db.listAgencyReviews(citySlug);
+    const routeOverrides = await db.listRouteOverrides(citySlug);
     return res.json({
       citySlug,
       routeReviews,
-      agencyReviews
+      agencyReviews,
+      routeOverrides
     });
   } catch (error) {
     return res.status(500).json({

@@ -319,6 +319,7 @@ async function loadReviewsForCity(citySlug) {
 
     appState.routeReviewsByCity.clear();
     appState.agencyReviewsByCity.clear();
+    appState.routeOverridesByCity.clear();
 
     if (Array.isArray(data.routeReviews)) {
       data.routeReviews.forEach((review) => {
@@ -330,6 +331,16 @@ async function loadReviewsForCity(citySlug) {
       data.agencyReviews.forEach((review) => {
         appState.agencyReviewsByCity.set(review.operator_name, review);
       });
+    }
+
+    if (Array.isArray(data.routeOverrides)) {
+      data.routeOverrides.forEach((override) => {
+        appState.routeOverridesByCity.set(override.line_key, override);
+      });
+    }
+
+    if (typeof applyRouteOverridesToMap === "function") {
+      applyRouteOverridesToMap();
     }
   } catch (err) {
     console.warn(`Failed to load reviews for city ${citySlug}:`, err);

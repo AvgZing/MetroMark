@@ -267,6 +267,24 @@ async function toggleVisitedForStation(properties, coords) {
 
     setStatus(`${nextVisited ? "Visited" : "Unvisited"}: ${stationName}`, "ok");
   } catch (error) {
+    // Offline: queue the toggle so it syncs when the connection returns.
+    if (typeof enqueueProgressOp === "function") {
+      const queued = await enqueueProgressOp({
+        payload: {
+          lineKey,
+          stationKey,
+          stationName,
+          lon,
+          lat,
+          visited: nextVisited
+        }
+      });
+      if (queued) {
+        setStatus("Offline — progress queued, will sync when back online.", "ok");
+        setUserStatusFromStation(properties || {}, `Saved offline (${stationName}).`);
+        return;
+      }
+    }
     setStatus(error.message, "error");
   }
 }

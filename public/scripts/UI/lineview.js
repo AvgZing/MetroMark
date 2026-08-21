@@ -1,4 +1,37 @@
 /** Render the ordered stop list for a line inside the line view panel. */
+function orderByCustomStopKeys(stopFeatures, customStops) {
+  const byKey = new Map();
+  for (const feature of stopFeatures || []) {
+    const key = String(feature?.properties?.station_key || "").trim();
+    if (key) {
+      byKey.set(key, feature);
+    }
+  }
+
+  const ordered = [];
+  const seen = new Set();
+  for (const stop of customStops || []) {
+    const key = String(stop?.key || "").trim();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    const feature = byKey.get(key);
+    if (feature) {
+      ordered.push(feature);
+      seen.add(key);
+    }
+  }
+
+  for (const feature of stopFeatures || []) {
+    const key = String(feature?.properties?.station_key || "").trim();
+    if (!seen.has(key)) {
+      ordered.push(feature);
+    }
+  }
+
+  return ordered;
+}
+
 async function renderLineViewStops(lineKey, lineColor, options = {}) {
   if (!dom.lineViewStops) {
     return;
@@ -56,15 +89,26 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
 
   syncLineViewOrderingControls();
 
-  const featuresToRender = await orderStopsForLineView(
-    stopFeatures,
-    lineKey,
-    directionSequences,
-    orderingMode,
-    routeLookupKey,
-    null,
-    directionPatterns
-  );
+  // If an admin set a custom stop order for this route, apply it directly
+  // (matching by station key, then appending any unmatched stops).
+  const routeOverride = appState.routeOverridesByCity instanceof Map
+    ? appState.routeOverridesByCity.get(lineKey)
+    : null;
+  const customStops = Array.isArray(routeOverride?.payload?.stops) && routeOverride.payload.stops.length
+    ? routeOverride.payload.stops
+    : null;
+
+  const featuresToRender = customStops
+    ? orderByCustomStopKeys(stopFeatures, customStops)
+    : await orderStopsForLineView(
+        stopFeatures,
+        lineKey,
+        directionSequences,
+        orderingMode,
+        routeLookupKey,
+        null,
+        directionPatterns
+      );
 
   if (appState.lineViewOrderingReversed) {
     featuresToRender.reverse();

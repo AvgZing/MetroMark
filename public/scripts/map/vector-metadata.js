@@ -58,13 +58,29 @@ function rebuildLineMetadataFromTiles() {
     const hasKnownHeadway = Boolean(existing && Number(existing.headwayChecked || 0) === 1);
     const knownStopCount = Number(existing?.stopCount || 0);
 
+    const override = appState.routeOverridesByCity instanceof Map ? appState.routeOverridesByCity.get(lineKey) : null;
+    const overridePayload = override?.payload || null;
+    const overrideMode = overridePayload?.mode !== undefined && overridePayload?.mode !== null && String(overridePayload.mode) !== ""
+      ? Number(overridePayload.mode)
+      : null;
+    const overrideColor = String(overridePayload?.color || "").trim();
+    const overrideOperator = String(overridePayload?.operatorName || overridePayload?.operator || "").trim();
+    const overrideShort = String(overridePayload?.lineShortName || "").trim();
+    const overrideLong = String(overridePayload?.lineLongName || "").trim();
+    const overrideName = String(overridePayload?.lineName || "").trim() || [overrideShort, overrideLong].filter(Boolean).join(" | ");
+
+    const baseMode = props.mode || (typeof modeLabelFromRouteType === "function" ? modeLabelFromRouteType(Number(props.route_type)) : "");
+    const appliedMode = overrideMode !== null && typeof modeLabelFromRouteType === "function"
+      ? modeLabelFromRouteType(overrideMode)
+      : baseMode;
+
     lineByKey.set(lineKey, {
       lineKey,
-      routeType: Number(props.route_type),
-      lineName: String(props.line_name || ""),
-      color: props.color || "#d44d1f",
-      operatorName: String(props.operator_name || ""),
-      mode: props.mode || (typeof modeLabelFromRouteType === "function" ? modeLabelFromRouteType(Number(props.route_type)) : ""),
+      routeType: overrideMode !== null ? overrideMode : Number(props.route_type),
+      lineName: overrideName || String(props.line_name || ""),
+      color: overrideColor || props.color || "#d44d1f",
+      operatorName: overrideOperator || String(props.operator_name || ""),
+      mode: appliedMode || baseMode,
       routeOnestopId: String(props.onestop_id || ""),
       stopCount: Number.isFinite(knownStopCount) && knownStopCount > 0 ? knownStopCount : 0,
       frequencyBucket: hasKnownHeadway ? String(existing.frequencyBucket || "unknown").toLowerCase() : "unknown",
@@ -114,5 +130,49 @@ function rebuildLineMetadataFromTiles() {
   }
   if (typeof refreshUiFromState === "function") {
     refreshUiFromState();
+  }
+}
+
+// Push route override colors (and clear stale ones) into feature-state so the
+// rendered line color reflects manual edits without touching tile geometry.
+function applyRouteOverridesToMap() {
+  if (!appState.map || !appState.mapReady) {
+    return;
+  }
+
+  const overrides = appState.routeOverridesByCity instanceof Map ? appState.routeOverridesByCity : new Map();
+  const seen = new Set();
+
+  for (const [lineKey, override] of overrides) {
+    const color = String(override?.payload?.color || "").trim();
+    if (!color) {
+      continue;
+    }
+    seen.add(lineKey);
+    try {
+      appState.map.setFeatureState(
+        { source: "routes-vector", sourceLayer: "routes", id: lineKey },
+        { color }
+      );
+    } catch {
+      // feature may not be in the current tileset
+    }
+  }
+
+  const stateCache = appState.mapRouteFeatureStateCache;
+  if (stateCache instanceof Map) {
+    for (const featureId of Array.from(stateCache.keys())) {
+      if (seen.has(featureId)) {
+        continue;
+      }
+      try {
+        appState.map.setFeatureState(
+          { source: "routes-vector", sourceLayer: "routes", id: featureId },
+          { color: null }
+        );
+      } catch {
+        // best-effort cleanup
+      }
+    }
   }
 }

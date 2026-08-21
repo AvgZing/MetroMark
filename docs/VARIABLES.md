@@ -39,6 +39,7 @@ This document catalogs all major variables, objects, and data structures used th
 - **`appState.inFlightRouteStopCountKeys`** - Set of lineKeys with an in-flight stop-count fetch
 - **`appState.inFlightHeadwayLineKeys`** - Set of lineKeys with an in-flight headway fetch
 - **`appState.headwayBulkAttemptedKeys`** - Set of lineKeys already queried via the bulk headway endpoint
+- **`appState.routeOverridesByCity`** - Map of lineKey → `route_override` row (`payload` with name/mode/color/operator/orderingMode/stops); applied by vector-metadata.js and the line view (custom stop order)
 
 ### Active Routes & Data
 - **`appState.cities`** - Array of available city preset objects (for filter presets)

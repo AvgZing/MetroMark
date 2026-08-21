@@ -1,10 +1,15 @@
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
 
 const config = require("../../admin/config");
 const db = require("../../processors/data");
 const { getTransitlandMetrics } = require("../../processors/transitland");
 const { postgresMetrics } = require("../../processors/postgres");
+const { getTilesStats } = require("../tiles");
 const { isAdminAuthorized } = require("./auth");
+
+const TILES_FILE = path.join(__dirname, "..", "..", "..", "data", "tiles", "routes.pmtiles");
 
 const router = express.Router();
 
@@ -20,13 +25,28 @@ router.get("/admin/stats", async (req, res) => {
       vector: config.HARVEST_DAILY_VECTOR_LIMIT,
       routing: config.HARVEST_DAILY_ROUTING_LIMIT
     });
-    const accountStats = await db.getAccountStats();
+    let accountStats = null;
+    try {
+      accountStats = await db.getAccountStats();
+    } catch (error) {
+      accountStats = { unavailable: true, reason: error.message };
+    }
     const harvestSummary = await db.getHarvestSummary();
     const cacheStats = await db.getCacheStats();
     const dbFileStats = await db.getDatabaseFileStats();
+    const coverageStats = await db.getRouteMetadataCoverageStats();
+    const usageHistory = await db.getUsageHistory(7);
     const transitland = getTransitlandMetrics();
+    const tilesServed = getTilesStats();
     const mem = process.memoryUsage();
     const perf = process.resourceUsage();
+
+    let archiveSizeBytes = 0;
+    try {
+      archiveSizeBytes = fs.existsSync(TILES_FILE) ? fs.statSync(TILES_FILE).size : 0;
+    } catch {
+      archiveSizeBytes = 0;
+    }
 
     return res.json({
       nowIso: new Date().toISOString(),
@@ -68,6 +88,25 @@ router.get("/admin/stats", async (req, res) => {
       },
       accounts: accountStats,
       cache: cacheStats,
+      archive: {
+        sizeBytes: archiveSizeBytes,
+        sizeMb: Number((archiveSizeBytes / (1024 * 1024)).toFixed(2))
+      },
+      routeCoverage: coverageStats,
+      usageHistory,
+      tilesServed: {
+        requests: Number(tilesServed.requests || 0),
+        bytesServed: Number(tilesServed.bytesServed || 0),
+        averageMs: Number(tilesServed.averageMs || 0),
+        lastAt: tilesServed.lastAt || null
+      },
+      system: {
+        supabaseReachable: Boolean(accountStats && !accountStats.unavailable),
+        harvestEnabled: Boolean(config.HARVEST_ENABLED),
+        serviceWorkerEnabled: Boolean(config.SW_ENABLED),
+        appEnv: config.APP_ENV,
+        envFile: config.ENV_FILE
+      },
       database: {
         path: dbFileStats.dbPath,
         exists: dbFileStats.exists,

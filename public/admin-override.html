@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>MetroMark Admin - Route Overrides</title>
+    <title>MetroMark Admin - Override Editor</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -13,44 +13,60 @@
     <link href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" rel="stylesheet" />
     <link rel="stylesheet" href="/Styles/base.css" />
     <link rel="stylesheet" href="/Styles/admin-override.css" />
+    <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
+    <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/Assets/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="MetroMark" />
+    <link rel="manifest" href="/Assets/icons/site.webmanifest" />
+    <meta name="theme-color" content="#333333" />
   </head>
-  <body>
-    <div class="admin-override-shell">
+  <body class="override-body">
+    <main class="admin-shell auth-shell" id="adminLoginShell" hidden>
+      <section class="card auth-card">
+        <h2>Admin Login</h2>
+        <p class="subtle">Sign in with an admin account (granted the admin role, or the env bootstrap admin).</p>
+        <label for="adminEmailInput">Email</label>
+        <input id="adminEmailInput" type="email" placeholder="admin@example.com" autocomplete="username" />
+        <label for="adminPasswordInput">Password</label>
+        <input id="adminPasswordInput" type="password" placeholder="Password" autocomplete="current-password" />
+        <button id="loginBtn" type="button">Login</button>
+        <p id="loginStatusMessage" class="status">Waiting for login.</p>
+      </section>
+    </main>
+
+    <div class="admin-override-shell" id="adminApp" hidden>
       <aside class="override-sidebar">
         <div class="sidebar-head panel">
           <div>
-            <p class="brand-kicker">Route Override Editor</p>
+            <p class="brand-kicker">Override Editor</p>
             <h1>MetroMark Admin</h1>
-            <p class="subtle"><a href="/admin">Back to admin console</a></p>
+            <p class="subtle"><a href="/admin">Back to console</a></p>
           </div>
         </div>
 
-        <div class="panel override-controls-panel">
-          <h2>Edit Mode</h2>
-          <div class="override-mode-selector">
-            <label for="overrideLineKey">Load Route By lineKey</label>
-            <div class="inline-route-loader">
-              <input id="overrideLineKey" type="text" placeholder="route onestop_id / lineKey" />
-              <button id="loadOverrideRouteBtn" type="button">Load</button>
-            </div>
-          </div>
-          <div class="override-mode-selector">
-            <select id="overrideRouteSelect">
-              <option value="">Select a route to edit...</option>
-            </select>
-          </div>
-          <div class="override-status" id="overrideStatus">Ready</div>
+        <div class="panel override-hint-panel">
+          <p class="microcopy">
+            Click a <strong>route</strong> or <strong>station</strong> on the map to edit its
+            properties. Edited items are highlighted and logged below. Use the operator panel
+            to hide whole operators by default (shuttles, private GTFS, etc.).
+          </p>
         </div>
 
-        <div class="panel override-edit-panel" id="overrideEditPanel" hidden>
-          <h2>Route Properties</h2>
-          
-          <label>Agency</label>
-          <input id="overrideAgency" type="text" placeholder="Agency name" />
-
-          <label>Mode</label>
-          <select id="overrideMode">
-            <option value="">-- Select mode --</option>
+        <div class="panel override-edit-panel" id="routeEditPanel" hidden>
+          <h2>Route</h2>
+          <p class="microcopy" id="routeIdentity"></p>
+          <label>Name</label>
+          <input id="routeName" type="text" placeholder="Display name" />
+          <label>Short Name</label>
+          <input id="routeShortName" type="text" placeholder="e.g. 40" />
+          <label>Long Name</label>
+          <input id="routeLongName" type="text" placeholder="e.g. Northgate - Rainier Beach" />
+          <label>Operator</label>
+          <input id="routeOperator" type="text" placeholder="Operator name" />
+          <label>Mode (route_type)</label>
+          <select id="routeMode">
+            <option value="">-- Keep current --</option>
             <option value="0">Tram</option>
             <option value="1">Metro</option>
             <option value="2">Rail</option>
@@ -62,62 +78,114 @@
             <option value="11">Trolleybus</option>
             <option value="12">Monorail</option>
           </select>
-
-          <label>Frequency (min)</label>
-          <input id="overrideFrequency" type="number" placeholder="Minutes between departures" />
-
+          <label>Color</label>
+          <input id="routeColor" type="text" placeholder="#d44d1f" />
           <label>Stop Ordering Default</label>
-          <select id="overrideOrderingMode">
+          <select id="routeOrdering">
             <option value="">Auto</option>
             <option value="geometry-revised">Main</option>
             <option value="legacy-geometry">U-Shape</option>
             <option value="fractions">Loop</option>
           </select>
-
-          <h3>Review Settings</h3>
           <div class="review-setting">
             <label>
-              <input id="problematicGeometryCheckbox" type="checkbox" />
-              Mark as Problematic Geometry
+              <input id="routeProblematic" type="checkbox" />
+              Disabled by default (problematic geometry)
             </label>
-            <p class="setting-note">Routes marked as problematic will be hidden when this filter is off.</p>
+            <p class="setting-note">Hidden for users unless they enable "Show problematic geometries".</p>
           </div>
 
-          <h3>Operators for This City</h3>
-          <div class="operator-review-list" id="operatorReviewList">
-            <p class="microcopy">Loading operators...</p>
+          <h3>Stops / Track Routing</h3>
+          <p class="microcopy">Set a custom stop order for the line view (listed top to bottom).</p>
+          <div id="routeStopsList" class="route-stops-list">
+            <p class="microcopy">Load a route to see its stops.</p>
           </div>
-
-          <h3>Stops</h3>
-          <div class="override-stops-list" id="overrideStopsList"></div>
+          <div class="override-actions">
+            <button id="saveStopOrderBtn" class="btn" type="button">Save Stop Order</button>
+            <button id="clearStopOrderBtn" class="btn btn-subtle" type="button">Clear Custom Order</button>
+          </div>
 
           <div class="override-actions">
-            <button id="saveOverrideBtn" class="btn" type="button">Save Changes</button>
-            <button id="discardOverrideBtn" class="btn btn-subtle" type="button">Discard</button>
+            <button id="saveRouteBtn" class="btn" type="button">Save Route Edits</button>
+            <button id="discardRouteBtn" class="btn btn-subtle" type="button">Discard</button>
+          </div>
+          <p class="status" id="routeEditStatus"></p>
+        </div>
+
+        <div class="panel override-edit-panel" id="stationEditPanel" hidden>
+          <h2>Station</h2>
+          <p class="microcopy" id="stationIdentity"></p>
+          <label>Name</label>
+          <input id="stationName" type="text" placeholder="Station name" />
+          <label>Latitude</label>
+          <input id="stationLat" type="number" step="any" placeholder="47.608" />
+          <label>Longitude</label>
+          <input id="stationLon" type="number" step="any" placeholder="-122.335" />
+          <label>Note</label>
+          <input id="stationNote" type="text" placeholder="Why this override?" />
+          <div class="override-actions">
+            <button id="saveStationBtn" class="btn" type="button">Save Station Edits</button>
+            <button id="discardStationBtn" class="btn btn-subtle" type="button">Discard</button>
+          </div>
+          <p class="status" id="stationEditStatus"></p>
+        </div>
+
+        <div class="panel">
+          <h2>Operators (batch hide)</h2>
+          <p class="microcopy">Hide every route by an operator by default; users can turn them back on.</p>
+          <div class="override-actions">
+            <button id="hideAllOperatorsBtn" class="btn" type="button">Hide all visible</button>
+            <button id="showAllOperatorsBtn" class="btn btn-subtle" type="button">Show all visible</button>
+          </div>
+          <div id="operatorList" class="operator-review-list">
+            <p class="microcopy">Loading operators for the visible area...</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Batch by Mode</h2>
+          <p class="microcopy">Mark every route of a mode in the viewport as disabled-by-default (or clear it).</p>
+          <div class="row">
+            <select id="batchModeSelect">
+              <option value="">All modes</option>
+              <option value="0">Tram</option>
+              <option value="1">Metro</option>
+              <option value="2">Rail</option>
+              <option value="3">Bus</option>
+              <option value="4">Ferry</option>
+              <option value="5">Cable Tram</option>
+              <option value="6">Aerial</option>
+              <option value="7">Funicular</option>
+              <option value="11">Trolleybus</option>
+              <option value="12">Monorail</option>
+            </select>
+          </div>
+          <div class="override-actions">
+            <button id="batchHideBtn" class="btn" type="button">Hide matching by default</button>
+            <button id="batchShowBtn" class="btn btn-subtle" type="button">Show matching</button>
+          </div>
+          <p class="status" id="batchStatus"></p>
+        </div>
+
+        <div class="panel">
+          <h2>Manual Edits Log</h2>
+          <div id="manualEditsLog" class="manual-edits-log">
+            <p class="microcopy">No manual edits recorded yet.</p>
           </div>
         </div>
       </aside>
 
       <main class="override-map-stage">
-        <div class="map-overlay-controls" role="group" aria-label="Map style">
-          <button id="overrideStreetsModeBtn" class="btn btn-icon map-mode-btn" type="button" aria-label="Streets map view">
-            <svg class="map-mode-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 6.5 8.5 4l7 2.5L21 4v13.5L15.5 20l-7-2.5L3 20V6.5Zm5.5-1v12M15.5 6v12" />
-            </svg>
-            <span class="mode-label">Streets</span>
-          </button>
-          <button id="overrideSatelliteModeBtn" class="btn btn-icon map-mode-btn" type="button" aria-label="Satellite map view">
-            <svg class="map-mode-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m5 15 6 4 8-10-6-4-8 10Zm2.6-.5 3.8 2.5m2.2-8.5 3.8 2.5" />
-            </svg>
-            <span class="mode-label">Satellite</span>
-          </button>
+        <div class="map-overlay-controls" role="group" aria-label="Map controls">
+          <button id="refreshMapBtn" class="btn" type="button">Refresh Map</button>
+          <button id="logoutBtn" class="btn btn-subtle" type="button">Logout</button>
         </div>
         <div id="overrideMap"></div>
       </main>
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
     <script src="/Scripts/Admin/admin-override.js" defer></script>
   </body>
 </html>

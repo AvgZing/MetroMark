@@ -444,9 +444,17 @@ async function init() {
       });
     });
 
-    const startupT0 = performance.now();
-    await startupDataPromise;
-    console.log(`[perf] init: startup data (cities + session) in ${(performance.now() - startupT0).toFixed(1)}ms`);
+  const startupT0 = performance.now();
+  await startupDataPromise;
+  console.log(`[perf] init: startup data (cities + session) in ${(performance.now() - startupT0).toFixed(1)}ms`);
+
+    if (typeof initProgressQueueSync === "function") {
+      initProgressQueueSync();
+    }
+
+    if (typeof loadReviewsForCity === "function" && appState.initialCitySlug) {
+      loadReviewsForCity(appState.initialCitySlug).catch(() => {});
+    }
 
     await loadProgress();
 

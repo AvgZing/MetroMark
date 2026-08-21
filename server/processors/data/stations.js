@@ -92,9 +92,25 @@ async function upsertStationOverride(stableKey, manualName, manualLat, manualLon
   });
 }
 
+async function listStationOverrides() {
+  assertLocalConfigured();
+  const result = await localQuery(
+    "select stable_key,manual_name,manual_lat,manual_lon,note,updated_at from public.station_override order by updated_at desc limit 5000"
+  );
+  return (result.rows || []).map((row) => ({
+    stableKey: row.stable_key,
+    manualName: row.manual_name,
+    manualLat: Number.isFinite(Number(row.manual_lat)) ? Number(row.manual_lat) : null,
+    manualLon: Number.isFinite(Number(row.manual_lon)) ? Number(row.manual_lon) : null,
+    note: row.note,
+    updatedAt: toEpochSeconds(row.updated_at) || 0
+  }));
+}
+
 module.exports = {
   loadStationOverridesCache,
   upsertStopTranslation,
   getStationOverride,
-  upsertStationOverride
+  upsertStationOverride,
+  listStationOverrides
 };

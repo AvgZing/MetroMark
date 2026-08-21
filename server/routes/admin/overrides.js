@@ -6,6 +6,19 @@ const { isAdminAuthorized } = require("./auth");
 
 const router = express.Router();
 
+router.get("/admin/overrides/station", async (req, res) => {
+  if (!(await isAdminAuthorized(req))) {
+    return res.status(403).json({ error: "Admin authorization required." });
+  }
+
+  try {
+    const overrides = await db.listStationOverrides();
+    return res.json({ overrides });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to list station overrides.", detail: error.message });
+  }
+});
+
 router.post("/admin/overrides/station", async (req, res) => {
   if (!(await isAdminAuthorized(req))) {
     res.status(403).json({ error: "Admin authorization required." });

@@ -1,5 +1,3 @@
-<!--Helpful Note: When you wire up mode/agency/frequency (and if you add color/rename overrides later), the correct pattern — which the current architecture already follows — is: apply them client-side on top of the tile-derived metadata, not baked into the tiles. Concretely, rebuildLineMetadataFromTiles() (vector-metadata.js) is the single place that turns tile properties into lineSummaries; that's where overrides should be merged (e.g. line.mode = override.mode || tileMode). That keeps overrides separate, durable across refetch, and correct for all users without admin auth-->
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -13,25 +11,32 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="/Styles/admin.css" />
+    <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
+    <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/Assets/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="MetroMark" />
+    <link rel="manifest" href="/Assets/icons/site.webmanifest" />
+    <meta name="theme-color" content="#333333" />
   </head>
   <body>
-    <main class="admin-shell" id="adminLoginShell">
+    <main class="admin-shell" id="adminLoginShell" hidden>
       <section class="card auth-card">
         <h2>Admin Login</h2>
-        <p class="subtle">Use the env-backed admin credentials to unlock the console for this session.</p>
-        <label for="adminKeyInput">Username</label>
+        <p class="subtle">Sign in with an admin account (Supabase account granted the admin role, or the env-backed bootstrap admin).</p>
+        <label for="adminEmailInput">Email</label>
         <div class="row">
-          <input id="adminKeyInput" type="text" placeholder="Admin username" autocomplete="username" />
+          <input id="adminEmailInput" type="email" placeholder="admin@example.com" autocomplete="username" />
         </div>
-        <label for="overrideKeyInput">Password</label>
+        <label for="adminPasswordInput">Password</label>
         <div class="row">
           <input
-            id="overrideKeyInput"
+            id="adminPasswordInput"
             type="password"
-            placeholder="Admin password"
+            placeholder="Password"
             autocomplete="current-password"
           />
-          <button id="saveKeyBtn" type="button">Login</button>
+          <button id="loginBtn" type="button">Login</button>
         </div>
         <p id="loginStatusMessage" class="status">Waiting for login.</p>
       </section>
@@ -43,12 +48,19 @@
           <p class="kicker">MetroMark Operations</p>
           <h1>Admin Console</h1>
           <p class="subtle">Supabase/PostGIS runtime tracking and manual operations.</p>
-          <p class="subtle"><a href="/admin/override">Open manual override editor</a></p>
+          <p class="subtle">
+            <a href="/admin/override">Open map override editor</a>
+            &middot;
+            <a href="/">Open app</a>
+          </p>
         </div>
       </header>
 
-      <section class="card auth-card">
-        <h2>Session</h2>
+      <section class="card session-row">
+        <div>
+          <strong id="sessionEmail">—</strong>
+          <span id="sessionSource" class="subtle"></span>
+        </div>
         <div class="row">
           <button id="refreshAllBtn" type="button">Refresh</button>
           <button id="logoutBtn" type="button">Logout</button>
@@ -56,25 +68,76 @@
         <p id="statusMessage" class="status">Ready.</p>
       </section>
 
+      <section class="kpi-grid" id="kpiGrid">
+        <article class="card kpi-card"><p class="kpi-label">Users</p><p class="kpi-value" id="kpiUsers">—</p><p class="kpi-sub" id="kpiUsersSub"></p></article>
+        <article class="card kpi-card"><p class="kpi-label">Visited Stations</p><p class="kpi-value" id="kpiVisits">—</p><p class="kpi-sub">total marked</p></article>
+        <article class="card kpi-card"><p class="kpi-label">Routes in Archive</p><p class="kpi-value" id="kpiRoutes">—</p><p class="kpi-sub" id="kpiRoutesSub"></p></article>
+        <article class="card kpi-card"><p class="kpi-label">Cache Rows</p><p class="kpi-value" id="kpiCache">—</p><p class="kpi-sub" id="kpiCacheSub"></p></article>
+        <article class="card kpi-card"><p class="kpi-label">Database</p><p class="kpi-value" id="kpiDb">—</p><p class="kpi-sub">local PostGIS</p></article>
+        <article class="card kpi-card"><p class="kpi-label">API Burn Today</p><p class="kpi-value" id="kpiBurn">—</p><p class="kpi-sub">REST / vector / routing</p></article>
+      </section>
+
       <section class="grid">
         <article class="card">
           <h2>Usage Burn</h2>
-          <dl id="usageStats" class="kv"></dl>
+          <div id="usageBars"></div>
+          <p class="status" id="usageStatus"></p>
+          <h3>Usage History (7 days)</h3>
+          <div id="usageHistory" class="usage-history"></div>
+        </article>
+
+        <article class="card">
+          <h2>Route Coverage</h2>
+          <dl id="routeCoverage" class="kv"></dl>
+          <h3>Tile Archive Served</h3>
+          <dl id="tilesServed" class="kv"></dl>
+        </article>
+
+        <article class="card">
+          <h2>System Health</h2>
+          <dl id="systemHealth" class="kv"></dl>
         </article>
 
         <article class="card">
           <h2>Harvest State</h2>
           <dl id="harvestStats" class="kv"></dl>
+          <h3>Pending Queue</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>City</th>
+                <th>Status</th>
+                <th>Pending</th>
+                <th>Priority</th>
+                <th>Updated</th>
+                <th>Error</th>
+              </tr>
+            </thead>
+            <tbody id="queueBody"></tbody>
+          </table>
         </article>
 
         <article class="card">
-          <h2>Cache and Database</h2>
+          <h2>Accounts &amp; Admin Access</h2>
+          <div id="accountStats" class="kv"></div>
+          <table>
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Active</th>
+                <th>Last Login</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="accountsBody"></tbody>
+          </table>
+          <p class="status" id="accountsStatus"></p>
+        </article>
+
+        <article class="card">
+          <h2>Storage &amp; Cache</h2>
           <dl id="storageStats" class="kv"></dl>
-        </article>
-
-        <article class="card">
-          <h2>Accounts</h2>
-          <dl id="accountStats" class="kv"></dl>
         </article>
 
         <article class="card">
@@ -89,10 +152,11 @@
       </section>
 
       <section class="card">
-        <h2>Manual Actions</h2>
+        <h2>Operations</h2>
         <div class="action-grid">
           <button id="runHarvestBtn" type="button">Run Harvest Cycle</button>
           <button id="runBackupBtn" type="button">Run Nonrecoverable Backup</button>
+          <button id="rebuildTilesBtn" type="button">Rebuild Tiles</button>
           <div class="inline-action">
             <label for="queueCitySelect">Queue City Refresh</label>
             <select id="queueCitySelect"></select>
@@ -106,45 +170,6 @@
           <button id="updateViewportBtn" type="button">Fetch + Rebuild Viewport</button>
         </div>
         <p id="viewportUpdateStatus" class="status"></p>
-
-        <h3>Station Override</h3>
-        <div class="override-grid">
-          <input id="overrideStationKey" type="text" placeholder="stationKey (required)" />
-          <input id="overrideManualName" type="text" placeholder="manualName" />
-          <input id="overrideManualLat" type="number" step="any" placeholder="manualLat" />
-          <input id="overrideManualLon" type="number" step="any" placeholder="manualLon" />
-          <input id="overrideNote" type="text" placeholder="note" />
-          <button id="applyOverrideBtn" type="button">Apply Override + Clear Cache</button>
-        </div>
-
-        <h3>Route Overrides</h3>
-        <div class="override-grid">
-          <input id="routeLineKey" type="text" placeholder="lineKey (required)" />
-          <input id="routeCitySlug" type="text" placeholder="citySlug (optional)" />
-          <div>
-            <button id="loadRouteBtn" type="button">Load</button>
-            <button id="saveRouteBtn" type="button">Save</button>
-            <button id="deleteRouteBtn" type="button">Delete</button>
-          </div>
-          <textarea id="routePayload" rows="12" cols="80" placeholder='{"stops":[], "agency": "", "mode":"", "frequency": null}'></textarea>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Pending Harvest Queue</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>City</th>
-              <th>Status</th>
-              <th>Pending</th>
-              <th>Priority</th>
-              <th>Updated</th>
-              <th>Error</th>
-            </tr>
-          </thead>
-          <tbody id="queueBody"></tbody>
-        </table>
       </section>
 
       <section class="card">

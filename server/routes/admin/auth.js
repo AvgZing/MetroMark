@@ -48,32 +48,71 @@ function getAdminSession(req) {
   return { token, ...session };
 }
 
-function isConfiguredAdminLogin(username, password) {
-  if (!config.ADMIN_USERNAME || !config.ADMIN_PASSWORD) {
-    return false;
+// Admin accounts live in Supabase (profiles.role = 'admin'). The env-backed
+// account (ADMIN_EMAIL + ADMIN_PASSWORD) is the bootstrap admin: those exact
+// credentials always grant access and are auto-promoted on login, so the env
+// default admin works even before the startup seed runs.
+async function loginAdminAccount(email, password) {
+  const normalizedEmail = normalizeEmailSafe(email);
+  const bootstrapMatch =
+    normalizedEmail &&
+    normalizedEmail === normalizeEmailSafe(config.ADMIN_EMAIL) &&
+    String(password || "") === String(config.ADMIN_PASSWORD || "");
+
+  if (bootstrapMatch) {
+    try {
+      await db.seedDefaultAdmin();
+    } catch (error) {
+      console.warn("[admin-auth] bootstrap admin seed failed:", error.message);
+    }
+    return {
+      email: normalizedEmail,
+      role: "admin",
+      source: "env-bootstrap"
+    };
   }
 
-  return normalizeAdminText(username) === config.ADMIN_USERNAME && String(password || "") === config.ADMIN_PASSWORD;
+  const result = await db.loginAccount(email, password);
+  const user = result.user;
+  if (!user || String(user.role || "").trim() !== "admin") {
+    const error = new Error("Account is not an admin.");
+    error.status = 403;
+    throw error;
+  }
+  return {
+    email: user.email,
+    role: user.role,
+    source: "supabase-role"
+  };
 }
 
-function attachAdminSession(res, token) {
-  return res.json({
-    ok: true,
-    token,
-    expiresInMs: ADMIN_SESSION_TTL_MS
-  });
+function normalizeEmailSafe(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 router.post("/admin/login", async (req, res) => {
-  const username = normalizeAdminText(req.body?.username);
+  const email = normalizeAdminText(req.body?.email || req.body?.username);
   const password = String(req.body?.password || "");
 
-  if (!isConfiguredAdminLogin(username, password)) {
-    return res.status(401).json({ error: "Invalid admin username or password." });
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required." });
   }
 
-  const token = issueAdminSession(username);
-  return attachAdminSession(res, token);
+  try {
+    const account = await loginAdminAccount(email, password);
+    const token = issueAdminSession(account.email);
+    return res.json({
+      ok: true,
+      token,
+      email: account.email,
+      role: account.role,
+      source: account.source,
+      expiresInMs: ADMIN_SESSION_TTL_MS
+    });
+  } catch (error) {
+    const status = error.status || (String(error.message || "").includes("Invalid") ? 401 : 401);
+    return res.status(status).json({ error: error.message || "Invalid admin email or password." });
+  }
 });
 
 router.post("/admin/logout", (req, res) => {
@@ -90,7 +129,7 @@ router.get("/admin/session", (req, res) => {
     return res.status(401).json({ error: "Admin session required." });
   }
 
-  return res.json({ ok: true, username: session.username });
+  return res.json({ ok: true, email: session.username });
 });
 
 async function isAdminAuthorized(req) {

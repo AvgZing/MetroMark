@@ -84,7 +84,7 @@ function addMapRouteLayers(map) {
       visibility: "none"
     },
     paint: {
-      "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
+      "line-color": ["coalesce", ["feature-state", "color"], ["get", "color"], "#d44d1f"],
       "line-width": [
         "interpolate",
         ["linear"],
@@ -119,7 +119,7 @@ function addMapRouteLayers(map) {
     source: "routes-vector",
     "source-layer": "routes",
     paint: {
-      "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
+      "line-color": ["coalesce", ["feature-state", "color"], ["get", "color"], "#d44d1f"],
       "line-width": [
         "interpolate",
         ["linear"],
@@ -294,7 +294,7 @@ function addMapRouteLayers(map) {
       visibility: "none"
     },
     paint: {
-      "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
+      "line-color": ["coalesce", ["feature-state", "color"], ["get", "color"], "#d44d1f"],
       "line-width": [
         "interpolate",
         ["linear"],
@@ -329,7 +329,7 @@ function addMapRouteLayers(map) {
     source: "routes-vector",
     "source-layer": "routes",
     paint: {
-      "line-color": ["coalesce", ["get", "color"], "#d44d1f"],
+      "line-color": ["coalesce", ["feature-state", "color"], ["get", "color"], "#d44d1f"],
       "line-width": [
         "interpolate",
         ["linear"],

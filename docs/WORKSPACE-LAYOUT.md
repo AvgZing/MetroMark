@@ -12,6 +12,8 @@
     method-loop.js, method-main.js, method-ushape.js, ranking.js, spatial.js
   - `UI/sidebar/` — filters-routes.js, filter-bar.js, filter-presets.js, map-data.js,
     progress-panel.js, route-list.js, routes-focus.js
+  - `UI/progress-offline-queue.js` — IndexedDB queue that syncs visited-station toggles made
+    while offline
 - `Scripts/Map/` — interactions.js, map-events.js, route-layer-defs.js, transit-loading.js,
   map-sources.js, map-stops.js, vector-metadata.js, tile-backfill.js, underlay.js,
   viewport-cache.js, geometry-utils.js, zoom-readout.js
@@ -23,6 +25,8 @@
 - `admin/` — config.js, harvest-core.js, harvest-headway.js, backup-nonrecoverable.js
 - `routes/` — Express route handlers (admin, auth, catalog, health, helpers, presets,
   progress, tiles, tiles-backfill, transit)
+  - `routes/admin/` — auth (account admin login), stats (dashboard), actions (harvest/backup/
+    rebuild-tiles/backfill/queue-city), accounts (grant/revoke admin role), overrides, reviews
 - `processors/` — Postgres+Supabase data access layer, spatial, city-presets, transitland
   (reexport), postgres/, supabase/
 - `sources/transitland/` — Transitland API interface (index.js, fetch.js, routes.js,

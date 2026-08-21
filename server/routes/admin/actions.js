@@ -5,6 +5,7 @@ const { getCityBySlug } = require("../../processors/city-presets");
 const { runHarvestCore } = require("../../admin/harvest-core");
 const { runNonrecoverableBackup } = require("../../admin/backup-nonrecoverable");
 const { runBackfill } = require("../../sources/transitland/backfill");
+const { buildPmtiles } = require("../../scripts/build/build-pmtiles");
 const { isAdminAuthorized } = require("./auth");
 
 const router = express.Router();
@@ -67,6 +68,23 @@ router.post("/admin/tiles/backfill", async (req, res) => {
     return res.status(400).json({
       error: "Viewport update failed.",
       detail: String(error?.message || error)
+    });
+  }
+});
+
+router.post("/admin/actions/rebuild-tiles", async (req, res) => {
+  if (!(await isAdminAuthorized(req))) {
+    res.status(403).json({ error: "Admin authorization required." });
+    return;
+  }
+
+  try {
+    const built = await buildPmtiles({ log: { log: () => {} } });
+    return res.json({ ok: true, tileCount: built.tileCount, sizeBytes: built.sizeBytes });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Tile rebuild failed.",
+      detail: error.message
     });
   }
 });
