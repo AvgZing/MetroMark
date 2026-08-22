@@ -33,7 +33,7 @@ where npm >nul 2>&1
 if errorlevel 1 (
   echo.
   echo Node.js is not installed or not on PATH.
-  echo Install it from https://nodejs.org (LTS recommended).
+  echo Install it from https://nodejs.org - LTS recommended.
   echo Then close this window and run this file again.
   echo.
   pause
