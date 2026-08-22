@@ -52,5 +52,6 @@
 
 ## Generated / Installed
 - `node_modules/`, `package-lock.json`
+- `data/` — generated per-machine tile/NDJSON store (**gitignored, never synced**; each machine builds its own via the harvesters)
 - `data/tiles/geo/*.ndjson` — durable route-geometry source of truth
 - `data/tiles/routes.pmtiles` — derived PMTiles archive (rebuilt by tippecanoe)

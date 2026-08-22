@@ -18,6 +18,7 @@ operations/
   supabase-baseline.sql / supabase-changes.sql            # Supabase baseline + migrations
   state/world-harvest.json # Resumable world-harvest progress (gitignored)
   Logs/                  # Server + harvester logs (gitignored)
+  data/tiles/            # Generated tile/NDJSON store (gitignored, per-machine - never synced)
 ```
 
 ## How it works

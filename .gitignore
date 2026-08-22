@@ -1,4 +1,4 @@
-# Local prototypes and non-app reference material
+﻿# Local prototypes and non-app reference material
 
 # Environment and secrets
 .env
@@ -9,8 +9,17 @@
 
 # Node / build artifacts
 node_modules/
+docs/working
 
 # OS/editor noise
 .DS_Store
 Thumbs.db
 .vscode/
+
+# Operations runtime state and logs (maintenance, not committed)
+operations/state/
+operations/Logs/
+
+# Generated per-machine data (tiles, NDJSON, backups). Never synced via git -
+# each machine builds its own through the harvesters.
+data/
