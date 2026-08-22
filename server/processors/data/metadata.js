@@ -53,50 +53,68 @@ async function setRouteMetadata(lineKey, metadata) {
 
   const meta = metadata || {};
 
+  // Partial merge: only the columns the caller explicitly provides are
+  // written; everything else is preserved. This stops a non-headway update
+  // (e.g. a route-stops fetch) from clobbering stored headway/stop-count data.
+  const COLUMN_MAP = {
+    routeOnestopId: "route_onestop_id",
+    lineName: "line_name",
+    lineShortName: "line_short_name",
+    lineLongName: "line_long_name",
+    operatorName: "operator_name",
+    mode: "mode",
+    routeType: "route_type",
+    routeFeedId: "route_feed_id",
+    serviceTier: "service_tier",
+    frequencyBucket: "frequency_bucket",
+    headwayBestMinutes: "headway_best_minutes",
+    headwaySource: "headway_source",
+    headwayChecked: "headway_checked",
+    color: "color",
+    stopCount: "stop_count"
+  };
+
+  const columns = [];
+  const values = [];
+  const setClauses = [];
+
+  for (const [prop, column] of Object.entries(COLUMN_MAP)) {
+    if (!Object.prototype.hasOwnProperty.call(meta, prop)) {
+      continue;
+    }
+
+    let value;
+    if (prop === "routeType") {
+      value = Number.isFinite(Number(meta[prop])) ? Number(meta[prop]) : null;
+    } else if (prop === "frequencyBucket") {
+      value = normalizeText(meta[prop]) || "unknown";
+    } else if (prop === "headwayBestMinutes") {
+      value = Number.isFinite(Number(meta[prop])) ? Number(meta[prop]) : null;
+    } else if (prop === "headwayChecked") {
+      value = Number(meta[prop] || 0) === 1 ? 1 : 0;
+    } else if (prop === "stopCount") {
+      value = Number(meta[prop] || 0);
+    } else {
+      value = normalizeText(meta[prop]);
+    }
+
+    columns.push(column);
+    values.push(value);
+    setClauses.push(`${column} = excluded.${column}`);
+  }
+
+  if (!columns.length) {
+    return { lineKey: normalizedLineKey };
+  }
+
+  const placeholders = columns.map((_, index) => `$${index + 2}`).join(", ");
   await localQuery(
-    `insert into public.route_metadata (
-      line_key, route_onestop_id, line_name, line_short_name, line_long_name,
-      operator_name, mode, route_type, route_feed_id, service_tier,
-      frequency_bucket, headway_best_minutes, headway_source, headway_checked,
-      color, stop_count, updated_at
-    ) values (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now()
-    )
-    on conflict (line_key) do update set
-      route_onestop_id = excluded.route_onestop_id,
-      line_name = excluded.line_name,
-      line_short_name = excluded.line_short_name,
-      line_long_name = excluded.line_long_name,
-      operator_name = excluded.operator_name,
-      mode = excluded.mode,
-      route_type = excluded.route_type,
-      route_feed_id = excluded.route_feed_id,
-      service_tier = excluded.service_tier,
-      frequency_bucket = excluded.frequency_bucket,
-      headway_best_minutes = excluded.headway_best_minutes,
-      headway_source = excluded.headway_source,
-      headway_checked = excluded.headway_checked,
-      color = excluded.color,
-      stop_count = excluded.stop_count,
-      updated_at = excluded.updated_at`,
-    [
-      normalizedLineKey,
-      normalizeText(meta.routeOnestopId),
-      normalizeText(meta.lineName),
-      normalizeText(meta.lineShortName),
-      normalizeText(meta.lineLongName),
-      normalizeText(meta.operatorName),
-      normalizeText(meta.mode),
-      Number.isFinite(Number(meta.routeType)) ? Number(meta.routeType) : null,
-      normalizeText(meta.routeFeedId),
-      normalizeText(meta.serviceTier),
-      normalizeText(meta.frequencyBucket) || "unknown",
-      Number.isFinite(Number(meta.headwayBestMinutes)) ? Number(meta.headwayBestMinutes) : null,
-      normalizeText(meta.headwaySource),
-      Number(meta.headwayChecked || 0) === 1 ? 1 : 0,
-      normalizeText(meta.color),
-      Number(meta.stopCount || 0)
-    ]
+    `insert into public.route_metadata (line_key, ${columns.join(", ")}, updated_at)
+     values ($1, ${placeholders}, now())
+     on conflict (line_key) do update set
+       ${setClauses.join(", ")},
+       updated_at = excluded.updated_at`,
+    [normalizedLineKey, ...values]
   );
 
   return { lineKey: normalizedLineKey };

@@ -51,10 +51,6 @@ async function getRouteStopsTransit(lineKey, options = {}) {
             routeType: Number.isFinite(Number(cachedLineSummary.routeType)) ? Number(cachedLineSummary.routeType) : null,
             routeFeedId: cachedLineSummary.routeFeedId || "",
             serviceTier: cachedLineSummary.serviceTier || "",
-            frequencyBucket: cachedLineSummary.frequencyBucket || "unknown",
-            headwayBestMinutes: Number.isFinite(Number(cachedLineSummary.headwayBestMinutes)) ? Number(cachedLineSummary.headwayBestMinutes) : null,
-            headwaySource: cachedLineSummary.headwaySource || "",
-            headwayChecked: Number(cachedLineSummary.headwayChecked || 0) === 1 ? 1 : 0,
             color: cachedLineSummary.color || "#d44d1f",
             stopCount: Number(cachedLineSummary.stopCount || 0)
           });
@@ -169,10 +165,6 @@ async function getRouteStopsTransit(lineKey, options = {}) {
         routeType: line.routeType ?? routeMetadata.routeType,
         routeFeedId: line.routeFeedId || routeMetadata.routeFeedId,
         serviceTier: line.serviceTier || routeMetadata.serviceTier,
-        frequencyBucket: routeMetadata.frequencyBucket || "unknown",
-        headwayBestMinutes: routeMetadata.headwayBestMinutes ?? null,
-        headwaySource: routeMetadata.headwaySource || "",
-        headwayChecked: routeMetadata.headwayChecked ?? 0,
         color: line.color || routeMetadata.color || "",
         stopCount: Number(routeMetadata.stopCount || 0)
       });

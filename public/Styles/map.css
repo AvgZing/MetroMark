@@ -104,14 +104,37 @@ body.line-view-open .map-overlay-controls {
   backdrop-filter: blur(10px);
 }
 
-/* Gently pulse the notice card while a background task (e.g. tile backfill) is running */
+/* Show a progress bar while a background task (e.g. tile backfill) is running */
 .map-notice.is-loading .map-notice-card {
-  animation: map-notice-pulse 1.6s ease-in-out infinite;
+  animation: none;
 }
 
-@keyframes map-notice-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+.map-notice-progress {
+  display: none;
+  height: 5px;
+  margin-top: 10px;
+  border-radius: 4px;
+  background: rgba(23, 124, 162, 0.25);
+  overflow: hidden;
+}
+
+.map-notice.is-loading .map-notice-progress {
+  display: block;
+}
+
+.map-notice-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #177ca2, #2fa3d6);
+  background-size: 200% 100%;
+  transition: width 0.6s ease;
+  animation: map-notice-progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes map-notice-progress-slide {
+  0% { background-position: 0% 50%; }
+  100% { background-position: -200% 50%; }
 }
 
 .map-notice-title {

@@ -195,9 +195,6 @@ function refreshUiFromState() {
   if (typeof renderLineView === "function") {
     renderLineView();
   }
-  if (typeof loadVisibleRouteStopCounts === "function") {
-    loadVisibleRouteStopCounts().catch(() => {});
-  }
   if (typeof loadVisibleRouteHeadways === "function") {
     loadVisibleRouteHeadways().catch(() => {});
   }

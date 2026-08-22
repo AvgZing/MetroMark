@@ -64,6 +64,7 @@ function setMapNotice(title, meta = "", kind = "neutral", placement = "center", 
     <div class="map-notice-card">
       <p class="map-notice-title">${escapeHtml(message)}</p>
       ${detail ? `<p class="map-notice-meta">${detailIsHtml ? detail : escapeHtml(detail)}</p>` : ""}
+      <div class="map-notice-progress"><div class="map-notice-progress-fill"></div></div>
     </div>
   `;
   dom.mapNotice.hidden = false;

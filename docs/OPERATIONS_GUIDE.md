@@ -53,7 +53,8 @@
 
 ## Windows Host Operation (bat-based)
 - Start at login: put a shortcut to `operations\start-metromark.bat` in the Startup folder (`Win+R` → `shell:startup`), or add a Task Scheduler task (trigger: At startup; "restart on failure") for crash recovery.
-- `start-metromark.bat` first syncs from GitHub `origin/main` (best-effort `git pull --ff-only` + `npm ci` when changes land — offline-safe), then starts the web app (Express server) and the harvester loop (`operations\run-harvesters.bat`: world + headway, daily-quota-aware).
+- `start-metromark.bat` starts the web app (Express server) and the harvester loop (`operations\run-harvesters.bat`: world + headway, daily-quota-aware). It does **not** touch GitHub.
+- **GitHub updates are manual**: run `operations\sync-from-github.bat` when you want to pull the latest stable code. It self-locates the repo (or clones it fresh) and works on any PC, including a spare running an old version — copy the bat over and run it.
 - Backups are not run by any bat — use the admin dashboard "Run Nonrecoverable Backup" button or `npm run backup:nonrecoverable:prod`.
 
 ## Production Readiness Checklist

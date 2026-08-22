@@ -206,6 +206,10 @@ function initializeMap() {
     addMapRouteLayers(appState.map);
     bindMapInteractionEvents(appState.map);
 
+    if (typeof scheduleMetadataLoad === "function") {
+      appState.map.on("idle", scheduleMetadataLoad);
+    }
+
     appState.mapReady = true;
     updateMapModeButtons();
     renderMapData();

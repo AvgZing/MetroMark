@@ -163,12 +163,15 @@ async function getRouteHeadway(lineKey, options = {}) {
     }
   }
 
-  // Store headway to route_metadata so it persists across page reloads
-  if (summary && Number.isFinite(Number(summary.bestMinutes)) && Number(summary.bestMinutes) > 0) {
+  // Store headway to route_metadata so it persists across page reloads. This
+  // includes the fallback case (no usable headway): checking it once means the
+  // bulk loader can serve the "local" bucket permanently instead of re-fetching
+  // and showing "unknown" forever.
+  if (summary && (Number.isFinite(Number(summary.bestMinutes)) && Number(summary.bestMinutes) > 0 || Number(summary.headwayFallback || 0) === 1)) {
     try {
       await db.setRouteMetadata(normalizedLineKey, {
         frequencyBucket: String(summary.frequencyBucket || "unknown"),
-        headwayBestMinutes: Number(summary.bestMinutes),
+        headwayBestMinutes: Number.isFinite(Number(summary.bestMinutes)) ? Number(summary.bestMinutes) : null,
         headwaySource: String(summary.source || "transitland-vector-tiles"),
         headwayChecked: 1
       });
@@ -210,30 +213,35 @@ async function getRouteHeadwaysBulk(lineKeys, options = {}) {
 
   for (const [lineKey, routeMeta] of meta) {
     const checked = Number(routeMeta?.headwayChecked || 0) === 1;
-    if (!checked) {
+    const stopCount = Number(routeMeta?.stopCount || 0);
+
+    if (!checked && stopCount <= 0) {
       continue;
     }
 
-    const bm = Number(routeMeta?.headwayBestMinutes);
-    if (Number.isFinite(bm) && bm > 0) {
-      headwayByLineKey[lineKey] = {
-        headwayBestMinutes: bm,
-        frequencyBucket: String(routeMeta.frequencyBucket || "unknown"),
-        headwaySource: String(routeMeta.headwaySource || "postgres"),
-        headwayChecked: 1,
-        headwayFallback: 0
-      };
-    } else {
-      // Checked but no usable headway (the 1667-minute fallback) — mark it so
-      // the client maps the line into the Local bucket instead of "unknown".
-      headwayByLineKey[lineKey] = {
-        headwayBestMinutes: null,
-        frequencyBucket: String(routeMeta.frequencyBucket || "local"),
-        headwaySource: String(routeMeta.headwaySource || "transitland-vector-tiles"),
-        headwayChecked: 1,
-        headwayFallback: 1
-      };
+    const entry = {
+      headwayChecked: checked ? 1 : 0,
+      stopCount
+    };
+
+    if (checked) {
+      const bm = Number(routeMeta?.headwayBestMinutes);
+      if (Number.isFinite(bm) && bm > 0) {
+        entry.headwayBestMinutes = bm;
+        entry.frequencyBucket = String(routeMeta.frequencyBucket || "unknown");
+        entry.headwaySource = String(routeMeta.headwaySource || "postgres");
+        entry.headwayFallback = 0;
+      } else {
+        // Checked but no usable headway (the 1667-minute fallback) — mark it so
+        // the client maps the line into the Local bucket instead of "unknown".
+        entry.headwayBestMinutes = null;
+        entry.frequencyBucket = String(routeMeta.frequencyBucket || "local");
+        entry.headwaySource = String(routeMeta.headwaySource || "transitland-vector-tiles");
+        entry.headwayFallback = 1;
+      }
     }
+
+    headwayByLineKey[lineKey] = entry;
   }
 
   return { headwayByLineKey };

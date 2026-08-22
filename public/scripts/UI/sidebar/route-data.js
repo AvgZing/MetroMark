@@ -164,6 +164,20 @@ function applyHeadwayUpdateToCachedTransit(lineKey, headwayUpdate) {
     };
   });
 
+  if (Array.isArray(appState.loadedLineSummaries) && appState.loadedLineSummaries.length > 0) {
+    appState.loadedLineSummaries = appState.loadedLineSummaries.map((line) => {
+      if (line.lineKey !== normalizedLineKey) {
+        return line;
+      }
+
+      updated = true;
+      return {
+        ...line,
+        ...headwayUpdate
+      };
+    });
+  }
+
   if (appState.transit?.routesGeoJson?.features) {
     for (const feature of appState.transit.routesGeoJson.features) {
       const featureLineKey = String(feature?.properties?.line_key || "").trim();
@@ -232,151 +246,6 @@ function applyRouteStopCountSummaryToCachedTransit(lineKey, stopCount) {
   return updated;
 }
 
-// Stop-count lookups for lines that have no stored count yet are retried on a
-// short cooldown (not permanently blacklisted), so counts appear as soon as the
-// harvesters or a route-stops fetch populate route_metadata.
-const ROUTE_STOP_COUNT_COOLDOWN_MS = 5 * 60 * 1000;
-const routeStopCountLastAttemptAt = new Map();
-
-async function loadRouteStopCountSummary(lineKey, options = {}) {
-  const normalizedLineKey = String(lineKey || "").trim();
-  if (!normalizedLineKey) {
-    return false;
-  }
-
-  const line = appState.lineSummaries.find((entry) => entry.lineKey === normalizedLineKey);
-  if (!line) {
-    return false;
-  }
-
-  if (Number(line.stopCount || 0) > 0) {
-    return true;
-  }
-
-  const lastAttempt = routeStopCountLastAttemptAt.get(normalizedLineKey) || 0;
-  if (appState.inFlightRouteStopCountKeys.has(normalizedLineKey) || Date.now() - lastAttempt < ROUTE_STOP_COUNT_COOLDOWN_MS) {
-    return false;
-  }
-  routeStopCountLastAttemptAt.set(normalizedLineKey, Date.now());
-
-  appState.inFlightRouteStopCountKeys.add(normalizedLineKey);
-
-  try {
-    const routeLookupKey = String(line.routeOnestopId || normalizedLineKey).trim();
-    const params = new URLSearchParams({
-      lineKey: routeLookupKey,
-      stopTypes: ROUTE_STOP_TYPES_QUERY,
-      cacheOnly: "1",
-      summaryOnly: "1"
-    });
-
-    const payload = await apiRequest(`/api/transit/route-stops?${params.toString()}`, {
-      method: "GET"
-    });
-
-    const summary = payload?.lineSummaries?.[0];
-    const summaryCount = Number(summary?.stopCount || summary?.stop_count || 0);
-    if (Number.isFinite(summaryCount) && summaryCount > 0) {
-      applyRouteStopCountSummaryToCachedTransit(normalizedLineKey, summaryCount);
-    }
-
-    const summaryHeadway = Number(summary?.headwayBestMinutes);
-    if (Number.isFinite(summaryHeadway) && summaryHeadway > 0) {
-      applyHeadwayUpdateToCachedTransit(normalizedLineKey, {
-        headwayBestMinutes: summaryHeadway,
-        frequencyBucket: typeof frequencyBucketFromHeadwayMinutes === "function"
-          ? frequencyBucketFromHeadwayMinutes(summaryHeadway)
-          : "unknown",
-        headwaySource: String(summary?.headwaySource || "postgres"),
-        headwayChecked: 1,
-        headwayFallback: 0
-      });
-      return true;
-    }
-
-    return summaryCount > 0;
-  } catch (error) {
-    if (!options.silent) {
-      setStatus(`Could not load stop totals for ${lineDisplayName(line)}.`, "error", error.message);
-    }
-    return false;
-  } finally {
-    appState.inFlightRouteStopCountKeys.delete(normalizedLineKey);
-  }
-}
-
-async function loadVisibleRouteStopCounts() {
-  if (!appState.lineSummaries.length) {
-    return false;
-  }
-
-  // Defer at global scale — thousands of stop-count lookups aren't useful
-  // until the user is zoomed in enough to see individual routes.
-  const zoom = appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
-  if (zoom < (typeof BACKFILL_MIN_ZOOM !== "undefined" ? BACKFILL_MIN_ZOOM : 8)) {
-    return false;
-  }
-
-  const candidateMap = new Map();
-  for (const line of getShownLines()) {
-    candidateMap.set(line.lineKey, line);
-  }
-  for (const line of getRouteListLines()) {
-    candidateMap.set(line.lineKey, line);
-  }
-
-  const candidates = Array.from(candidateMap.values()).filter((line) => {
-    if (!line || !line.lineKey) {
-      return false;
-    }
-
-    if (Number(line.stopCount || 0) > 0) {
-      return false;
-    }
-
-    const lastAttempt = routeStopCountLastAttemptAt.get(line.lineKey) || 0;
-    if (Date.now() - lastAttempt < ROUTE_STOP_COUNT_COOLDOWN_MS) {
-      return false;
-    }
-
-    if (appState.inFlightRouteStopCountKeys.has(line.lineKey)) {
-      return false;
-    }
-
-    if (appState.focusedLineKey === line.lineKey) {
-      return false;
-    }
-
-    if (appState.lineViewOpen && appState.lineViewLineKey === line.lineKey) {
-      return false;
-    }
-
-    return true;
-  });
-
-  if (!candidates.length) {
-    return false;
-  }
-
-  const maxCandidates = Math.min(candidates.length, 24);
-  const results = await Promise.all(
-    candidates.slice(0, maxCandidates).map((line) => loadRouteStopCountSummary(line.lineKey, { silent: true }).catch(() => false))
-  );
-
-  if (results.some(Boolean)) {
-    renderLineList();
-    renderProgress();
-    if (typeof renderLineView === "function" && appState.lineViewOpen) {
-      renderLineView();
-    }
-    if (typeof updateLoadingStatus === "function") {
-      updateLoadingStatus();
-    }
-  }
-
-  return true;
-}
-
 async function ensureLineHeadwayLoaded(lineKey, options = {}) {
   const normalizedLineKey = String(lineKey || "").trim();
   if (!normalizedLineKey) {
@@ -437,6 +306,23 @@ async function ensureLineHeadwayLoaded(lineKey, options = {}) {
   }
 }
 
+let metadataLoadTimer = null;
+
+// Run the metadata loader once after the map is fully idle (all tiles
+// rendered) so every viewport line is present in lineSummaries when queried —
+// the moveend-triggered pass can otherwise fire against a partial viewport.
+function scheduleMetadataLoad() {
+  if (metadataLoadTimer) {
+    clearTimeout(metadataLoadTimer);
+  }
+  metadataLoadTimer = setTimeout(() => {
+    metadataLoadTimer = null;
+    if (typeof loadVisibleRouteHeadways === "function") {
+      loadVisibleRouteHeadways().catch(() => {});
+    }
+  }, 800);
+}
+
 async function loadVisibleRouteHeadways() {
   if (!appState.lineSummaries.length) {
     return false;
@@ -449,17 +335,19 @@ async function loadVisibleRouteHeadways() {
     return false;
   }
 
-  const candidates = getShownLines().filter((line) => {
+  // Query every line in the current viewport (not just mode-shown lines), so
+  // stored headway + stop counts reach the sidebar, filters, and progress panel
+  // regardless of the active mode filter.
+  const candidates = appState.lineSummaries.filter((line) => {
     if (!line || !line.lineKey) {
       return false;
     }
-    if (!lineNeedsHeadwayLookup(line)) {
+    const needsHeadway = lineNeedsHeadwayLookup(line);
+    const needsStopCount = Number(line.stopCount || 0) <= 0;
+    if (!needsHeadway && !needsStopCount) {
       return false;
     }
     if (appState.inFlightHeadwayLineKeys.has(line.lineKey)) {
-      return false;
-    }
-    if (appState.headwayBulkAttemptedKeys.has(line.lineKey)) {
       return false;
     }
     return true;
@@ -469,11 +357,10 @@ async function loadVisibleRouteHeadways() {
     return false;
   }
 
-  // Bulk cache-only lookup: one (or a few chunked) request(s) for all visible
-  // lines instead of one request per route. Only lines already cached in
-  // Postgres return headway here; the rest load individually on focus.
+  // Bulk lookup: one (or a few chunked) request(s) for all lines that still
+  // need headway and/or stop counts. The response carries both, read from
+  // route_metadata; the rest load individually on focus.
   const keys = candidates.map((line) => line.lineKey);
-  keys.forEach((key) => appState.headwayBulkAttemptedKeys.add(key));
 
   const BULK_CHUNK = 500;
   const chunks = [];
@@ -492,15 +379,24 @@ async function loadVisibleRouteHeadways() {
   let applied = 0;
   for (const headwayByLineKey of results) {
     for (const [lineKey, hw] of Object.entries(headwayByLineKey)) {
-      const didUpdate = applyHeadwayUpdateToCachedTransit(lineKey, {
-        headwayBestMinutes: Number(hw.headwayBestMinutes),
-        frequencyBucket: String(hw.frequencyBucket || "unknown"),
-        headwaySource: String(hw.headwaySource || "postgres"),
-        headwayChecked: 1,
-        headwayFallback: Number(hw.headwayFallback || 0)
-      });
-      if (didUpdate) {
-        applied += 1;
+      const stopCount = Number(hw.stopCount || 0);
+      if (stopCount > 0) {
+        const didStopCount = applyRouteStopCountSummaryToCachedTransit(lineKey, stopCount);
+        if (didStopCount) {
+          applied += 1;
+        }
+      }
+      if (Number(hw.headwayChecked || 0) === 1) {
+        const didHeadway = applyHeadwayUpdateToCachedTransit(lineKey, {
+          headwayBestMinutes: Number(hw.headwayBestMinutes),
+          frequencyBucket: String(hw.frequencyBucket || "unknown"),
+          headwaySource: String(hw.headwaySource || "postgres"),
+          headwayChecked: 1,
+          headwayFallback: Number(hw.headwayFallback || 0)
+        });
+        if (didHeadway) {
+          applied += 1;
+        }
       }
     }
   }

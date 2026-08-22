@@ -1,16 +1,18 @@
 const db = require("../server/processors/data");
 const { routeToFeature } = require("../server/sources/transitland/route-features");
 const { isFallbackHeadwaySeconds } = require("../server/sources/transitland/headway");
-const { extractStopPoint } = require("../server/sources/transitland/routes");
-const { assignStopToClosestRoute } = require("../server/sources/transitland/stops");
-const { extractFeedId } = require("../server/sources/transitland/helpers");
 
-async function storeRouteMetadata(route, stopCount) {
+async function storeRouteMetadata(route) {
   const headwaySeconds = Number(route.headway_secs);
   const hasHeadway = Number.isFinite(headwaySeconds) && headwaySeconds > 0;
   const fallback = hasHeadway && isFallbackHeadwaySeconds(headwaySeconds);
 
-  await db.setRouteMetadata(route.lineKey, {
+  // Headway fields are only written when this response actually carries
+  // headway; otherwise existing stored headway is preserved (setRouteMetadata
+  // is a partial merge). Stop counts are never written here — the exact
+  // post-dedup count comes from a route-stops fetch (harvest:stops or a user
+  // opening the route).
+  const metadata = {
     routeOnestopId: route.routeOnestopId,
     lineName: route.lineName,
     lineShortName: route.lineShortName,
@@ -19,40 +21,22 @@ async function storeRouteMetadata(route, stopCount) {
     mode: route.mode,
     routeType: route.routeType,
     routeFeedId: route.routeFeedId,
-    color: route.color,
-    frequencyBucket: route.frequency_bucket || "unknown",
-    headwayBestMinutes: fallback || !hasHeadway ? null : Number((headwaySeconds / 60).toFixed(1)),
-    headwaySource: hasHeadway ? String(route.headway_source || "transitland-vector-tiles") : "",
-    headwayChecked: hasHeadway ? 1 : 0,
-    stopCount: Number.isFinite(Number(stopCount)) ? Number(stopCount) : 0
-  });
-}
+    color: route.color
+  };
 
-// Approximate per-line stop counts by assigning each bbox stop to its closest
-// route. The exact route-membership count overwrites this when a route's stops
-// are fetched on demand (getRouteStopsTransit promotes route_metadata).
-function countStopsPerLine(rawStops, routes) {
-  const counts = new Map();
-  for (const stop of Array.isArray(rawStops) ? rawStops : []) {
-    const point = extractStopPoint(stop);
-    if (!point) {
-      continue;
-    }
-    const assignment = assignStopToClosestRoute(point, routes, {
-      stopFeedId: extractFeedId(stop),
-      stopName: String(stop?.stop_name || stop?.name || "")
-    });
-    const lineKey = assignment?.route?.lineKey;
-    if (lineKey) {
-      counts.set(lineKey, (counts.get(lineKey) || 0) + 1);
-    }
+  if (hasHeadway) {
+    metadata.frequencyBucket = route.frequency_bucket || "unknown";
+    metadata.headwayBestMinutes = fallback ? null : Number((headwaySeconds / 60).toFixed(1));
+    metadata.headwaySource = String(route.headway_source || "transitland-vector-tiles");
+    metadata.headwayChecked = 1;
   }
-  return counts;
+
+  await db.setRouteMetadata(route.lineKey, metadata);
 }
 
-function accumulateRoutes(routes, newFeatures, stopCountsByLine = new Map()) {
+function accumulateRoutes(routes, newFeatures) {
   for (const route of routes) {
-    storeRouteMetadata(route, stopCountsByLine.get(route.lineKey)).catch(() => {});
+    storeRouteMetadata(route).catch(() => {});
     const feature = routeToFeature(route);
     if (feature) {
       newFeatures.push(feature);
@@ -62,6 +46,5 @@ function accumulateRoutes(routes, newFeatures, stopCountsByLine = new Map()) {
 
 module.exports = {
   storeRouteMetadata,
-  countStopsPerLine,
   accumulateRoutes
 };

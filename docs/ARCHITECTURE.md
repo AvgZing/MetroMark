@@ -61,7 +61,7 @@ Why this production target:
 **Flow:**
 ```
 Transitland API (REST /routes + trips)
-   │  harvesters (harvest-world + on-demand /api/tiles/backfill)
+   │  harvesters (harvest-world + harvest-headway + harvest-stops + on-demand /api/tiles/backfill)
    ▼
 data/tiles/geo/*.ndjson            line_key-keyed GeoJSON features (durable source of truth)
    │  scripts/build/build-pmtiles.js (tippecanoe over all NDJSON files)

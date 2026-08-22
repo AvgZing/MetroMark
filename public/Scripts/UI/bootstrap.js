@@ -209,9 +209,6 @@ function bindEvents() {
       appState.routeStopsAutoLoadAttempts.clear();
     }
     appState.inFlightLineStopKeys.clear();
-    if (appState.inFlightRouteStopCountKeys) {
-      appState.inFlightRouteStopCountKeys.clear();
-    }
 
     if (typeof rebuildLineMetadataFromTiles === "function") {
       appState.lastTileMetadataSignature = "";

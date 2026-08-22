@@ -12,6 +12,7 @@ operations/
   world-cities.js        # Default world-city list (Phase 1 of harvest-world)
   run-harvesters.bat     # Background loop: runs the harvesters, waits, repeats
   start-metromark.bat    # Host startup: web app + harvester loop (Startup shortcut)
+  sync-from-github.bat   # Manual: pull latest stable code from GitHub (self-locating)
   README.md
   local-postgres-schema.sql / local-postgres-changes.sql  # Local DB baseline + migrations
   supabase-baseline.sql / supabase-changes.sql            # Supabase baseline + migrations
@@ -80,6 +81,7 @@ directory.
 ```
 npm run harvest:world        # one world-harvest pass (stops at daily caps)
 npm run harvest:headway      # fill missing cached headway (dev)
+npm run harvest:stops        # fill missing exact stop counts + cache route stops (dev)
 npm run backup:nonrecoverable:prod
 ```
 

@@ -119,9 +119,38 @@ function mergeBackfillFeatures(newFeatures, options = {}) {
   return { added, updated, skipped };
 }
 
+const MAX_BACKFILL_SPAN_DEGREES = 1.8;
+
+// Transitland rejects bboxes larger than ~2 degrees. Clamp oversized bboxes
+// (e.g. the auto-backfill at a low-but-eligible zoom, or a hand-entered admin
+// bbox) around their center so the fetch never 500s with "bbox too large".
+function clampBackfillBbox(bboxArray) {
+  if (!Array.isArray(bboxArray) || bboxArray.length !== 4) {
+    return bboxArray;
+  }
+
+  const [west, south, east, north] = bboxArray.map((value) => Number(value));
+  const spanLon = east - west;
+  const spanLat = north - south;
+  if (spanLon <= MAX_BACKFILL_SPAN_DEGREES && spanLat <= MAX_BACKFILL_SPAN_DEGREES) {
+    return bboxArray;
+  }
+
+  const centerLon = (west + east) / 2;
+  const centerLat = (south + north) / 2;
+  const half = MAX_BACKFILL_SPAN_DEGREES / 2;
+  return [
+    centerLon - half,
+    Math.max(-85, centerLat - half),
+    centerLon + half,
+    Math.min(85, centerLat + half)
+  ];
+}
+
 async function runBackfill(bboxArray, options = {}) {
   const t0 = Date.now();
   const forceRefresh = Boolean(options.forceRefresh);
+  const bbox = clampBackfillBbox(bboxArray);
 
   backfillStats.current = {
     stage: "fetching",
@@ -132,10 +161,11 @@ async function runBackfill(bboxArray, options = {}) {
   };
 
   try {
-    const result = await fetchRoutesAndStopsForBbox(bboxArray, {
+    const result = await fetchRoutesAndStopsForBbox(bbox, {
       includeAllTypes: true,
       routeTypes: [],
-      enforceDailyCap: true,
+      // User-initiated backfill must not be blocked by the harvester's daily
+      // quota — only the background harvesters enforce the cap.
       forceRefresh,
       requestSource: "backfill"
     });

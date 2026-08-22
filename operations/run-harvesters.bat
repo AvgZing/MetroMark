@@ -20,7 +20,9 @@ echo [%date% %time%] === MetroMark harvester pass ===
 node operations/harvest-world.js
 echo [%date% %time%] === World harvest done, running headway backfill ===
 node server/admin/harvest-headway.js
-echo [%date% %time%] === Headway backfill done ===
+echo [%date% %time%] === Headway backfill done, running stops backfill ===
+node server/admin/harvest-stops.js
+echo [%date% %time%] === Stops backfill done ===
 echo Waiting %HARVEST_DELAY_SECONDS% seconds before the next pass...
 timeout /t %HARVEST_DELAY_SECONDS% /nobreak >nul
 goto loop

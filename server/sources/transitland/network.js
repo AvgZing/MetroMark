@@ -10,7 +10,13 @@ function wait(milliseconds) {
 
 function isBackgroundRequest(options = {}) {
   const source = String(options.requestSource || "").trim().toLowerCase();
-  return source === "background" || source === "harvest" || source === "scheduler";
+  return (
+    source === "background" ||
+    source === "harvest" ||
+    source === "scheduler" ||
+    source === "harvest-world" ||
+    source === "harvest-headway"
+  );
 }
 
 async function enforceDailyUsageCapsIfNeeded(kind, options = {}) {

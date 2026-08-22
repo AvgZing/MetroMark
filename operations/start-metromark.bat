@@ -3,9 +3,11 @@ setlocal
 REM MetroMark host startup.
 REM
 REM Ensures everything that should run on the MetroMark host PC is running:
-REM   1. sync from GitHub (origin/main) - best effort, offline-safe,
-REM   2. the web app (Express server),
-REM   3. the background harvester loop (world + headway).
+REM   1. the web app (Express server),
+REM   2. the background harvester loop (world + headway).
+REM
+REM GitHub updates are NOT applied here — run operations\sync-from-github.bat
+REM manually when you want to pull the latest stable code.
 REM
 REM To install: put a shortcut to this file in the Windows Startup folder
 REM (Win+R -> shell:startup -> paste a shortcut here). It runs at login.
@@ -18,28 +20,6 @@ REM non-ASCII bytes in batch comments.
 cd /d "%~dp0.."
 if not defined METROMARK_ENV_FILE set METROMARK_ENV_FILE=.env.production
 if not defined TIPPECANOE_BIN set TIPPECANOE_BIN=C:\msys64\usr\bin\tippecanoe.exe
-
-REM --- Sync from GitHub (origin/main). Best effort: if the pull or install
-REM fails (offline, dirty tree, etc.) we still start the app with local code.
-echo Checking for updates from origin/main...
-git fetch origin main >nul 2>&1
-if errorlevel 1 goto :sync_skip
-set "BEFORE_SHA="
-for /f "delims=" %%i in ('git rev-parse HEAD') do set "BEFORE_SHA=%%i"
-git pull --ff-only origin main >nul 2>&1
-if errorlevel 1 goto :sync_skip
-for /f "delims=" %%i in ('git rev-parse HEAD') do set "AFTER_SHA=%%i"
-if not "%BEFORE_SHA%"=="%AFTER_SHA%" (
-  echo Changes pulled from origin/main. Reinstalling dependencies...
-  if exist package-lock.json (
-    call npm ci
-  ) else (
-    call npm install
-  )
-) else (
-  echo Already up to date.
-)
-:sync_skip
 
 if not exist "operations\Logs" mkdir "operations\Logs"
 

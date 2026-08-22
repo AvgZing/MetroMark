@@ -31,9 +31,7 @@ const appState = {
   lineStopsCache: new Map(),
   routeStopsAutoLoadAttempts: new Map(),
   inFlightLineStopKeys: new Set(),
-  inFlightRouteStopCountKeys: new Set(),
   inFlightHeadwayLineKeys: new Set(),
-  headwayBulkAttemptedKeys: new Set(),
   focusedLineKey: "",
   activeModeKeys: parseSetFromStorage("metromark_mode_filter_keys", DEFAULT_ACTIVE_MODE_KEYS),
   activeFrequencyKeys: parseSetFromStorage(

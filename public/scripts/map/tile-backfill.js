@@ -8,7 +8,7 @@
 // the vector source — all without a page reload. Repeated views of the same
 // area are skipped (coarse-bbox dedup client-side + line_key dedup server-side).
 
-var BACKFILL_MIN_ZOOM = 8;
+var BACKFILL_MIN_ZOOM = 9;
 var BACKFILL_COOLDOWN_MS = 20000;
 var BACKFILL_WAIT_MS = 2500;
 var backfillCheckTimer = null;
@@ -123,6 +123,10 @@ async function pollBackfillProgress() {
       const notice = document.getElementById("mapNotice");
       if (notice) {
         notice.classList.add("is-loading");
+        const fill = notice.querySelector(".map-notice-progress-fill");
+        if (fill) {
+          fill.style.width = payload.stage === "rebuilding" ? "82%" : "38%";
+        }
       }
     }
   } catch {
@@ -154,6 +158,14 @@ async function requestBackfill(bbox, options = {}) {
       "neutral",
       "center"
     );
+    const notice = document.getElementById("mapNotice");
+    if (notice) {
+      notice.classList.add("is-loading");
+      const fill = notice.querySelector(".map-notice-progress-fill");
+      if (fill) {
+        fill.style.width = "38%";
+      }
+    }
   }
   if (typeof setBackendStatus === "function") {
     setBackendStatus("Fetching routes for this viewport from Transitland…");
