@@ -6,7 +6,7 @@ REM Ensures everything that should run on the MetroMark host PC is running:
 REM   1. the web app (Express server),
 REM   2. the background harvester loop (world + headway).
 REM
-REM GitHub updates are NOT applied here — run operations\sync-from-github.bat
+REM GitHub updates are NOT applied here - run operations\sync-from-github.bat
 REM manually when you want to pull the latest stable code.
 REM
 REM To install: put a shortcut to this file in the Windows Startup folder

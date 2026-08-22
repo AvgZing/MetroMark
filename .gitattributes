@@ -1,0 +1,4 @@
+# Windows batch files must always be CRLF - cmd.exe misparses LF-only bats
+# (labels/goto/parenthesized blocks fail, which makes them exit instantly).
+*.bat text eol=crlf
+*.ps1 text eol=crlf

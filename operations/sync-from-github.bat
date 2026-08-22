@@ -15,6 +15,31 @@ REM non-ASCII bytes in batch comments.
 set "REPO_URL=https://github.com/AvgZing/MetroMark.git"
 set "BRANCH=main"
 
+REM --- Preflight: git must be installed ------------------------------
+where git >nul 2>&1
+if errorlevel 1 (
+  echo.
+  echo Git is not installed or not on PATH.
+  echo Install it from https://git-scm.com/downloads
+  echo   or run: winget install --id Git.Git -e
+  echo Then close this window and run this file again.
+  echo.
+  pause
+  exit /b 1
+)
+
+REM --- Preflight: Node.js/npm must be installed ----------------------
+where npm >nul 2>&1
+if errorlevel 1 (
+  echo.
+  echo Node.js is not installed or not on PATH.
+  echo Install it from https://nodejs.org (LTS recommended).
+  echo Then close this window and run this file again.
+  echo.
+  pause
+  exit /b 1
+)
+
 REM --- Locate the repo ------------------------------------------------------
 set "TARGET=%~1"
 if defined TARGET goto :have_target
@@ -39,6 +64,7 @@ if not exist "%TARGET%\.git" (
   git clone %REPO_URL% "%TARGET%"
   if errorlevel 1 (
     echo Clone failed. Check that git and the network are available.
+    pause
     exit /b 1
   )
 )
@@ -53,6 +79,7 @@ echo Fetching origin/%BRANCH%...
 git fetch origin %BRANCH%
 if errorlevel 1 (
   echo Fetch failed. Check git and the network.
+  pause
   exit /b 1
 )
 
@@ -75,9 +102,12 @@ if exist package-lock.json (
 )
 if errorlevel 1 (
   echo Dependency install failed - the sync may be incomplete.
+  pause
   exit /b 1
 )
 
-echo.
+echo. 
 echo MetroMark synced to the latest origin/%BRANCH% at %TARGET%.
+echo.
+pause
 exit /b 0
