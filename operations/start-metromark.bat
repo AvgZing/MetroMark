@@ -2,9 +2,14 @@
 setlocal
 REM MetroMark host startup.
 REM
-REM Ensures everything that should run on the MetroMark host PC is running:
-REM   1. the web app (Express server),
-REM   2. the background harvester loop (world + headway).
+REM Opens two VISIBLE terminal windows:
+REM   1. "MetroMark Server" - runs npm run start:prod (Express server),
+REM   2. "MetroMark Harvester" - runs operations\run-harvesters.bat
+REM      (background harvester loop: world + headway + stops).
+REM
+REM Output is shown LIVE in each window so you can watch both processes.
+REM The windows stay open until you close them (which stops the process),
+REM so do not close them if you want MetroMark to keep running.
 REM
 REM GitHub updates are NOT applied here - run operations\sync-from-github.bat
 REM manually when you want to pull the latest stable code.
@@ -18,16 +23,12 @@ REM NOTE: keep this file ASCII-only (no smart quotes/dashes); cmd.exe garbles
 REM non-ASCII bytes in batch comments.
 
 cd /d "%~dp0.."
-if not defined METROMARK_ENV_FILE set METROMARK_ENV_FILE=.env.production
 if not defined TIPPECANOE_BIN set TIPPECANOE_BIN=C:\msys64\usr\bin\tippecanoe.exe
 
-if not exist "operations\Logs" mkdir "operations\Logs"
+echo Opening MetroMark web app window (npm run start:prod)...
+start "MetroMark Server" cmd /k "npm run start:prod"
 
-echo Starting MetroMark web app...
-start "MetroMark Server" cmd /k "set METROMARK_ENV_FILE=%METROMARK_ENV_FILE%&& set TIPPECANOE_BIN=%TIPPECANOE_BIN%&& node server/index.js> operations\Logs\server.log 2>&1"
+echo Opening MetroMark harvester window...
+start "MetroMark Harvester" cmd /k "call operations\run-harvesters.bat"
 
-echo Starting MetroMark harvester loop...
-start "MetroMark Harvester" cmd /k "set METROMARK_ENV_FILE=%METROMARK_ENV_FILE%&& call operations\run-harvesters.bat> operations\Logs\harvester.log 2>&1"
-
-echo MetroMark started. Server log: operations\Logs\server.log
-echo Harvester log: operations\Logs\harvester.log
+echo MetroMark started. Two windows are open - keep them open.
