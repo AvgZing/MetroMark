@@ -77,15 +77,18 @@ function resolveTippecanoe() {
   return "tippecanoe";
 }
 
+// All archive inputs for tippecanoe. Once the sharded layout exists (see
+// server/sources/transitland/backfill.js), prefer the shard files so legacy
+// routes-feed.ndjson / per-city seed files are never double-counted during
+// migration. Before migration, the legacy files are used directly.
 function listNdjsonFiles() {
   if (!fs.existsSync(GEO_DIR)) {
     return [];
   }
-  return fs
-    .readdirSync(GEO_DIR)
-    .filter((name) => name.endsWith(".ndjson"))
-    .sort()
-    .map((name) => path.join(GEO_DIR, name));
+  const names = fs.readdirSync(GEO_DIR).filter((name) => name.endsWith(".ndjson"));
+  const shardNames = names.filter((name) => /^shard-\d+\.ndjson$/.test(name));
+  const selected = shardNames.length > 0 ? shardNames : names;
+  return selected.sort().map((name) => path.join(GEO_DIR, name));
 }
 
 function formatBytes(bytes) {
@@ -132,7 +135,22 @@ function readTileCount(filePath) {
   }
 }
 
-async function buildPmtiles(options = {}) {
+// Serialize tile rebuilds: the world harvester, viewport backfill, and the
+// admin rebuild button can all trigger buildPmtiles. Overlapping tippecanoe
+// processes would fight over the same archive and double CPU load; instead each
+// build waits for the previous one to finish and then reads the NDJSON files as
+// they exist at that point, so the newest merge is always included.
+let buildChain = Promise.resolve();
+
+function buildPmtiles(options = {}) {
+  const run = () => buildPmtilesOnce(options);
+  const queued = buildChain.then(run, run);
+  // Keep the chain alive even when a caller ignores the result / rejects.
+  buildChain = queued.catch(() => {});
+  return queued;
+}
+
+async function buildPmtilesOnce(options = {}) {
   const log = options.log || console;
   const files = listNdjsonFiles();
   if (!files.length) {

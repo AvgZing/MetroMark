@@ -44,7 +44,7 @@ async function run() {
 
   if (newFeatures.length) {
     log(`Merging ${newFeatures.length} new route features and rebuilding tiles...`);
-    mergeBackfillFeatures(newFeatures, { overwrite: false });
+    await mergeBackfillFeatures(newFeatures, { overwrite: false });
     const built = await buildPmtiles({ log: { log: () => {} } });
     log(`Tiles rebuilt: ${built.sizeBytes} bytes, ${built.tileCount} tiles.`);
   }

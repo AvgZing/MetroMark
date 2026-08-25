@@ -12,9 +12,6 @@
 //   --limit=<n>      Cap the number of routes exported per city (test runs).
 //   --help           Print usage.
 
-const fs = require("fs");
-const path = require("path");
-
 const config = require("../../admin/config");
 const {
   cities,
@@ -24,9 +21,8 @@ const { fetchRoutesAndStopsForBbox } = require("../../sources/transitland/fetch"
 const { normalizeRoutes } = require("../../sources/transitland/routes");
 const { routeToFeature } = require("../../sources/transitland/route-features");
 const { getTransitlandMetrics } = require("../../sources/transitland/metrics");
+const { mergeBackfillFeatures } = require("../../sources/transitland/backfill");
 const db = require("../../processors/data");
-
-const OUTPUT_DIR = path.join(__dirname, "..", "..", "..", "data", "tiles", "geo");
 
 function printUsage() {
   console.log(`Usage:
@@ -109,19 +105,20 @@ async function exportCity(city, limit) {
   const routes = limit && limit > 0 ? normalized.slice(0, limit) : normalized;
 
   const features = routes.map(routeToFeature).filter(Boolean);
-  const filePath = path.join(OUTPUT_DIR, `${city.slug}.ndjson`);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(
-    filePath,
-    features.map((feature) => JSON.stringify(feature)).join("\n") + "\n",
-    "utf8"
-  );
+
+  // Write into the sharded archive (overwrite=true so re-exporting a city
+  // refreshes its routes). The archive's shard hash distributes the city's
+  // routes across the same files the backfill and world harvest use.
+  const merged = await mergeBackfillFeatures(features, { overwrite: true });
 
   const metricsAfter = getTransitlandMetrics();
   return {
     city,
-    filePath,
+    filePath: null,
     routeCount: features.length,
+    added: merged.added,
+    updated: merged.updated,
+    skipped: merged.skipped,
     elapsedMs: Date.now() - t0,
     restCalls: Math.max(0, metricsAfter.restApiRequestCount - metricsBefore.restApiRequestCount),
     vectorCalls: Math.max(0, metricsAfter.vectorTileRequestCount - metricsBefore.vectorTileRequestCount)
@@ -162,7 +159,8 @@ async function main() {
       const report = await exportCity(city, limit);
       totalRoutes += report.routeCount;
       console.log(
-        `[export] ${city.slug}: ${report.routeCount} routes -> ${path.relative(process.cwd(), report.filePath)}` +
+        `[export] ${city.slug}: ${report.routeCount} routes merged into the sharded archive` +
+          ` (+${report.added} added, ${report.updated} updated, ${report.skipped} skipped)` +
           ` (${report.elapsedMs}ms, rest calls: ${report.restCalls}, vector calls: ${report.vectorCalls})`
       );
     } catch (error) {
