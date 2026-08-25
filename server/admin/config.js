@@ -1,13 +1,17 @@
 const dotenv = require("dotenv");
+const path = require("path");
+
+const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
 
 function resolveEnvFilePath() {
   const explicit = String(process.env.METROMARK_ENV_FILE || process.env.ENV_FILE || "").trim();
   if (explicit) {
-    return explicit;
+    return path.isAbsolute(explicit) ? explicit : path.resolve(PROJECT_ROOT, explicit);
   }
 
   const appEnv = String(process.env.APP_ENV || "development").trim().toLowerCase();
-  return appEnv === "production" ? ".env.production" : ".env.development";
+  const fileName = appEnv === "production" ? ".env.production" : ".env.development";
+  return path.resolve(PROJECT_ROOT, fileName);
 }
 
 const envFilePath = resolveEnvFilePath();
@@ -36,6 +40,11 @@ module.exports = {
   LOCAL_PG_PORT: asInt(process.env.METROMARK_LOCAL_PGPORT || process.env.LOCAL_PG_PORT, 5432),
   LOCAL_PG_USER: String(process.env.METROMARK_LOCAL_PGUSER || process.env.LOCAL_PG_USER || "postgres").trim(),
   LOCAL_PG_PASSWORD: String(process.env.METROMARK_LOCAL_PGPASSWORD || process.env.LOCAL_PG_PASSWORD || "").trim(),
+  HAS_LOCAL_PG_ENV: Boolean(
+    process.env.METROMARK_LOCAL_PG_URL || process.env.LOCAL_PG_URL ||
+    process.env.METROMARK_LOCAL_PGHOST || process.env.LOCAL_PG_HOST ||
+    process.env.METROMARK_LOCAL_PGDATABASE || process.env.LOCAL_PG_DATABASE
+  ),
   LOCAL_PG_DATABASE: String(process.env.METROMARK_LOCAL_PGDATABASE || process.env.LOCAL_PG_DATABASE || "metromark_cache").trim(),
   LOCAL_PG_SSL: String(process.env.METROMARK_LOCAL_PGSSL || process.env.LOCAL_PG_SSL || "disable").trim().toLowerCase(),
   TRANSITLAND_API_KEY: process.env.TRANSITLAND_API_KEY || "",

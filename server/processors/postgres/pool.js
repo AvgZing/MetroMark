@@ -11,7 +11,7 @@ const postgresMetrics = {
 };
 
 function hasLocalPostgresConfig() {
-  return Boolean(config.LOCAL_PG_URL || config.LOCAL_PG_HOST || config.LOCAL_PG_DATABASE);
+  return Boolean(config.LOCAL_PG_URL || config.HAS_LOCAL_PG_ENV);
 }
 
 function localDbLabel() {
@@ -39,7 +39,7 @@ function buildPoolOptions() {
     host: config.LOCAL_PG_HOST || "127.0.0.1",
     port: config.LOCAL_PG_PORT || 5432,
     user: config.LOCAL_PG_USER || "postgres",
-    password: config.LOCAL_PG_PASSWORD || "",
+    ...(config.LOCAL_PG_PASSWORD ? { password: config.LOCAL_PG_PASSWORD } : {}),
     database: config.LOCAL_PG_DATABASE || "metromark_cache",
     ssl,
     max: 8
