@@ -15,7 +15,7 @@ function resolveEnvFilePath() {
 }
 
 const envFilePath = resolveEnvFilePath();
-dotenv.config({ path: envFilePath });
+dotenv.config({ path: envFilePath, override: true });
 
 function asInt(value, fallback) {
   const parsed = Number.parseInt(value, 10);
