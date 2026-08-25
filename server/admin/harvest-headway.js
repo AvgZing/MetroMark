@@ -5,6 +5,7 @@ const path = require("path");
 
 const config = require("./config");
 const db = require("../processors/data");
+const budget = require("../sources/transitland/harvest-budget");
 const { getRouteHeadway } = require("../sources/transitland");
 
 const GEO_DIR = path.join(__dirname, "..", "..", "data", "tiles", "geo");
@@ -98,6 +99,10 @@ async function run() {
     const bm = Number(meta.get(lineKey)?.headwayBestMinutes);
     return !Number.isFinite(bm) || bm <= 0;
   });
+
+  // Headway is "nearly done" when every route in the archive already has it;
+  // from that point the pass only fills stragglers, so its daily budget drops.
+  budget.setNearlyDone("headway", missing.length === 0);
   log(`${lineKeys.length - missing.length} already have headway; ${missing.length} need fetching.`);
 
   const summary = {
@@ -109,10 +114,9 @@ async function run() {
   };
 
   for (const lineKey of missing) {
-    const capState = await getUsageCapState();
-    if (!capState.backgroundAllowed) {
+    if (!budget.canContinue("headway")) {
       summary.stoppedByCap = true;
-      log("Stopping headway backfill due to daily cap.", summarizeUsage(capState));
+      log("Stopping headway backfill due to daily budget.", budget.getSummary());
       break;
     }
 
@@ -129,7 +133,7 @@ async function run() {
     } catch (error) {
       if (error?.code === "DAILY_USAGE_LIMIT_REACHED" || error?.code === "TRANSITLAND_DAILY_CAP_REACHED") {
         summary.stoppedByCap = true;
-        log(`Cap reached while fetching headway for ${lineKey}.`, summarizeUsage(capState));
+        log(`Cap reached while fetching headway for ${lineKey}.`, budget.getSummary());
         break;
       }
       summary.errors += 1;
@@ -140,7 +144,8 @@ async function run() {
   const afterState = await getUsageCapState();
   log("Headway backfill complete.", {
     ...summary,
-    usageAfter: summarizeUsage(afterState)
+    usageAfter: summarizeUsage(afterState),
+    budget: budget.getSummary()
   });
 
   return summary;

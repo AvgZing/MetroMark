@@ -5,6 +5,7 @@ const path = require("path");
 
 const config = require("./config");
 const db = require("../processors/data");
+const budget = require("../sources/transitland/harvest-budget");
 const { getRouteStopsTransit } = require("../sources/transitland");
 
 const GEO_DIR = path.join(__dirname, "..", "..", "data", "tiles", "geo");
@@ -98,6 +99,10 @@ async function run() {
     const count = Number(meta.get(lineKey)?.stopCount || 0);
     return !Number.isFinite(count) || count <= 0;
   });
+
+  // Stops are "nearly done" when every route in the archive already has an
+  // exact stop count; from that point the pass only fills stragglers.
+  budget.setNearlyDone("stops", missing.length === 0);
   log(`${lineKeys.length - missing.length} already have stop counts; ${missing.length} need fetching.`);
 
   const summary = {
@@ -109,10 +114,9 @@ async function run() {
   };
 
   for (const lineKey of missing) {
-    const capState = await getUsageCapState();
-    if (!capState.backgroundAllowed) {
+    if (!budget.canContinue("stops")) {
       summary.stoppedByCap = true;
-      log("Stopping stops backfill due to daily cap.", summarizeUsage(capState));
+      log("Stopping stops backfill due to daily budget.", budget.getSummary());
       break;
     }
 
@@ -129,7 +133,7 @@ async function run() {
     } catch (error) {
       if (error?.code === "DAILY_USAGE_LIMIT_REACHED" || error?.code === "TRANSITLAND_DAILY_CAP_REACHED") {
         summary.stoppedByCap = true;
-        log(`Cap reached while fetching stops for ${lineKey}.`, summarizeUsage(capState));
+        log(`Cap reached while fetching stops for ${lineKey}.`, budget.getSummary());
         break;
       }
       summary.errors += 1;
@@ -140,7 +144,8 @@ async function run() {
   const afterState = await getUsageCapState();
   log("Stops backfill complete.", {
     ...summary,
-    usageAfter: summarizeUsage(afterState)
+    usageAfter: summarizeUsage(afterState),
+    budget: budget.getSummary()
   });
 
   return summary;

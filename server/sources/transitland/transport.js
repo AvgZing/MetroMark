@@ -26,7 +26,7 @@ async function transitlandRequest(path, params, options = {}) {
     await enforceDailyUsageCapsIfNeeded("rest", options);
     transitlandMetrics.restApiRequestCount += 1;
     transitlandMetrics.lastRestRequestAt = new Date().toISOString();
-    await recordUsage("rest", 1);
+    await recordUsage("rest", 1, options);
 
     try {
       const response = await fetch(url, {

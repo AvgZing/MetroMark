@@ -1,3 +1,4 @@
+const fs = require("fs");
 const dotenv = require("dotenv");
 const path = require("path");
 
@@ -14,8 +15,54 @@ function resolveEnvFilePath() {
   return path.resolve(PROJECT_ROOT, fileName);
 }
 
+// dotenv reads files as UTF-8, so .env files saved by Windows tooling as UTF-16
+// (e.g. PowerShell `>` / Out-File) silently parse to zero keys. Decode the buffer
+// ourselves, detecting UTF-16 (BOM or NUL bytes) and UTF-8 BOMs.
+function decodeEnvBuffer(buffer) {
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return buffer.toString("utf16le");
+  }
+  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+    return buffer.swap16().toString("utf16le");
+  }
+  if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+    return buffer.toString("utf8").replace(/^\uFEFF/, "");
+  }
+  if (buffer.includes(0)) {
+    return buffer.toString("utf16le");
+  }
+  return buffer.toString("utf8");
+}
+
+// Load the selected env file. Values from the file are applied unless a NON-EMPTY
+// value for the same key is already present in the real environment, so real env
+// vars still win while empty/stale placeholders never block the file's values.
+function loadEnvFile(filePath) {
+  let buffer;
+  try {
+    buffer = fs.readFileSync(filePath);
+  } catch (error) {
+    console.warn(`[config] WARNING: env file not found at ${filePath} (${error.code}); using defaults.`);
+    return;
+  }
+
+  const parsed = dotenv.parse(decodeEnvBuffer(buffer));
+  const keys = Object.keys(parsed);
+  if (keys.length === 0) {
+    console.warn(`[config] WARNING: env file ${filePath} parsed with 0 keys; check its encoding.`);
+    return;
+  }
+
+  for (const [key, value] of Object.entries(parsed)) {
+    const existing = process.env[key];
+    if (existing === undefined || String(existing).trim() === "") {
+      process.env[key] = value;
+    }
+  }
+}
+
 const envFilePath = resolveEnvFilePath();
-dotenv.config({ path: envFilePath, override: true });
+loadEnvFile(envFilePath);
 
 function asInt(value, fallback) {
   const parsed = Number.parseInt(value, 10);
@@ -65,7 +112,7 @@ module.exports = {
   STATION_HUB_SNAP_MAX_METERS: asInt(process.env.STATION_HUB_SNAP_MAX_METERS, 180),
   BBOX_MAX_SPAN_DEGREES: asFloat(process.env.BBOX_MAX_SPAN_DEGREES, 2.2),
   ADMIN_EMAIL: String(process.env.ADMIN_EMAIL || process.env.ADMIN_USERNAME || process.env.ADMIN_USER || "").trim(),
-  HARVEST_DAILY_REST_LIMIT: asInt(process.env.HARVEST_DAILY_REST_LIMIT, 250),
+  HARVEST_DAILY_REST_LIMIT: asInt(process.env.HARVEST_DAILY_REST_LIMIT, 300),
   HARVEST_DAILY_VECTOR_LIMIT: asInt(process.env.HARVEST_DAILY_VECTOR_LIMIT, 2500),
   HARVEST_DAILY_ROUTING_LIMIT: asInt(process.env.HARVEST_DAILY_ROUTING_LIMIT, 250),
   BACKUP_OUTPUT_DIR: String(process.env.BACKUP_OUTPUT_DIR || "data/backups").trim() || "data/backups"

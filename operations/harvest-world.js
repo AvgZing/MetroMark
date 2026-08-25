@@ -11,17 +11,22 @@
 // maintaining a list of city slugs. Runs are orchestrated by operations/run-harvesters.bat.
 
 const { loadState, saveState } = require("./harvest-state");
-const { log, getUsageCapState, summarizeUsage } = require("./harvest-log");
+const { log } = require("./harvest-log");
 const { harvestCities, harvestGaps } = require("./harvest-phases");
 const { mergeBackfillFeatures } = require("../server/sources/transitland/backfill");
 const { buildPmtiles } = require("../server/scripts/build/build-pmtiles");
+const budget = require("../server/sources/transitland/harvest-budget");
 const WORLD_CITIES = require("./world-cities");
 
 async function run() {
   const state = loadState();
-  const cap = await getUsageCapState();
-  if (!cap.backgroundAllowed) {
-    log("Daily cap already reached — skipping this pass.", summarizeUsage(cap));
+
+  // Geometry is "nearly done" once the pass has worked through all 363 cities
+  // and is only filling in the rest of the world slowly (gap phase).
+  budget.setNearlyDone("geometry", state.phase === "gaps");
+
+  if (!budget.canContinue("geometry")) {
+    log("Daily geometry budget already reached — skipping this pass.", budget.getSummary());
     saveState(state);
     return;
   }
@@ -48,7 +53,6 @@ async function run() {
   state.lastRunAt = new Date().toISOString();
   saveState(state);
 
-  const after = await getUsageCapState();
   log("World harvest pass complete.", {
     phase: state.phase,
     cityIndex: state.cityIndex,
@@ -59,7 +63,7 @@ async function run() {
     processedGapCells: state.processedCells,
     transitCells: state.transitCells,
     newFeatures: newFeatures.length,
-    usageAfter: summarizeUsage(after)
+    budget: budget.getSummary()
   });
 }
 

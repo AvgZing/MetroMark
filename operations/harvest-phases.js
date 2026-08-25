@@ -1,7 +1,8 @@
 const { fetchRoutesAndStopsForBbox } = require("../server/sources/transitland/fetch");
 const { normalizeRoutes } = require("../server/sources/transitland/routes");
+const budget = require("../server/sources/transitland/harvest-budget");
 const WORLD_CITIES = require("./world-cities");
-const { log, getUsageCapState, summarizeUsage } = require("./harvest-log");
+const { log } = require("./harvest-log");
 const {
   cityBbox,
   cellBbox,
@@ -16,9 +17,8 @@ async function harvestCities(state, newFeatures) {
   let processed = 0;
 
   while (state.cityIndex < WORLD_CITIES.length) {
-    const capNow = await getUsageCapState();
-    if (!capNow.backgroundAllowed) {
-      log("Daily cap reached — pausing city phase.", summarizeUsage(capNow));
+    if (!budget.canContinue("geometry")) {
+      log("Daily geometry budget reached — pausing city phase.", budget.getSummary());
       break;
     }
 
@@ -35,7 +35,7 @@ async function harvestCities(state, newFeatures) {
       log(`City ${state.cityIndex}/${WORLD_CITIES.length}: ${city.name} (${routes.length} routes)`);
     } catch (error) {
       if (error?.code === "DAILY_USAGE_LIMIT_REACHED" || error?.code === "TRANSITLAND_DAILY_CAP_REACHED") {
-        log(`Daily cap reached mid-city (${city.name}).`, summarizeUsage(capNow));
+        log(`Daily geometry budget reached mid-city (${city.name}).`, budget.getSummary());
         break;
       }
       state.cityIndex += 1;
@@ -57,9 +57,8 @@ async function harvestGaps(state, newFeatures) {
   let processed = 0;
 
   while (state.queue.length > 0) {
-    const capNow = await getUsageCapState();
-    if (!capNow.backgroundAllowed) {
-      log("Daily cap reached — pausing gap-fill phase.", summarizeUsage(capNow));
+    if (!budget.canContinue("geometry")) {
+      log("Daily geometry budget reached — pausing gap-fill phase.", budget.getSummary());
       break;
     }
 
@@ -98,7 +97,7 @@ async function harvestGaps(state, newFeatures) {
     } catch (error) {
       if (error?.code === "DAILY_USAGE_LIMIT_REACHED" || error?.code === "TRANSITLAND_DAILY_CAP_REACHED") {
         state.queue.unshift(cell);
-        log("Daily cap reached mid-cell — pausing gap-fill.", summarizeUsage(capNow));
+        log("Daily geometry budget reached mid-cell — pausing gap-fill.", budget.getSummary());
         break;
       }
       state.failures[cellKey] = Number(state.failures[cellKey] || 0) + 1;

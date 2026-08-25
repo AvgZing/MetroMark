@@ -1,6 +1,7 @@
 const config = require("../../admin/config");
 const db = require("../../processors/data");
 const { transitlandMetrics } = require("./metrics");
+const budget = require("./harvest-budget");
 
 function wait(milliseconds) {
   return new Promise((resolve) => {
@@ -25,6 +26,17 @@ async function enforceDailyUsageCapsIfNeeded(kind, options = {}) {
     return;
   }
 
+  // Harvester REST calls are budgeted per category (geometry/headway/stops),
+  // each with its own daily cap. User-side requests ("user", "backfill",
+  // "build") never pass the enforce gate above, so they stay unlimited.
+  if (kind === "rest") {
+    const category = budget.categoryFromSource(options.requestSource);
+    if (category) {
+      budget.enforceCategory(category);
+      return;
+    }
+  }
+
   const usageState = await db.getDailyUsageCapsState({
     rest: config.HARVEST_DAILY_REST_LIMIT,
     vector: config.HARVEST_DAILY_VECTOR_LIMIT,
@@ -47,7 +59,16 @@ async function enforceDailyUsageCapsIfNeeded(kind, options = {}) {
   throw error;
 }
 
-async function recordUsage(kind, amount = 1) {
+async function recordUsage(kind, amount = 1, options = {}) {
+  // Count harvester REST calls against the per-category budget so each
+  // category stops when it hits its own daily cap.
+  if (kind === "rest") {
+    const category = budget.categoryFromSource(options.requestSource);
+    if (category) {
+      budget.recordUsage(category, amount);
+    }
+  }
+
   try {
     await db.incrementUsage(kind, amount);
   } catch {

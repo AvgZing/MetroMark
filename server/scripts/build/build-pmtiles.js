@@ -6,6 +6,48 @@ const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 const GEO_DIR = path.join(REPO_ROOT, "data", "tiles", "geo");
 const OUTPUT_FILE = path.join(REPO_ROOT, "data", "tiles", "routes.pmtiles");
 
+// Build to a unique temp file and atomically rename it over OUTPUT_FILE once
+// tippecanoe has fully written it. A reader (Express sendFile, the pmtiles
+// protocol's range requests, or the service worker's full-archive fetch) then
+// always sees either the complete old archive or the complete new one — never a
+// partially-written file mid-rebuild, which previously made the map render
+// garbage and the app appear nonresponsive during every rebuild.
+//
+// The temp name must still END in ".pmtiles": tippecanoe chooses the output
+// format from the final file extension, so "routes.pmtiles.<pid>.<ts>" (ending
+// in digits) silently produces an MBTiles/SQLite archive instead of PMTiles.
+function outputTempFile() {
+  return path.join(
+    path.dirname(OUTPUT_FILE),
+    `routes.pmtiles.${process.pid}.${Date.now()}.pmtiles`
+  );
+}
+
+// Remove stale temp archives from crashed/interrupted builds so they never
+// accumulate in data/tiles/. Only touches our own temp naming pattern.
+function cleanStaleTempFiles() {
+  const dir = path.dirname(OUTPUT_FILE);
+  if (!fs.existsSync(dir)) {
+    return;
+  }
+  const staleMs = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  for (const name of fs.readdirSync(dir)) {
+    if (!/^routes\.pmtiles\.\d+\.\d+\.pmtiles$/.test(name)) {
+      continue;
+    }
+    const filePath = path.join(dir, name);
+    try {
+      const stat = fs.statSync(filePath);
+      if (now - stat.mtimeMs > staleMs) {
+        fs.unlinkSync(filePath);
+      }
+    } catch {
+      // best-effort cleanup
+    }
+  }
+}
+
 function resolveTippecanoe() {
   const candidates = [];
   if (process.env.TIPPECANOE_BIN && String(process.env.TIPPECANOE_BIN).trim()) {
@@ -102,11 +144,13 @@ async function buildPmtiles(options = {}) {
   }
 
   const tippecanoeBin = resolveTippecanoe();
+  cleanStaleTempFiles();
+  const tempOutput = outputTempFile();
   const args = [
     "-zg",
     "--drop-densest-as-needed",
     "-o",
-    OUTPUT_FILE,
+    tempOutput,
     "--name=metromark-routes",
     "-l",
     "routes",
@@ -119,47 +163,63 @@ async function buildPmtiles(options = {}) {
   log.log(`[build] tippecanoe: ${tippecanoeBin}`);
   log.log(`[build] inputs: ${files.length} NDJSON file(s): ${files.map((file) => path.basename(file)).join(", ")}`);
 
-  const child = spawn(tippecanoeBin, args, { stdio: ["pipe", "pipe", "pipe"] });
-  let stderrTail = "";
+  try {
+    const child = spawn(tippecanoeBin, args, { stdio: ["pipe", "pipe", "pipe"] });
+    let stderrTail = "";
 
-  child.stdout.on("data", (chunk) => {
-    if (options.captureStderr !== false) {
+    child.stdout.on("data", () => {
       // tippecanoe writes its summary to stderr; keep stdout quiet for server use
+    });
+    child.stderr.on("data", (chunk) => {
+      stderrTail = (stderrTail + chunk.toString()).slice(-2000);
+    });
+
+    await new Promise((resolve, reject) => {
+      child.on("error", (error) => {
+        if (error && error.code === "ENOENT") {
+          reject(new Error("tippecanoe is not installed or not on PATH. Set TIPPECANOE_BIN or install tippecanoe (see docs/working/tippecanoe-setup.md)."));
+          return;
+        }
+        reject(error);
+      });
+      child.on("close", (code) => {
+        if (code !== 0) {
+          reject(new Error(`tippecanoe exited with code ${code}: ${stderrTail.slice(-300)}`));
+          return;
+        }
+        resolve();
+      });
+      concatFilesToStdin(files, child.stdin).catch(reject);
+    });
+
+    if (!fs.existsSync(tempOutput)) {
+      throw new Error("tippecanoe finished but produced no output file.");
     }
-  });
-  child.stderr.on("data", (chunk) => {
-    stderrTail = (stderrTail + chunk.toString()).slice(-2000);
-  });
 
-  await new Promise((resolve, reject) => {
-    child.on("error", (error) => {
-      if (error && error.code === "ENOENT") {
-        reject(new Error("tippecanoe is not installed or not on PATH. Set TIPPECANOE_BIN or install tippecanoe (see docs/working/tippecanoe-setup.md)."));
-        return;
-      }
-      reject(error);
-    });
-    child.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`tippecanoe exited with code ${code}: ${stderrTail.slice(-300)}`));
-        return;
-      }
-      resolve();
-    });
-    concatFilesToStdin(files, child.stdin).catch(reject);
-  });
+    // Atomic swap: readers see either the complete old archive or the complete
+    // new one, never a partially-written file. sendFile/createReadStream open
+    // the destination with FILE_SHARE_DELETE on Windows, so an in-flight stream
+    // keeps reading the old archive while new requests get the new one.
+    fs.renameSync(tempOutput, OUTPUT_FILE);
 
-  if (!fs.existsSync(OUTPUT_FILE)) {
-    throw new Error("tippecanoe finished but produced no output file.");
+    const stats = fs.statSync(OUTPUT_FILE);
+    return {
+      outputFile: OUTPUT_FILE,
+      sizeBytes: stats.size,
+      tileCount: readTileCount(OUTPUT_FILE),
+      fileCount: files.length
+    };
+  } catch (error) {
+    // Never leave a half-written temp file behind.
+    try {
+      if (fs.existsSync(tempOutput)) {
+        fs.unlinkSync(tempOutput);
+      }
+    } catch {
+      // best-effort cleanup
+    }
+    throw error;
   }
-
-  const stats = fs.statSync(OUTPUT_FILE);
-  return {
-    outputFile: OUTPUT_FILE,
-    sizeBytes: stats.size,
-    tileCount: readTileCount(OUTPUT_FILE),
-    fileCount: files.length
-  };
 }
 
 async function main() {

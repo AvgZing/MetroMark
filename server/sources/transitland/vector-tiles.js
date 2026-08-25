@@ -166,7 +166,7 @@ async function fetchRoutesVectorTile(z, x, y, options = {}) {
   await enforceDailyUsageCapsIfNeeded("vector", options);
   transitlandMetrics.vectorTileRequestCount += 1;
   transitlandMetrics.lastVectorTileRequestAt = new Date().toISOString();
-  await recordUsage("vector", 1);
+  await recordUsage("vector", 1, options);
 
   try {
     const response = await fetch(url, {
