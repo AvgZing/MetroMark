@@ -163,9 +163,9 @@ function mapStyle() {
     sources: {
       streets: {
         type: "raster",
-        tiles: ["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],
+        tiles: cartoTileUrls("light_all"),
         tileSize: 256,
-        attribution: "© CARTO"
+        attribution: cartoAttribution()
       },
       "routes-vector": { type: "vector", url: "pmtiles:///api/tiles/routes.pmtiles" },
       "routes-underlay": { type: "geojson", data: EMPTY_FC },
@@ -236,10 +236,15 @@ function mapStyle() {
   };
 }
 
-function initMap() {
+async function initMap() {
   if (typeof pmtiles !== "undefined" && typeof maplibregl !== "undefined") {
     const pmtilesProtocol = new pmtiles.Protocol();
     maplibregl.addProtocol("pmtiles", pmtilesProtocol.tile);
+  }
+
+  // Ensure the CARTO basemap key is loaded before the style is built.
+  if (typeof fetchBasemapKey === "function") {
+    await fetchBasemapKey();
   }
 
   state.map = new maplibregl.Map({
@@ -1026,7 +1031,7 @@ function bindEvents() {
 
 async function bootApp() {
   await loadCities();
-  initMap();
+  await initMap();
   state.map.once("load", () => {
     setTimeout(() => {
       loadExistingEdits();

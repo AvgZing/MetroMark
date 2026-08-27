@@ -7,9 +7,9 @@ function createMapStyle() {
     sources: {
       streets: {
         type: "raster",
-        tiles: ["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"],
+        tiles: cartoTileUrls("light_all"),
         tileSize: 256,
-        attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+        attribution: cartoAttribution()
       },
       satellite: {
         type: "raster",

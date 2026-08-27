@@ -413,6 +413,11 @@ async function init() {
   restoreUserStatusFromFocus();
 
   bindEvents();
+
+  // Ensure the CARTO basemap key is loaded before the map style is built.
+  if (typeof fetchBasemapKey === "function") {
+    await fetchBasemapKey();
+  }
   console.log(`[perf] init: pre-map setup in ${(performance.now() - initT0).toFixed(1)}ms`);
   initializeMap();
 

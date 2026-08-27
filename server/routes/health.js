@@ -12,6 +12,7 @@ router.get("/health", (req, res) => {
     app: "MetroMark",
     swEnabled: config.SW_ENABLED,
     hasTransitlandKey: Boolean(config.TRANSITLAND_API_KEY),
+    cartoBasemapKey: config.CARTO_BASEMAP_KEY || "",
     hasLocalPostgres: hasLocalPostgresConfig(),
     transitlandRequestTimeoutMs: config.TRANSITLAND_REQUEST_TIMEOUT_MS,
     transitlandRequestRetries: config.TRANSITLAND_REQUEST_RETRIES,

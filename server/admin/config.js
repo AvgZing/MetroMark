@@ -95,6 +95,7 @@ module.exports = {
   LOCAL_PG_DATABASE: String(process.env.METROMARK_LOCAL_PGDATABASE || process.env.LOCAL_PG_DATABASE || "metromark_cache").trim(),
   LOCAL_PG_SSL: String(process.env.METROMARK_LOCAL_PGSSL || process.env.LOCAL_PG_SSL || "disable").trim().toLowerCase(),
   TRANSITLAND_API_KEY: process.env.TRANSITLAND_API_KEY || "",
+  CARTO_BASEMAP_KEY: process.env.CARTO_BASEMAP_KEY || "",
   TRANSITLAND_REQUEST_TIMEOUT_MS: asInt(process.env.TRANSITLAND_REQUEST_TIMEOUT_MS, 15000),
   TRANSITLAND_REQUEST_RETRIES: asInt(process.env.TRANSITLAND_REQUEST_RETRIES, 1),
   TRANSIT_CACHE_TTL_HOURS: asInt(process.env.TRANSIT_CACHE_TTL_HOURS, 2160),

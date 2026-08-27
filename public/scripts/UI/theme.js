@@ -4,9 +4,7 @@ function setTheme(theme, options = {}) {
 
   // Update streets basemap to match theme (light or dark Carto tiles)
   if (appState.map && appState.map.getSource("streets") && appState.mapMode !== "satellite") {
-    const tiles = appState.theme === "dark"
-      ? ["https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"]
-      : ["https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"];
+    const tiles = appState.theme === "dark" ? cartoTileUrls("dark_all") : cartoTileUrls("light_all");
     try {
       appState.map.getSource("streets").setTiles(tiles);
       appState.map.triggerRepaint();
@@ -18,7 +16,7 @@ function setTheme(theme, options = {}) {
           type: "raster",
           tiles,
           tileSize: 256,
-          attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+          attribution: cartoAttribution()
         });
         appState.map.triggerRepaint();
       } catch (e) {
