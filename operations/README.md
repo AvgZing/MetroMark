@@ -2,33 +2,44 @@
 
 This directory is **maintenance/operations tooling** — it is not part of the
 web app itself. It drives the data pipeline (harvesters + startup) on the
-MetroMark host PC, and holds the SQL schema.
+MetroMark host PC.
 
 ## Layout
 
 ```
 operations/
-  harvest-world.js       # World quadtree harvester (geometry + headway + metadata)
-  world-cities.js        # Default world-city list (Phase 1 of harvest-world)
-  run-harvesters.bat     # Background loop: runs the harvesters, waits, repeats
-  start-metromark.bat    # Host startup: web app + harvester loop (Startup shortcut)
-  sync-from-github.bat   # Manual: pull latest stable code from GitHub (self-locating)
+  start-metromark.bat        # Host startup: web app + harvester loop (Startup shortcut)
+  restart-metromark.bat      # Manual: stop both windows + restart MetroMark
+  run-harvesters.bat         # Background loop: runs the harvesters, waits, repeats
+  sync-from-github.bat       # Manual: pull latest stable code from GitHub (self-locating)
+  maybe-backup.bat           # Called by run-harvesters: once-per-day nonrecoverable backup
+  install-daily-restart.bat  # One-time: register daily Task Scheduler restart
+  start-metromark-windows.ps1 # Launches + side-by-side snaps the two console windows
   README.md
-  local-postgres-schema.sql / local-postgres-changes.sql  # Local DB baseline + migrations
-  supabase-baseline.sql / supabase-changes.sql            # Supabase baseline + migrations
-  state/world-harvest.json # Resumable world-harvest progress (gitignored)
-  Logs/                  # Server + harvester logs (gitignored)
-  data/tiles/            # Generated tile/NDJSON store (gitignored, per-machine - never synced)
+  harvest/                   # Harvest engine (implementation)
+    harvest-world.js         #   World quadtree harvester (geometry + headway + metadata)
+    world-cities.js          #   Default world-city list (Phase 1 of harvest-world)
+    harvest-log.js           #   Shared harvester log helper (console + file)
+    harvest-phases.js        #   City + gap-fill phase logic
+    harvest-grid.js          #   World quadtree geometry helpers
+    harvest-routes.js        #   Route feature accumulation + metadata storage
+    harvest-state.js         #   Resumable world-harvest state (operations/state/)
+  sql/                       # Supabase setup/migration SQL (run in Supabase dashboard)
+    supabase-baseline.sql    #   Baseline for a fresh Supabase project
+    supabase-changes.sql     #   Migration for existing Supabase projects
+  state/                     # Runtime progress state (gitignored, per-machine)
+  Logs/                      # Server + harvester logs (gitignored)
 ```
 
 ## How it works
 
-- **`harvest-world.js`** harvests the whole world in two phases:
-  1. **Cities first**: walks the curated list in `world-cities.js` (360+ major
-     cities, ordered by population and transit-network relevance, with the most
-     comprehensive coverage for North America and Europe; includes Hong Kong;
-     mainland China excluded pending a future non-Transitland source). Each
-     city is harvested at full detail (all routes + headway + metadata).
+- **`harvest/harvest-world.js`** harvests the whole world in two phases:
+  1. **Cities first**: walks the curated list in `harvest/world-cities.js`
+     (360+ major cities, ordered by population and transit-network relevance,
+     with the most comprehensive coverage for North America and Europe;
+     includes Hong Kong; mainland China excluded pending a future
+     non-Transitland source). Each city is harvested at full detail (all routes
+     + headway + metadata).
   2. **Gap-fill**: once every default city is done, it walks a coarse-to-fine
      quadtree over the whole globe, subdividing only cells that contain transit
      (covers intercity corridors + rural areas).
@@ -38,29 +49,31 @@ operations/
   archive, so both the map and the frequency display fill in as passes run.
   - `WORLD_HARVEST_START_ZOOM` (default 4), `WORLD_HARVEST_MAX_ZOOM` (default 9),
     and `WORLD_CITY_SPAN_DEGREES` (default 0.7) env vars tune the grid/city box.
-    No app-side slug list to maintain — `world-cities.js` is pure data.
-- **`run-harvesters.bat`** loops `harvest-world.js` + `server/admin/harvest-headway.js`
-  forever, waiting 10 minutes between passes (override `HARVEST_DELAY_SECONDS`).
-  Each script self-stops on quota, so nothing hammers Transitland.
-- **`start-metromark.bat`** starts the Express server and the harvester loop,
-  logging to `Logs/`.
+    No app-side slug list to maintain — `harvest/world-cities.js` is pure data.
+- **`run-harvesters.bat`** loops `harvest/harvest-world.js` +
+  `server/admin/harvest-headway.js` + `server/admin/harvest-stops.js` forever,
+  waiting 10 minutes between passes (override `HARVEST_DELAY_SECONDS`). Each
+  script self-stops on quota, so nothing hammers Transitland.
+- **`start-metromark.bat`** starts the Express server and the harvester loop in
+  two side-by-side console windows. Server and harvester log to `Logs/` via the
+  shared logger (`server/admin/logger.js`); files rotate daily by date.
+- **`maybe-backup.bat`** (invoked by `run-harvesters.bat`) runs the
+  nonrecoverable backup once per UTC day, guarded by a date marker in
+  `Logs/last-backup-day.txt`.
 
-## SQL schema files
+## SQL schema
 
-- `local-postgres-schema.sql` — **baseline** for the local cache/harvest
-  PostgreSQL database. Run once on a fresh DB (includes PostGIS + the LOD
-  functions). Tables match `server/processors/data` exactly.
-- `local-postgres-changes.sql` — **migration** for existing local DBs. When the
-  baseline gains tables/columns after a DB already exists, add the delta here
-  (idempotent statements) and run this file on that DB. Fresh DBs don't need it.
-- `supabase-baseline.sql` — baseline for a fresh Supabase project (auth
-  profiles, station visits, filter presets + RLS).
-- `supabase-changes.sql` — migration for existing Supabase projects; same
-  workflow as `local-postgres-changes.sql`.
+- **Local Postgres is auto-provisioned at server startup** from
+  `server/processors/postgres/schema.js` (`create if not exists` +
+  idempotent migrations). There is no separate local schema file to run.
+- **Supabase** cannot be auto-provisioned — run `sql/supabase-baseline.sql` in
+  the Supabase SQL editor on a fresh project (auth profiles, station visits,
+  filter presets + RLS). Schema changes to existing projects go in
+  `sql/supabase-changes.sql`, which mirrors the baseline's migration workflow.
 
-Backups from `npm run backup:nonrecoverable:prod` are written to
-`data/backups/prod` (see `BACKUP_OUTPUT_DIR` in `.env.production`), not to this
-directory.
+Backups from `maybe-backup.bat` / `npm run backup:nonrecoverable:prod` are
+written to `data/backups` (see `BACKUP_OUTPUT_DIR` in `.env.production`), not to
+this directory.
 
 ## Host PC setup (one-time)
 
@@ -71,11 +84,14 @@ directory.
    explicitly if your host differs.
 3. Provide `.env.production` (gitignored) with the real Postgres/Supabase/
    Transitland credentials, mirroring `.env.production.example`.
-4. Confirm Postgres (the `10.0.0.197:5432` cache or a local instance) is
-   reachable.
+4. Confirm the local Postgres cache DB is reachable (auto-provisioned at
+   startup) and run `sql/supabase-baseline.sql` once in the Supabase dashboard.
 5. Put a shortcut to `operations\start-metromark.bat` in the Startup folder
    (`Win+R` → `shell:startup`), or create a Task Scheduler task (At startup,
    "restart on failure") for boot-time start + crash recovery.
+6. Optional: run `operations\install-daily-restart.bat` (as admin) to register a
+   daily Task Scheduler task that restarts MetroMark each morning — clean log
+   rollover + process hygiene.
 
 ## Manual runs
 

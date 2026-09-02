@@ -1,6 +1,6 @@
-const { fetchRoutesAndStopsForBbox } = require("../server/sources/transitland/fetch");
-const { normalizeRoutes } = require("../server/sources/transitland/routes");
-const budget = require("../server/sources/transitland/harvest-budget");
+const { fetchRoutesAndStopsForBbox } = require("../../server/sources/transitland/fetch");
+const { normalizeRoutes } = require("../../server/sources/transitland/routes");
+const budget = require("../../server/sources/transitland/harvest-budget");
 const WORLD_CITIES = require("./world-cities");
 const { log } = require("./harvest-log");
 const {

@@ -7,6 +7,11 @@ REM   1. "MetroMark Server" - runs npm run start:prod (Express server),
 REM   2. "MetroMark Harvester" - runs operations\run-harvesters.bat
 REM      (background harvester loop: world + headway + stops).
 REM
+REM The windows are positioned side by side on the primary monitor by
+REM operations\start-metromark-windows.ps1, which captures each window handle in
+REM the same process that launched it (a separate re-discovery step is not
+REM reliable for console windows).
+REM
 REM Output is shown LIVE in each window so you can watch both processes.
 REM The windows stay open until you close them (which stops the process),
 REM so do not close them if you want MetroMark to keep running.
@@ -25,15 +30,6 @@ REM non-ASCII bytes in batch comments.
 cd /d "%~dp0.."
 if not defined TIPPECANOE_BIN set TIPPECANOE_BIN=C:\msys64\usr\bin\tippecanoe.exe
 
-echo Opening MetroMark web app window (npm run start:prod)...
-start "MetroMark Server" cmd /k "npm run start:prod"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-metromark-windows.ps1" -RepoRoot "%CD%"
 
-echo Opening MetroMark harvester window...
-start "MetroMark Harvester" cmd /k "call operations\run-harvesters.bat"
-
-echo MetroMark started. Two windows are open - keep them open.
-
-REM Best-effort: arrange the two console windows side by side on the primary
-REM monitor (server on the left half, harvester on the right half). This is a
-REM cosmetic nicety; if it fails the windows still open normally.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0layout-windows.ps1"
+endlocal

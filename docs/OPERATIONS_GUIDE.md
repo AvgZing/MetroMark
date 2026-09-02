@@ -49,14 +49,15 @@
 - Start: `npm run start:dev` / `npm run start:prod`.
 - Operational jobs: `npm run harvest:world`, `npm run harvest:headway`, `npm run backup:nonrecoverable` (or the `operations/run-harvesters.bat` loop).
 - Use separate Supabase projects for dev and production.
-- Apply schema from SQL files in `scripts/`.
+- Local Postgres schema is auto-provisioned at server startup; Supabase schema is applied from `operations/sql/supabase-baseline.sql` in the Supabase dashboard.
 
 ## Windows Host Operation (bat-based)
 - Start at login: put a shortcut to `operations\start-metromark.bat` in the Startup folder (`Win+R` → `shell:startup`), or add a Task Scheduler task (trigger: At startup; "restart on failure") for crash recovery.
-- `start-metromark.bat` starts the web app (Express server) and the harvester loop (`operations\run-harvesters.bat`: world + headway, daily-quota-aware). It does **not** touch GitHub.
+- `start-metromark.bat` starts the web app (Express server) and the harvester loop (`operations\run-harvesters.bat`: world + headway + stops, daily-quota-aware). It does **not** touch GitHub.
 - **GitHub updates are manual**: run `operations\sync-from-github.bat` when you want to pull the latest stable code. It self-locates the repo (or clones it fresh) and works on any PC, including a spare running an old version — copy the bat over and run it.
 - **`data/` is gitignored and per-machine** — it is never synced by git or the update bat (its `git reset --hard` only touches tracked files). Each machine builds its own tiles/NDJSON through the harvesters; copy `data/` manually if you ever want to seed a machine.
-- Backups are not run by any bat — use the admin dashboard "Run Nonrecoverable Backup" button or `npm run backup:nonrecoverable:prod`.
+- **Backups are automatic** (once per UTC day): `run-harvesters.bat` calls `operations\maybe-backup.bat`, which runs the nonrecoverable backup guarded by a date marker. You can also trigger manually from the admin dashboard ("Run Nonrecoverable Backup") or `npm run backup:nonrecoverable:prod`.
+- **Daily restart** (optional, for log rollover + process hygiene): run `operations\install-daily-restart.bat` once as admin to register a Task Scheduler task that calls `restart-metromark.bat` each morning. `restart-metromark.bat` can also be run by hand after a `sync-from-github.bat`.
 
 ## Production Readiness Checklist
 1. Populate `.env.production` with real production keys.

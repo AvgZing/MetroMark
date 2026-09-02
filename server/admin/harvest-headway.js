@@ -7,6 +7,9 @@ const config = require("./config");
 const db = require("../processors/data");
 const budget = require("../sources/transitland/harvest-budget");
 const { getRouteHeadway } = require("../sources/transitland");
+const { createLogger } = require("./logger");
+
+const fileLog = createLogger("harvester");
 
 const GEO_DIR = path.join(__dirname, "..", "..", "data", "tiles", "geo");
 
@@ -17,10 +20,22 @@ function nowIso() {
 function log(message, details = null) {
   const prefix = `[harvest-headway ${nowIso()}]`;
   if (details === null || details === undefined) {
-    console.log(`${prefix} ${message}`);
+    const line = `${prefix} ${message}`;
+    console.log(line);
+    fileLog.raw(line);
     return;
   }
-  console.log(`${prefix} ${message}`, details);
+  const line = `${prefix} ${message}`;
+  console.log(line, details);
+  fileLog.raw(`${line} :: ${safeStringify(details)}`);
+}
+
+function safeStringify(value) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 async function getUsageCapState() {

@@ -13,9 +13,9 @@
 const { loadState, saveState } = require("./harvest-state");
 const { log } = require("./harvest-log");
 const { harvestCities, harvestGaps } = require("./harvest-phases");
-const { mergeBackfillFeatures } = require("../server/sources/transitland/backfill");
-const { buildPmtiles } = require("../server/scripts/build/build-pmtiles");
-const budget = require("../server/sources/transitland/harvest-budget");
+const { mergeBackfillFeatures } = require("../../server/sources/transitland/backfill");
+const { buildPmtiles } = require("../../server/scripts/build/build-pmtiles");
+const budget = require("../../server/sources/transitland/harvest-budget");
 const WORLD_CITIES = require("./world-cities");
 
 async function run() {

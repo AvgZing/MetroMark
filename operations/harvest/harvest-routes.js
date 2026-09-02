@@ -1,7 +1,7 @@
-const db = require("../server/processors/data");
-const { routeToFeature } = require("../server/sources/transitland/route-features");
-const { isFallbackHeadwaySeconds } = require("../server/sources/transitland/headway");
-const { detectProblematicGeometry } = require("../server/sources/transitland/problematic-geometry");
+const db = require("../../server/processors/data");
+const { routeToFeature } = require("../../server/sources/transitland/route-features");
+const { isFallbackHeadwaySeconds } = require("../../server/sources/transitland/headway");
+const { detectProblematicGeometry } = require("../../server/sources/transitland/problematic-geometry");
 
 async function storeRouteMetadata(route) {
   const headwaySeconds = Number(route.headway_secs);

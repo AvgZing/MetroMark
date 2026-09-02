@@ -3,10 +3,12 @@ const express = require("express");
 
 const config = require("../../admin/config");
 const db = require("../../processors/data");
+const { createLogger } = require("../../admin/logger");
 
 const router = express.Router();
 const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 8;
 const adminSessions = new Map();
+const log = createLogger("server");
 
 function normalizeAdminText(value) {
   return String(value || "").trim();
@@ -96,6 +98,7 @@ router.post("/admin/login", async (req, res) => {
   try {
     const account = await loginAdminAccount(email, password);
     const token = issueAdminSession(account.email);
+    log.info(`Admin signed in: ${account.email}`);
     return res.json({
       ok: true,
       token,
@@ -106,6 +109,7 @@ router.post("/admin/login", async (req, res) => {
     });
   } catch (error) {
     const status = error.status || (String(error.message || "").includes("Invalid") ? 401 : 401);
+    log.warn(`Admin sign-in failed: ${email} :: ${String(error.message || "")}`);
     return res.status(status).json({ error: error.message || "Invalid admin email or password." });
   }
 });

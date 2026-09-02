@@ -7,6 +7,9 @@ const config = require("./config");
 const db = require("../processors/data");
 const { query: localQuery } = require("../processors/postgres");
 const { requireSupabaseClients } = require("../processors/supabase");
+const { createLogger } = require("./logger");
+
+const log = createLogger("backup");
 
 function timestampForFile() {
   const date = new Date();
@@ -128,15 +131,8 @@ async function runNonrecoverableBackup(options = {}) {
   fs.writeFileSync(filePath, json, "utf8");
   fs.writeFileSync(latestPath, json, "utf8");
 
-  console.log("Backup written:");
-  console.log(`- ${filePath}`);
-  console.log(`- ${latestPath}`);
-  console.log("Row counts:");
-  console.log(`- authUsers: ${snapshot.nonrecoverable.authUsers.length}`);
-  console.log(`- profiles: ${snapshot.nonrecoverable.profiles.length}`);
-  console.log(`- filterPresets: ${snapshot.nonrecoverable.filterPresets.length}`);
-  console.log(`- userStationVisits: ${snapshot.nonrecoverable.userStationVisits.length}`);
-  console.log(`- stationOverrides: ${snapshot.nonrecoverable.stationOverrides.length}`);
+  log.info(`Backup written to ${filePath}`);
+  log.info(`Row counts: auth=${snapshot.nonrecoverable.authUsers.length} profiles=${snapshot.nonrecoverable.profiles.length} presets=${snapshot.nonrecoverable.filterPresets.length} visits=${snapshot.nonrecoverable.userStationVisits.length} overrides=${snapshot.nonrecoverable.stationOverrides.length}`);
 
   return {
     filePath,
@@ -159,7 +155,7 @@ if (require.main === module) {
   runNonrecoverableBackup()
     .then(() => {})
     .catch((error) => {
-      console.error("[backup-nonrecoverable] Unhandled error", error);
+      log.error("[backup-nonrecoverable] Unhandled error", error);
       process.exitCode = 1;
     });
 }

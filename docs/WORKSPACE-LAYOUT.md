@@ -36,12 +36,14 @@
 - `scripts/build/` — build-pmtiles.js (tippecanoe archive build), export-transitland-geojson.js
 
 ## Non-critical (`operations/`)
-- `harvest-world.js`, `world-cities.js` — world harvester (Phase 1 cities, Phase 2 gaps)
-- `run-harvesters.bat`, `start-metromark.bat` — background harvester loop + host startup
+- `start-metromark.bat`, `restart-metromark.bat`, `run-harvesters.bat` — host startup, restart, background harvester loop
 - `sync-from-github.bat` — manual GitHub update (self-locating; works on any PC)
-- SQL schema files (postgres, supabase baselines + changes)
+- `maybe-backup.bat`, `install-daily-restart.bat` — once-per-day backup + daily restart task installers
+- `start-metromark-windows.ps1` — launches + side-by-side snaps the two console windows
+- `harvest/` — harvest engine (harvest-world.js, world-cities.js, harvest-*.js)
+- `sql/` — Supabase baseline + changes (run in the Supabase dashboard)
 - `state/` — resumable world-harvest progress (gitignored)
-- `Logs/` — server + harvester logs (gitignored; written by `start-metromark.bat`)
+- `Logs/` — server + harvester logs (gitignored; rotated daily by the shared logger)
 
 ## Documentation (`docs/`)
 - `ARCHITECTURE.md` — project architecture

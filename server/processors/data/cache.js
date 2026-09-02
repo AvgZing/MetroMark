@@ -1,5 +1,8 @@
 const { localQuery, assertLocalConfigured } = require("./core");
 const { normalizeCacheRow, normalizeText, nowSeconds, toEpochSeconds } = require("./utils");
+const { createLogger } = require("../../admin/logger");
+
+const log = createLogger("server");
 
 async function getCache(cacheKey) {
   assertLocalConfigured();
@@ -20,7 +23,9 @@ async function getCacheAny(cacheKey) {
   );
   const elapsed = Date.now() - t0;
   if (elapsed > 50) {
-    console.log(`[perf] getCacheAny(${cacheKey.slice(0, 60)}): ${elapsed}ms`);
+    // Slow cache reads are diagnostic detail, not console noise: they'd spam
+    // the server console on every route load. File-only via debug().
+    log.debug(`getCacheAny(${cacheKey.slice(0, 60)}): ${elapsed}ms`);
   }
   return normalizeCacheRow(rows?.[0] || null);
 }

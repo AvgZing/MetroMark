@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const STATE_DIR = path.join(__dirname, "state");
+const STATE_DIR = path.join(__dirname, "..", "state");
 const STATE_FILE = path.join(STATE_DIR, "world-harvest.json");
 
 function loadState() {

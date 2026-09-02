@@ -1,5 +1,8 @@
-const config = require("../server/admin/config");
-const db = require("../server/processors/data");
+const config = require("../../server/admin/config");
+const db = require("../../server/processors/data");
+const { createLogger } = require("../../server/admin/logger");
+
+const fileLog = createLogger("harvester");
 
 function nowIso() {
   return new Date().toISOString();
@@ -8,10 +11,22 @@ function nowIso() {
 function log(message, details = null) {
   const prefix = `[harvest-world ${nowIso()}]`;
   if (details === null || details === undefined) {
-    console.log(`${prefix} ${message}`);
+    const line = `${prefix} ${message}`;
+    console.log(line);
+    fileLog.raw(line);
     return;
   }
-  console.log(`${prefix} ${message}`, details);
+  const line = `${prefix} ${message}`;
+  console.log(line, details);
+  fileLog.raw(`${line} :: ${safeStringify(details)}`);
+}
+
+function safeStringify(value) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
 }
 
 async function getUsageCapState() {

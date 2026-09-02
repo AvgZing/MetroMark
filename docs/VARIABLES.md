@@ -361,7 +361,7 @@ MapLibre "routes-vector" source (pmtiles:// protocol, source-layer "routes") + f
 - `"metromark_[presetName]"` - Serialized preset snapshot (auto-named)
 
 ### PostgreSQL Data Store Tables
-Postgres is the local cache/harvest database (see `operations/local-postgres-schema.sql`). Transitland data is harvested into it and into the NDJSON store to reduce API calls; the runtime map reads the PMTiles archive.
+Postgres is the local cache/harvest database (schema is auto-provisioned at server startup from `server/processors/postgres/schema.js`). Transitland data is harvested into it and into the NDJSON store to reduce API calls; the runtime map reads the PMTiles archive.
 
 - `public.transit_cache` - Transitland API response cache (city catalogs, route stops, headway, vector tiles)
 - `public.route_metadata` - Per-route metadata (name, operator, mode, color, headway, frequency, stop count)
@@ -374,7 +374,7 @@ Postgres is the local cache/harvest database (see `operations/local-postgres-sch
 - `public.route_review` - Problematic-geometry review flags
 - `public.agency_review` - Operator allow/block flags
 
-Supabase (`operations/supabase-baseline.sql`) holds the auth/user tables: `profiles`, `user_station_visit` (progress), `user_filter_presets`.
+Supabase (`operations/sql/supabase-baseline.sql`) holds the auth/user tables: `profiles`, `user_station_visit` (progress), `user_filter_presets`.
 
 ---
 
