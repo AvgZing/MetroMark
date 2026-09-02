@@ -112,10 +112,7 @@ async function run() {
 
   const missing = lineKeys.filter((lineKey) => {
     const entry = meta.get(lineKey);
-    // Already checked (real headway OR the "no usable headway" fallback is
-    // deliberately cached as headwayChecked=1) — do not refetch on every pass.
-    // The old filter looked only at headwayBestMinutes > 0, which made the
-    // harvest re-fetch the same fallback routes forever.
+    // Checked (real or fallback) is done — don't refetch every pass.
     if (entry && Number(entry.headwayChecked || 0) === 1) {
       return false;
     }
@@ -123,8 +120,7 @@ async function run() {
     return !Number.isFinite(bm) || bm <= 0;
   });
 
-  // Headway is "nearly done" when every route in the archive already has it;
-  // from that point the pass only fills stragglers, so its daily budget drops.
+  // Near done once every archive route is checked.
   budget.setNearlyDone("headway", missing.length === 0);
   log(`${lineKeys.length - missing.length} already have headway; ${missing.length} need fetching.`);
 

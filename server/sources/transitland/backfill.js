@@ -8,22 +8,8 @@ const { buildPmtiles, listNdjsonFiles, GEO_DIR } = require("../../scripts/build/
 
 const BACKFILL_FILE = path.join(GEO_DIR, "routes-feed.ndjson");
 
-// ---------------------------------------------------------------------------
-// Sharded NDJSON archive.
-//
-// routes.pmtiles is rebuilt from every *.ndjson file in GEO_DIR. Keeping all
-// backfilled routes in one routes-feed.ndjson made every merge read + rewrite
-// the entire (hundreds of MB) file, even when only a handful of routes changed.
-// Instead the archive is split into SHARD_COUNT files by a deterministic hash
-// of line_key, so a merge only reads/writes the shards its new keys land in.
-//
-//   data/tiles/geo/shard-000.ndjson ... shard-255.ndjson
-//   data/tiles/geo/archive-manifest.json   { shardCount, counts: [n, ...] }
-//   data/tiles/geo/archive.lock            (cross-process merge mutex)
-//
-// On first use the legacy routes-feed.ndjson and any per-city seed files are
-// absorbed into the shards and deleted.
-// ---------------------------------------------------------------------------
+// Sharded NDJSON archive (256 shards by hash of line_key) so merges only touch
+// the shards their new routes hash into instead of rewriting the whole file.
 
 const SHARD_COUNT = 256;
 const SHARD_PREFIX = "shard-";
@@ -39,8 +25,6 @@ function shardFileName(index) {
   return path.join(GEO_DIR, `${SHARD_PREFIX}${String(index).padStart(3, "0")}.ndjson`);
 }
 
-// Deterministic djb2 hash so a route always lands in the same shard across
-// processes and restarts (no seeded/random source).
 function shardIndexFor(lineKey) {
   let hash = 5381;
   for (let i = 0; i < lineKey.length; i += 1) {
@@ -77,9 +61,6 @@ function writeManifest(counts) {
   return manifest;
 }
 
-// Cross-process mutex so the harvest loop (own node process) and the server's
-// backfills never read-modify-write the same shard file concurrently. Creates
-// a lock file exclusively; waits and retries if another process holds it.
 async function withArchiveLock(fn) {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   for (;;) {
@@ -167,10 +148,6 @@ async function writeShardFeatures(index, features) {
   await fs.promises.writeFile(shardFileName(index), lines.length ? lines + "\n" : "", "utf8");
 }
 
-// Synchronous fallback scan used only when the manifest is missing (very first
-// run before any merge/migration). Kept sync because totalRoutesInArchive is
-// used synchronously by the stats route; it runs once and the manifest takes
-// over for all future calls.
 function scanArchiveLineKeysSync() {
   const keys = new Set();
   for (const file of listNdjsonFiles()) {
@@ -200,7 +177,6 @@ function scanArchiveLineKeysSync() {
 }
 
 function totalRoutesInArchive() {
-  // O(1) from the manifest; falls back to a one-time scan pre-migration.
   const manifest = readManifest();
   if (manifest) {
     return manifest.totalRoutes;
@@ -208,10 +184,6 @@ function totalRoutesInArchive() {
   return scanArchiveLineKeysSync().size;
 }
 
-// One-time migration: absorb the legacy routes-feed.ndjson and any per-city
-// seed *.ndjson files into the shard layout, then delete them. Runs lazily on
-// first archive write; guarded by the archive lock so two processes migrate
-// exactly once.
 let shardsInitialized = false;
 let migrationPromise = null;
 
@@ -283,9 +255,6 @@ function readShardFeatureCount(filePath) {
   return count;
 }
 
-// Merge a batch of GeoJSON features into the sharded archive. Only the shards
-// the new keys hash into are read and rewritten, so a small backfill touches a
-// small fraction of the archive instead of the whole file.
 async function mergeBackfillFeatures(newFeatures, options = {}) {
   const overwrite = Boolean(options.overwrite);
 
@@ -296,8 +265,6 @@ async function mergeBackfillFeatures(newFeatures, options = {}) {
 
   await ensureSharded();
 
-  // Group incoming features by the shard their line_key hashes into, so each
-  // shard is read/written at most once per merge.
   const byShard = new Map();
   for (const feature of incoming) {
     const key = lineKeyOf(feature);
@@ -343,8 +310,6 @@ async function mergeBackfillFeatures(newFeatures, options = {}) {
   });
 }
 
-// Drop the shard manifest so the next totalRoutesInArchive() recomputes it.
-// Called after external writers change NDJSON files outside mergeBackfillFeatures.
 function invalidateArchiveCount() {
   try {
     fs.unlinkSync(MANIFEST_FILE);
@@ -355,9 +320,6 @@ function invalidateArchiveCount() {
 
 const MAX_BACKFILL_SPAN_DEGREES = 1.8;
 
-// Transitland rejects bboxes larger than ~2 degrees. Clamp oversized bboxes
-// (e.g. the auto-backfill at a low-but-eligible zoom, or a hand-entered admin
-// bbox) around their center so the fetch never 500s with "bbox too large".
 function clampBackfillBbox(bboxArray) {
   if (!Array.isArray(bboxArray) || bboxArray.length !== 4) {
     return bboxArray;
@@ -398,8 +360,6 @@ async function runBackfill(bboxArray, options = {}) {
     const result = await fetchRoutesAndStopsForBbox(bbox, {
       includeAllTypes: true,
       routeTypes: [],
-      // User-initiated backfill must not be blocked by the harvester's daily
-      // quota — only the background harvesters enforce the cap.
       forceRefresh,
       requestSource: "backfill"
     });

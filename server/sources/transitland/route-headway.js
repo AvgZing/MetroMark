@@ -137,16 +137,18 @@ async function getRouteHeadway(lineKey, options = {}) {
 
     if (routePageSummary) {
       const summaryBestMinutes = Number(routePageSummary.bestMinutes);
-      const fallbackHeadway = isFallbackHeadwayMinutes(summaryBestMinutes);
-      normalizedBestMinutes = Number.isFinite(summaryBestMinutes) && summaryBestMinutes > 0 && !fallbackHeadway
-        ? Number(summaryBestMinutes.toFixed(1))
-        : null;
+      const sentinelFallback = isFallbackHeadwayMinutes(summaryBestMinutes);
+      const usableMinutes = Number.isFinite(summaryBestMinutes) && summaryBestMinutes > 0 && !sentinelFallback;
+
+      normalizedBestMinutes = usableMinutes ? Number(summaryBestMinutes.toFixed(1)) : null;
 
       summary = {
         ...routePageSummary,
         bestMinutes: normalizedBestMinutes,
-        frequencyBucket: fallbackHeadway ? fallbackFrequencyBucketForRoute(line) : routePageSummary.frequencyBucket,
-        headwayFallback: fallbackHeadway ? 1 : 0,
+        frequencyBucket: usableMinutes
+          ? routePageSummary.frequencyBucket
+          : fallbackFrequencyBucketForRoute(line),
+        headwayFallback: usableMinutes ? 0 : 1,
         routeType: Number.isFinite(Number(line.routeType)) ? Number(line.routeType) : null
       };
     }
@@ -163,10 +165,7 @@ async function getRouteHeadway(lineKey, options = {}) {
     }
   }
 
-  // Store headway to route_metadata so it persists across page reloads. This
-  // includes the fallback case (no usable headway): checking it once means the
-  // bulk loader can serve the "local" bucket permanently instead of re-fetching
-  // and showing "unknown" forever.
+  // Persist so page reloads and the bulk loader don't re-fetch.
   if (summary && (Number.isFinite(Number(summary.bestMinutes)) && Number(summary.bestMinutes) > 0 || Number(summary.headwayFallback || 0) === 1)) {
     try {
       await db.setRouteMetadata(normalizedLineKey, {

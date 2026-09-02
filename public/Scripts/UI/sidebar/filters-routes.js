@@ -78,8 +78,7 @@ function lineEligibleForToggleCounts(line, options = {}) {
     return false;
   }
 
-  // Check problematic geometry: manual admin override wins; otherwise use the
-  // auto-detected flag (synthesized straight-line geometry from harvest).
+  // Problematic: manual override wins, else auto-detected flag.
   if (!appState.showProblematicGeometries && line?.lineKey) {
     const routeReview = appState.routeReviewsByCity.get(line.lineKey);
     const manualOverride = routeReview ? routeReview.problematic_override : undefined;
@@ -128,8 +127,6 @@ function setShowAllStops(enabled, options = {}) {
   updateShowAllStopsUi();
 
   if (appState.showAllStops && typeof loadVisibleRouteStops === "function") {
-    // Toggling "Show all stops" means the user wants dots NOW: prefetch the
-    // visible routes' stops (with a loading indicator) so the map isn't empty.
     loadVisibleRouteStops().catch(() => {});
   }
 

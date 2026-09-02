@@ -8,16 +8,11 @@ async function storeRouteMetadata(route) {
   const hasHeadway = Number.isFinite(headwaySeconds) && headwaySeconds > 0;
   const fallback = hasHeadway && isFallbackHeadwaySeconds(headwaySeconds);
 
-  // Auto-detect synthesized stop-to-stop geometry (no real routing geometry).
-  // Geometry-only at this stage; the route-stops fetch refines it with the
-  // actual stop positions, and the admin manual override always wins.
+  // Geometry-only detection here; route-stops refines with stop positions.
   const problematicGeometry = detectProblematicGeometry(route.geometry, []);
 
-  // Headway fields are only written when this response actually carries
-  // headway; otherwise existing stored headway is preserved (setRouteMetadata
-  // is a partial merge). Stop counts are never written here — the exact
-  // post-dedup count comes from a route-stops fetch (harvest:stops or a user
-  // opening the route).
+  // Only write headway when this response carries it (setRouteMetadata is a
+  // partial merge). Stop counts come from harvest:stops, never here.
   const metadata = {
     routeOnestopId: route.routeOnestopId,
     lineName: route.lineName,

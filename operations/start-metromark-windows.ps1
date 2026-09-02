@@ -1,15 +1,7 @@
-# MetroMark window launcher + side-by-side layout.
-#
-# Starts the two MetroMark console windows and snaps them side by side using the
-# OS-native Windows 11 snap (Win+Left / Win+Right). Snapping requires the target
-# window to be the FOREGROUND window, so this script brings each window forward
-# and VERIFIES (via GetForegroundWindow) that it really is foreground before
-# sending the snap keys. If a window can't be brought to the foreground it is
-# skipped rather than snapping whatever happens to be focused (which is how the
-# restart bat's own console got snapped before).
-#
-# All output (including errors) is written to operations\Logs\start-metromark.log
-# so nothing is lost when the launching console closes.
+# Starts the two MetroMark console windows and snaps them side by side
+# (Win+Left / Win+Right). Only sends the snap keys after confirming the target
+# window is foreground, so it never snaps the wrong window. Output goes to
+# operations\Logs\start-metromark.log.
 
 param(
     [string]$RepoRoot
@@ -69,7 +61,9 @@ function Find-WindowByTitle {
     return $script:found
 }
 
-# Try hard to make Hwnd the foreground window, then VERIFY it is.
+# Bring Hwnd to the foreground; only returns true once GetForegroundWindow
+# confirms it. AttachThreadInput is needed for SetForegroundWindow to be
+# permitted from a script; AppActivate is the fallback for console windows.
 function Bring-ToForeground {
     param([IntPtr]$Hwnd, [string]$Title)
     $deadline = (Get-Date).AddSeconds(4)
@@ -77,8 +71,6 @@ function Bring-ToForeground {
         $fg = [W.N]::GetForegroundWindow()
         if ($fg -eq $Hwnd) { return $true }
 
-        # Attach our thread to the current foreground thread so SetForegroundWindow
-        # is permitted (Windows otherwise blocks foreground changes from a script).
         $fgThread = 0
         if ($fg -ne [IntPtr]::Zero) {
             [W.N]::GetWindowThreadProcessId($fg, [ref]$fgThread) | Out-Null
@@ -92,7 +84,6 @@ function Bring-ToForeground {
             [W.N]::SetForegroundWindow($Hwnd) | Out-Null
         }
 
-        # Belt and braces: AppActivate can activate console windows by title.
         try {
             $shell = New-Object -ComObject WScript.Shell
             $shell.AppActivate($Title) | Out-Null

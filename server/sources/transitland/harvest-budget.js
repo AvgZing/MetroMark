@@ -1,23 +1,6 @@
 const fs = require("fs");
 const path = require("path");
 
-// Per-category daily REST budget for the MetroMark harvesters.
-//
-// The shared REST cap is split into three categories that never starve each
-// other: geometry (harvest-world), headway (harvest-headway), and stops
-// (harvest-stops). Each category gets 100 calls/day while active. When a
-// category is "nearly done" (its pass has worked through all the main work and
-// is only filling the remaining world slowly), its budget drops to 50/day, and
-// the total daily limit tightens accordingly:
-//
-//   0 nearly done: 100 + 100 + 100 = 300
-//   1 nearly done:  50 + 100 + 100 = 250
-//   2 nearly done:  50 +  50 + 100 = 200
-//   3 nearly done:  50 +  50 +  50 = 150
-//
-// User-side requests (requestSource "user" / "backfill" / "build") are never
-// capped and never consume a harvest category budget.
-
 const ACTIVE_BUDGET = 100;
 const NEAR_DONE_BUDGET = 50;
 
@@ -62,7 +45,7 @@ function loadState() {
     };
   }
 
-  // New UTC day: reset usage counts but keep the near-done progress.
+  // Reset usage on a new UTC day; keep near-done progress.
   if (parsed && parsed.dayKey === today && parsed.counts) {
     state.counts = {
       geometry: Number(parsed.counts.geometry || 0),

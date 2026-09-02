@@ -167,8 +167,7 @@ function renderManualEditsLog() {
 // ---------------------------------------------------------------------------
 
 function mapStyle() {
-  // Use the saved theme so the basemap is correct on first paint (before the
-  // toggle handler runs). admin-theme.js is loaded before this file.
+  // Use saved theme for the basemap on first paint (admin-theme.js runs first).
   const savedTheme = typeof getAdminTheme === "function" ? getAdminTheme() : "light";
   return {
     version: 8,
@@ -310,8 +309,7 @@ async function updateUnderlay() {
     const payload = await fetch(`/api/transit/coverage?${params.toString()}`).then((r) => r.json());
     const source = state.map.getSource("routes-underlay");
     if (source && payload?.routesGeoJson) {
-      // Cache the raw features so the search/filter controls can narrow which
-      // routes are shown and selectable without another API round-trip.
+      // Cache raw features for the search/filter controls.
       state.underlayFeatures = Array.isArray(payload.routesGeoJson.features)
         ? payload.routesGeoJson.features
         : [];
@@ -387,8 +385,6 @@ function bindMapEvents() {
       return;
     }
 
-    // Deduplicate overlapping routes at the click point and show a selector
-    // when multiple lines share the same corridor (like the main map).
     const seenLineKeys = new Set();
     const uniqueFeatures = [];
     for (const feature of features) {
@@ -521,11 +517,6 @@ function featureLineProps(feature) {
   };
 }
 
-// Deduplicate stop features by their station key — the same primary identity
-// the line view uses (stopIdentityKey falls back to station_key). The raw
-// route-stops payload contains one feature per source stop, so a route that
-// loops or interlines produces duplicate station keys; deduping here keeps the
-// stop-order list (and the saved custom order) consistent with line view.
 function dedupeAdminStopFeatures(features) {
   const seen = new Set();
   return (Array.isArray(features) ? features : []).filter((feature) => {
@@ -541,9 +532,6 @@ function dedupeAdminStopFeatures(features) {
   });
 }
 
-// Order stop features by a previously saved custom stop order (matched by
-// station key), appending any unmatched stops at the end — mirrors line view's
-// orderByCustomStopKeys so the editor shows exactly what line view will render.
 function orderAdminStopsByCustomOrder(features, customStops) {
   const byKey = new Map();
   for (const feature of features || []) {
@@ -769,9 +757,7 @@ async function selectRouteFromFeature(feature) {
       setEditStatus(els.routeEditStatus, "Loaded existing override + tile properties.");
     }
 
-    // Problematic checkbox reflects the system's auto-detection, but the manual
-    // override still wins: once the admin has decided, the checkbox shows their
-    // choice (checked = disabled by default).
+    // Problematic = manual override, else auto-detect.
     const review = (reviewsPayload.reviews || []).find((r) => r.line_key === state.selectedLineKey);
     const manualOverride = review ? review.problematic_override : undefined;
     const autoProblematic = Boolean(headwayPayload?.headwayByLineKey?.[state.selectedLineKey]?.problematicGeometry);
@@ -855,11 +841,7 @@ async function saveRouteEdits() {
       body: { lineKey, citySlug: state.currentCitySlug, payload }
     });
 
-    // Problematic geometry: persist an explicit decision only when the admin
-    // actually changed the toggle. If they left it as loaded (auto-detected or
-    // not), write null so the system's auto-detection keeps governing and the
-    // toggle keeps reflecting it on the next load. If they changed it, write
-    // their explicit true/false as the manual override.
+    // Persist only when the admin actually changed the toggle.
     const problematicTouched = Boolean(state.problematicTouched);
     const problematicOverride = problematicTouched ? Boolean(els.routeProblematic.checked) : null;
     await apiRequest("/api/admin/reviews/route", {

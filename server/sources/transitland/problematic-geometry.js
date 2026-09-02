@@ -1,24 +1,5 @@
-// Smart "problematic geometry" detection.
-//
-// A route is considered to have problematic geometry when Transitland had no
-// real routing geometry for it and the map therefore draws a straight line
-// between stops. The detector is intentionally conservative: a route is only
-// auto-flagged when the geometry and (when available) the stops disagree in a
-// way that indicates the geometry was synthesized rather than routed.
-//
-// Signals used, in order of strength:
-//   1. Geometry is essentially a straight line (all vertices collinear within
-//      a small perpendicular tolerance).
-//   2. The route has 3+ stops that deviate from that straight line by more than
-//      a stop tolerance. A real route would route through its stops; a
-//      synthesized line ignores them. (A genuinely straight route — ferry,
-//      straight subway — keeps its stops ON the line, so it is NOT flagged.)
-//   3. No stops available yet: flag only a very low-vertex straight line over a
-//      meaningful span (a drawn fallback), never a short or dense geometry.
-//
-// The result is a boolean; the admin manual override (route_review
-// .problematic_override) always takes precedence over this auto-detection.
-
+// Detects routes whose geometry is a synthesized straight line between stops
+// rather than real routing geometry. Manual route_review overrides win.
 const STRAIGHT_TOLERANCE_M = 25;
 const STOP_DEVIATION_TOLERANCE_M = 150;
 const MIN_SPAN_KM = 2;
@@ -45,15 +26,13 @@ function haversineMeters(a, b) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-// Perpendicular distance (meters) of point p from the great-circle chord a-b,
-// approximated by the haversine distance to the closest point on the segment.
+// Distance of point p to segment a-b (meters).
 function distanceToSegmentMeters(p, a, b) {
   const ab = haversineMeters(a, b);
   if (ab <= 0.0001) {
     return haversineMeters(p, a);
   }
-  // Project p onto the a->b vector in a local equirectangular plane; using
-  // lon/lat as planar x/y is fine for the small angular spans involved here.
+  // Planar lon/lat projection is fine at these small angular spans.
   const ax = a[0];
   const ay = a[1];
   const bx = b[0];
@@ -151,8 +130,6 @@ function distinctVertexCount(points) {
   return count;
 }
 
-// Core detector. Returns true when the geometry is auto-detected as a
-// synthesized stop-to-stop line; false otherwise (including "cannot tell").
 function detectProblematicGeometry(geometry, stops) {
   const points = flattenGeometryPoints(geometry);
   if (points.length < 2) {
@@ -164,9 +141,7 @@ function detectProblematicGeometry(geometry, stops) {
   const isStraight = straightDeviationM <= STRAIGHT_TOLERANCE_M;
   const stopPoints = extractStopPoints(stops);
 
-  // A genuinely straight route keeps its stops on the line. If the geometry is
-  // straight AND all stops are also on that line, it is a real straight route
-  // (rare) — do not flag.
+  // Genuine straight routes keep their stops on the line — don't flag those.
   if (isStraight && stopPoints.length >= 3) {
     const stopsDeviationM = maxDeviationFromChordMeters(stopPoints);
     if (stopsDeviationM <= STOP_DEVIATION_TOLERANCE_M) {
@@ -174,8 +149,7 @@ function detectProblematicGeometry(geometry, stops) {
     }
   }
 
-  // Straight geometry + stops that deviate from the line → the geometry was
-  // synthesized (it ignored the stops).
+  // Straight geometry + stops off the line -> synthesized (ignored the stops).
   if (isStraight && stopPoints.length >= 3 && spanKm >= MIN_SPAN_KM) {
     const stopsDeviationM = maxDeviationFromChordMeters(stopPoints);
     if (stopsDeviationM > STOP_DEVIATION_TOLERANCE_M) {
@@ -183,9 +157,8 @@ function detectProblematicGeometry(geometry, stops) {
     }
   }
 
-  // Geometry-only fallback (stops not yet fetched): a nearly straight,
-  // very-low-vertex line over a meaningful span is a drawn fallback. Real
-  // street-following geometry has dozens–hundreds of vertices (median ~400).
+  // No stops yet: a nearly straight, very-low-vertex line over a real span is
+  // a drawn fallback (real street geometry has many vertices).
   if (stopPoints.length === 0) {
     if (isStraight && spanKm >= MIN_SPAN_KM) {
       return distinctVertexCount(points) <= MAX_FALLBACK_VERTICES;

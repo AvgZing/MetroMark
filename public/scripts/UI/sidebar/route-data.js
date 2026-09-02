@@ -372,11 +372,8 @@ function scheduleMetadataLoad() {
   }, 800);
 }
 
-// Prefetch route-linked stops for the current viewport so stops are already on
-// the map when the user enables "Show all stops" or focuses a line — no wait on
-// first click. Uses the same in-flight tracking and loading badge as the
-// on-demand path. The count of lines to fetch is bounded to keep data use sane;
-// deeper lines still load individually on focus.
+// Prefetch stops for the visible viewport (bounded) so dots appear without
+// waiting for a click or the "Show all stops" toggle.
 let stopsPrefetchInFlight = false;
 
 async function loadVisibleRouteStops() {
@@ -393,8 +390,7 @@ async function loadVisibleRouteStops() {
     return false;
   }
 
-  // Only prefetch lines that are actually visible under the current filters,
-  // and that don't already have stops cached or in flight.
+  // Visible, not-yet-cached, not-in-flight lines only.
   const candidates = [];
   for (const line of appState.lineSummaries) {
     if (!line || !line.lineKey) {

@@ -1,17 +1,3 @@
-// Shared MetroMark logger.
-//
-// Writes timestamped lines to BOTH the console (so the visible windows stay
-// live) AND a per-day file under operations\Logs\<source>-YYYY-MM-DD.log.
-// Files rotate automatically by date; old files are pruned on startup.
-//
-// Usage:
-//   const { createLogger } = require("../server/admin/logger");
-//   const log = createLogger("harvester");   // or "server", "backup"
-//   log.info("Pass complete", { cities: 40 });
-//   log.warn("Quota reached");
-//   log.error("Boom", err);
-//   log.debug("quiet detail that should NOT go to the console");
-
 const fs = require("fs");
 const path = require("path");
 
@@ -50,15 +36,12 @@ function pruneOld(source) {
         fs.unlinkSync(filePath);
       }
     }
-  } catch {
-    // best-effort
-  }
+  } catch {}
 }
 
 function append(source, level, message, details) {
   ensureLogDir();
-  const iso = utcStamp();
-  let line = `[${iso}] [${level}] [${source}] ${message}`;
+  let line = `[${utcStamp()}] [${level}] [${source}] ${message}`;
   if (details !== undefined && details !== null) {
     if (details instanceof Error) {
       line += ` :: ${details.message}`;
@@ -74,9 +57,7 @@ function append(source, level, message, details) {
   }
   try {
     fs.appendFileSync(dayFile(source), line + "\n", "utf8");
-  } catch {
-    // logging must never crash the app
-  }
+  } catch {}
 }
 
 function consoleLine(level, source, message) {
@@ -87,7 +68,6 @@ function consoleLine(level, source, message) {
 }
 
 function createLogger(source) {
-  // Prune old files for this source at most once per process.
   if (!prunedSources.has(source)) {
     prunedSources.add(source);
     pruneOld(source);
@@ -106,18 +86,14 @@ function createLogger(source) {
       consoleLine("error", source, message);
       append(source, "error", message, details);
     },
-    // File-only: keeps the console clean (route-load perf traces etc).
     debug(message, details) {
       append(source, "debug", message, details);
     },
-    // Raw, pre-formatted line (used by harvesters that already build a prefix).
     raw(message) {
       ensureLogDir();
       try {
         fs.appendFileSync(dayFile(source), message + "\n", "utf8");
-      } catch {
-        // best-effort
-      }
+      } catch {}
     }
   };
 }

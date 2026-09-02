@@ -115,8 +115,7 @@ async function run() {
     return !Number.isFinite(count) || count <= 0;
   });
 
-  // Stops are "nearly done" when every route in the archive already has an
-  // exact stop count; from that point the pass only fills stragglers.
+  // Near done once every archive route has an exact stop count.
   budget.setNearlyDone("stops", missing.length === 0);
   log(`${lineKeys.length - missing.length} already have stop counts; ${missing.length} need fetching.`);
 
