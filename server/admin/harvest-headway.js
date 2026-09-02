@@ -111,7 +111,15 @@ async function run() {
   }
 
   const missing = lineKeys.filter((lineKey) => {
-    const bm = Number(meta.get(lineKey)?.headwayBestMinutes);
+    const entry = meta.get(lineKey);
+    // Already checked (real headway OR the "no usable headway" fallback is
+    // deliberately cached as headwayChecked=1) — do not refetch on every pass.
+    // The old filter looked only at headwayBestMinutes > 0, which made the
+    // harvest re-fetch the same fallback routes forever.
+    if (entry && Number(entry.headwayChecked || 0) === 1) {
+      return false;
+    }
+    const bm = Number(entry?.headwayBestMinutes);
     return !Number.isFinite(bm) || bm <= 0;
   });
 

@@ -1,11 +1,12 @@
 # MetroMark window launcher + side-by-side layout.
 #
 # Starts the two MetroMark console windows and snaps them side by side using the
-# OS-native Windows 11 snap (Win+Left / Win+Right). Because console windows are
-# owned by conhost.exe, direct SetWindowPos is unreliable; the OS snap is the
-# dependable path. Snapping requires the target window to be the foreground
-# window, so this script activates each window (WScript AppActivate matches
-# console windows by title) before sending the snap keys.
+# OS-native Windows 11 snap (Win+Left / Win+Right). Snapping requires the target
+# window to be the FOREGROUND window, so this script brings each window forward
+# and VERIFIES (via GetForegroundWindow) that it really is foreground before
+# sending the snap keys. If a window can't be brought to the foreground it is
+# skipped rather than snapping whatever happens to be focused (which is how the
+# restart bat's own console got snapped before).
 #
 # All output (including errors) is written to operations\Logs\start-metromark.log
 # so nothing is lost when the launching console closes.
@@ -31,7 +32,12 @@ public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
   [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
   [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder sb, int max);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
   [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
 "@
     Write-Log "PInvoke OK"
 } catch {
@@ -63,31 +69,56 @@ function Find-WindowByTitle {
     return $script:found
 }
 
-# Activate a console window by title. AppActivate matches the window title,
-# which works reliably for console windows even when SetForegroundWindow is
-# blocked from a script context.
-function Activate-Window {
-    param([string]$Title)
-    try {
-        $shell = New-Object -ComObject WScript.Shell
-        return $shell.AppActivate($Title)
-    } catch {
-        return $false
+# Try hard to make Hwnd the foreground window, then VERIFY it is.
+function Bring-ToForeground {
+    param([IntPtr]$Hwnd, [string]$Title)
+    $deadline = (Get-Date).AddSeconds(4)
+    while ((Get-Date) -lt $deadline) {
+        $fg = [W.N]::GetForegroundWindow()
+        if ($fg -eq $Hwnd) { return $true }
+
+        # Attach our thread to the current foreground thread so SetForegroundWindow
+        # is permitted (Windows otherwise blocks foreground changes from a script).
+        $fgThread = 0
+        if ($fg -ne [IntPtr]::Zero) {
+            [W.N]::GetWindowThreadProcessId($fg, [ref]$fgThread) | Out-Null
+        }
+        $cur = [W.N]::GetCurrentThreadId()
+        if ($fgThread -ne 0 -and $fgThread -ne $cur) {
+            [W.N]::AttachThreadInput($cur, $fgThread, $true) | Out-Null
+            [W.N]::SetForegroundWindow($Hwnd) | Out-Null
+            [W.N]::AttachThreadInput($cur, $fgThread, $false) | Out-Null
+        } else {
+            [W.N]::SetForegroundWindow($Hwnd) | Out-Null
+        }
+
+        # Belt and braces: AppActivate can activate console windows by title.
+        try {
+            $shell = New-Object -ComObject WScript.Shell
+            $shell.AppActivate($Title) | Out-Null
+        } catch { }
+
+        Start-Sleep -Milliseconds 250
+        $fg = [W.N]::GetForegroundWindow()
+        if ($fg -eq $Hwnd) { return $true }
     }
+    return $false
 }
 
 function Snap-Window {
-    param([string]$Title, [string]$Side)
-    $activated = Activate-Window -Title $Title
-    Write-Log "  activate '$Title': $activated"
-    Start-Sleep -Milliseconds 400
+    param([IntPtr]$Hwnd, [string]$Title, [string]$Side)
+    if (-not (Bring-ToForeground -Hwnd $Hwnd -Title $Title)) {
+        Write-Log "  SKIP '$Title': could not bring it to the foreground (won't snap the wrong window)."
+        return
+    }
+    Start-Sleep -Milliseconds 300
 
     $key = if ($Side -eq 'right') { $VK_RIGHT } else { $VK_LEFT }
     [W.N]::keybd_event([byte]$VK_LWIN, 0, 0, [UIntPtr]::Zero)
     [W.N]::keybd_event([byte]$key, 0, 0, [UIntPtr]::Zero)
     [W.N]::keybd_event([byte]$key, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
     [W.N]::keybd_event([byte]$VK_LWIN, 0, $KEYEVENTF_KEYUP, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 300
+    Start-Sleep -Milliseconds 400
     Write-Log "  snapped '$Title' $Side"
 }
 
@@ -97,7 +128,7 @@ Start-Process -FilePath "cmd.exe" -ArgumentList '/c', 'start "MetroMark Harveste
 
 $server = [IntPtr]::Zero
 $harvester = [IntPtr]::Zero
-$deadline = (Get-Date).AddSeconds(10)
+$deadline = (Get-Date).AddSeconds(12)
 while ((Get-Date) -lt $deadline -and ($server -eq [IntPtr]::Zero -or $harvester -eq [IntPtr]::Zero)) {
     if ($server -eq [IntPtr]::Zero) {
         $server = Find-WindowByTitle -TitlePrefix "MetroMark Server"
@@ -114,12 +145,12 @@ Write-Log "server window found: $($server -ne [IntPtr]::Zero)"
 Write-Log "harvester window found: $($harvester -ne [IntPtr]::Zero)"
 
 if ($server -ne [IntPtr]::Zero) {
-    Snap-Window -Title "MetroMark Server" -Side 'left'
+    Snap-Window -Hwnd $server -Title "MetroMark Server" -Side 'left'
 } else {
     Write-Log "WARNING: could not find MetroMark Server window"
 }
 if ($harvester -ne [IntPtr]::Zero) {
-    Snap-Window -Title "MetroMark Harvester" -Side 'right'
+    Snap-Window -Hwnd $harvester -Title "MetroMark Harvester" -Side 'right'
 } else {
     Write-Log "WARNING: could not find MetroMark Harvester window"
 }
