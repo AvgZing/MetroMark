@@ -43,6 +43,18 @@
             <h1>MetroMark Admin</h1>
             <p class="subtle"><a href="/admin">Back to console</a></p>
           </div>
+          <button
+            id="themeToggleBtn"
+            class="btn btn-icon theme-toggle-btn"
+            type="button"
+            aria-label="Toggle theme"
+            title="Toggle theme"
+          >
+            <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3.5v2.2m0 12.6v2.2M5.6 5.6l1.6 1.6m9.6 9.6 1.6 1.6M3.5 12h2.2m12.6 0h2.2M5.6 18.4l1.6-1.6m9.6-9.6 1.6-1.6" />
+              <circle cx="12" cy="12" r="4.4" />
+            </svg>
+          </button>
         </div>
 
         <div class="panel override-hint-panel">
@@ -53,20 +65,16 @@
           </p>
         </div>
 
-        <div class="panel override-edit-panel" id="routeEditPanel" hidden>
-          <h2>Route</h2>
-          <p class="microcopy" id="routeIdentity"></p>
-          <label>Name</label>
-          <input id="routeName" type="text" placeholder="Display name" />
-          <label>Short Name</label>
-          <input id="routeShortName" type="text" placeholder="e.g. 40" />
-          <label>Long Name</label>
-          <input id="routeLongName" type="text" placeholder="e.g. Northgate - Rainier Beach" />
-          <label>Operator</label>
-          <input id="routeOperator" type="text" placeholder="Operator name" />
-          <label>Mode (route_type)</label>
-          <select id="routeMode">
-            <option value="">-- Keep current --</option>
+        <div class="panel override-search-panel">
+          <label for="routeSearchInput">Find Route</label>
+          <input
+            id="routeSearchInput"
+            type="search"
+            placeholder="Search name, number, operator, or key"
+          />
+          <label for="routeModeFilterSelect">Filter by Mode</label>
+          <select id="routeModeFilterSelect">
+            <option value="">All modes</option>
             <option value="0">Tram</option>
             <option value="1">Metro</option>
             <option value="2">Rail</option>
@@ -78,50 +86,19 @@
             <option value="11">Trolleybus</option>
             <option value="12">Monorail</option>
           </select>
-          <label>Color</label>
-          <input id="routeColor" type="text" placeholder="#d44d1f" />
-          <label>Stop Ordering Default</label>
-          <select id="routeOrdering">
-            <option value="">Auto</option>
-            <option value="geometry-revised">Main</option>
-            <option value="legacy-geometry">U-Shape</option>
-            <option value="fractions">Loop</option>
-          </select>
-          <div class="review-setting">
-            <label>
-              <input id="routeProblematic" type="checkbox" />
-              Disabled by default (problematic geometry)
-            </label>
-            <p class="setting-note">Hidden for users unless they enable "Show problematic geometries".</p>
-          </div>
-
-          <h3>Stops / Track Routing</h3>
-          <p class="microcopy">Set a custom stop order for the line view (listed top to bottom).</p>
-          <div id="routeStopsList" class="route-stops-list">
-            <p class="microcopy">Load a route to see its stops.</p>
-          </div>
-          <div class="override-actions">
-            <button id="saveStopOrderBtn" class="btn" type="button">Save Stop Order</button>
-            <button id="clearStopOrderBtn" class="btn btn-subtle" type="button">Clear Custom Order</button>
-          </div>
-
-          <div class="override-actions">
-            <button id="saveRouteBtn" class="btn" type="button">Save Route Edits</button>
-            <button id="discardRouteBtn" class="btn btn-subtle" type="button">Discard</button>
-          </div>
-          <p class="status" id="routeEditStatus"></p>
+          <p class="microcopy" id="routeSearchInfo"></p>
         </div>
 
         <div class="panel override-edit-panel" id="stationEditPanel" hidden>
           <h2>Station</h2>
           <p class="microcopy" id="stationIdentity"></p>
-          <label>Name</label>
+          <label for="stationName">Name</label>
           <input id="stationName" type="text" placeholder="Station name" />
-          <label>Latitude</label>
+          <label for="stationLat">Latitude</label>
           <input id="stationLat" type="number" step="any" placeholder="47.608" />
-          <label>Longitude</label>
+          <label for="stationLon">Longitude</label>
           <input id="stationLon" type="number" step="any" placeholder="-122.335" />
-          <label>Note</label>
+          <label for="stationNote">Note</label>
           <input id="stationNote" type="text" placeholder="Why this override?" />
           <div class="override-actions">
             <button id="saveStationBtn" class="btn" type="button">Save Station Edits</button>
@@ -146,6 +123,7 @@
           <h2>Batch by Mode</h2>
           <p class="microcopy">Mark every route of a mode in the viewport as disabled-by-default (or clear it).</p>
           <div class="row">
+            <label for="batchModeSelect">Mode</label>
             <select id="batchModeSelect">
               <option value="">All modes</option>
               <option value="0">Tram</option>
@@ -181,12 +159,95 @@
           <button id="logoutBtn" class="btn btn-subtle" type="button">Logout</button>
         </div>
         <div id="overrideMap"></div>
+
+        <div class="admin-line-editor-panel" id="routeEditPanel" hidden>
+          <div class="admin-line-editor-card">
+            <header class="admin-line-editor-header">
+              <div class="admin-line-editor-title">
+                <span id="routeEditColorDot" class="admin-line-color-dot" aria-hidden="true"></span>
+                <div>
+                  <p id="routeIdentity" class="admin-line-editor-name">Route</p>
+                  <p class="admin-line-editor-meta">Click a route on the map to edit it.</p>
+                </div>
+              </div>
+              <div class="admin-line-editor-actions">
+                <button id="discardRouteBtn" class="btn admin-line-editor-close" type="button">Close</button>
+              </div>
+            </header>
+
+            <div class="admin-line-editor-body">
+              <div class="admin-line-editor-section">
+                <h3>Identity</h3>
+                <label for="routeName">Name</label>
+                <input id="routeName" type="text" placeholder="Display name" />
+                <label for="routeShortName">Short Name</label>
+                <input id="routeShortName" type="text" placeholder="e.g. 40" />
+                <label for="routeLongName">Long Name</label>
+                <input id="routeLongName" type="text" placeholder="e.g. Northgate - Rainier Beach" />
+                <label for="routeOperator">Operator</label>
+                <input id="routeOperator" type="text" placeholder="Operator name" />
+              </div>
+
+              <div class="admin-line-editor-section">
+                <h3>Display</h3>
+                <label for="routeMode">Mode (route_type)</label>
+                <select id="routeMode">
+                  <option value="">-- Keep current --</option>
+                  <option value="0">Tram</option>
+                  <option value="1">Metro</option>
+                  <option value="2">Rail</option>
+                  <option value="3">Bus</option>
+                  <option value="4">Ferry</option>
+                  <option value="5">Cable Tram</option>
+                  <option value="6">Aerial</option>
+                  <option value="7">Funicular</option>
+                  <option value="11">Trolleybus</option>
+                  <option value="12">Monorail</option>
+                </select>
+                <label for="routeColor">Color</label>
+                <input id="routeColor" type="text" placeholder="#d44d1f" />
+                <label for="routeOrdering">Stop Ordering Default</label>
+                <select id="routeOrdering">
+                  <option value="">Auto</option>
+                  <option value="geometry-revised">Main</option>
+                  <option value="legacy-geometry">U-Shape</option>
+                  <option value="fractions">Loop</option>
+                </select>
+                <div class="review-setting">
+                  <label>
+                    <input id="routeProblematic" type="checkbox" />
+                    Disabled by default (problematic geometry)
+                  </label>
+                  <p class="setting-note">Hidden for users unless they enable "Show problematic geometries".</p>
+                </div>
+              </div>
+
+              <div class="admin-line-editor-section">
+                <h3>Stops / Track Routing</h3>
+                <p class="microcopy">Set a custom stop order for the line view (listed top to bottom).</p>
+                <div id="routeStopsList" class="route-stops-list">
+                  <p class="microcopy">Load a route to see its stops.</p>
+                </div>
+                <div class="override-actions">
+                  <button id="saveStopOrderBtn" class="btn" type="button">Save Stop Order</button>
+                  <button id="clearStopOrderBtn" class="btn btn-subtle" type="button">Clear Custom Order</button>
+                </div>
+              </div>
+
+              <div class="admin-line-editor-section admin-line-editor-actions-row">
+                <button id="saveRouteBtn" class="btn" type="button">Save Route Edits</button>
+              </div>
+              <p class="status" id="routeEditStatus"></p>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
     <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
     <script src="/Scripts/Map/basemap-config.js?v=2026-08-27" defer></script>
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-01" defer></script>
     <script src="/Scripts/Admin/admin-override.js" defer></script>
   </body>
 </html>

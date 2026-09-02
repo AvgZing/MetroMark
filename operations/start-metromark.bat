@@ -32,3 +32,8 @@ echo Opening MetroMark harvester window...
 start "MetroMark Harvester" cmd /k "call operations\run-harvesters.bat"
 
 echo MetroMark started. Two windows are open - keep them open.
+
+REM Best-effort: arrange the two console windows side by side on the primary
+REM monitor (server on the left half, harvester on the right half). This is a
+REM cosmetic nicety; if it fails the windows still open normally.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0layout-windows.ps1"

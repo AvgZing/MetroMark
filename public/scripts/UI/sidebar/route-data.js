@@ -246,6 +246,52 @@ function applyRouteStopCountSummaryToCachedTransit(lineKey, stopCount) {
   return updated;
 }
 
+function applyProblematicGeometryToCachedTransit(lineKey, problematicGeometry) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  if (!normalizedLineKey) {
+    return false;
+  }
+
+  const normalized = Boolean(problematicGeometry);
+  let updated = false;
+
+  const updateLine = (line) => {
+    if (!line || line.lineKey !== normalizedLineKey) {
+      return line;
+    }
+    updated = true;
+    return {
+      ...line,
+      problematicGeometry: normalized
+    };
+  };
+
+  appState.lineSummaries = appState.lineSummaries.map(updateLine);
+
+  if (Array.isArray(appState.loadedLineSummaries) && appState.loadedLineSummaries.length > 0) {
+    appState.loadedLineSummaries = appState.loadedLineSummaries.map(updateLine);
+  }
+
+  if (appState.transit?.routesGeoJson?.features) {
+    appState.transit.routesGeoJson.features = appState.transit.routesGeoJson.features.map((feature) => {
+      const featureLineKey = String(feature?.properties?.line_key || "").trim();
+      if (featureLineKey !== normalizedLineKey) {
+        return feature;
+      }
+      return {
+        ...feature,
+        properties: {
+          ...feature.properties,
+          problematic_geometry: normalized ? 1 : 0,
+          problematicGeometry: normalized
+        }
+      };
+    });
+  }
+
+  return updated;
+}
+
 async function ensureLineHeadwayLoaded(lineKey, options = {}) {
   const normalizedLineKey = String(lineKey || "").trim();
   if (!normalizedLineKey) {
@@ -320,7 +366,89 @@ function scheduleMetadataLoad() {
     if (typeof loadVisibleRouteHeadways === "function") {
       loadVisibleRouteHeadways().catch(() => {});
     }
+    if (typeof loadVisibleRouteStops === "function") {
+      loadVisibleRouteStops().catch(() => {});
+    }
   }, 800);
+}
+
+// Prefetch route-linked stops for the current viewport so stops are already on
+// the map when the user enables "Show all stops" or focuses a line — no wait on
+// first click. Uses the same in-flight tracking and loading badge as the
+// on-demand path. The count of lines to fetch is bounded to keep data use sane;
+// deeper lines still load individually on focus.
+let stopsPrefetchInFlight = false;
+
+async function loadVisibleRouteStops() {
+  if (!appState.lineSummaries.length || stopsPrefetchInFlight) {
+    return false;
+  }
+  if (!appState.map || !appState.mapReady) {
+    return false;
+  }
+
+  const zoom = Number(appState.map.getZoom() || 0);
+  const minZoom = typeof BACKFILL_MIN_ZOOM !== "undefined" ? BACKFILL_MIN_ZOOM : 8;
+  if (zoom < minZoom) {
+    return false;
+  }
+
+  // Only prefetch lines that are actually visible under the current filters,
+  // and that don't already have stops cached or in flight.
+  const candidates = [];
+  for (const line of appState.lineSummaries) {
+    if (!line || !line.lineKey) {
+      continue;
+    }
+    if (typeof lineIsVisible === "function" && !lineIsVisible(line)) {
+      continue;
+    }
+    const cacheKey = routeStopCacheKey(line.lineKey);
+    const cached = appState.lineStopsCache.get(cacheKey);
+    if (cached?.payload?.stopsGeoJson?.features?.length) {
+      continue;
+    }
+    if (appState.inFlightLineStopKeys.has(cacheKey)) {
+      continue;
+    }
+    candidates.push(line.lineKey);
+  }
+
+  if (!candidates.length) {
+    return false;
+  }
+
+  stopsPrefetchInFlight = true;
+  const MAX_PREFETCH = 20;
+  const batch = candidates.slice(0, MAX_PREFETCH);
+  if (batch.length > 0) {
+    setStatus(
+      `Loading stops for ${batch.length} visible route${batch.length === 1 ? "" : "s"}…`,
+      "neutral",
+      "Prefetching stops so they appear without clicking."
+    );
+  }
+
+  const results = await Promise.allSettled(
+    batch.map((lineKey) =>
+      ensureLineStopsLoaded(lineKey, {
+        silent: true,
+        cacheOnly: false
+      })
+    )
+  );
+
+  stopsPrefetchInFlight = false;
+  const loaded = results.filter((r) => r.status === "fulfilled" && r.value === true).length;
+
+  if (loaded > 0) {
+    refreshRouteStopDependentUi({ forceStopRefresh: false });
+    if (typeof updateLoadingStatus === "function") {
+      updateLoadingStatus();
+    }
+  }
+
+  return loaded > 0;
 }
 
 async function loadVisibleRouteHeadways() {
@@ -383,6 +511,12 @@ async function loadVisibleRouteHeadways() {
       if (stopCount > 0) {
         const didStopCount = applyRouteStopCountSummaryToCachedTransit(lineKey, stopCount);
         if (didStopCount) {
+          applied += 1;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(hw, "problematicGeometry")) {
+        const didProblematic = applyProblematicGeometryToCachedTransit(lineKey, hw.problematicGeometry);
+        if (didProblematic) {
           applied += 1;
         }
       }

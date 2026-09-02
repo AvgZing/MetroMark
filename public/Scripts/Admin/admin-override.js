@@ -17,6 +17,8 @@ const els = {
   routeEditPanel: document.getElementById("routeEditPanel"),
   stationEditPanel: document.getElementById("stationEditPanel"),
   routeIdentity: document.getElementById("routeIdentity"),
+  routeEditColorDot: document.getElementById("routeEditColorDot"),
+  routeEditMeta: document.getElementById("routeEditMeta"),
   routeName: document.getElementById("routeName"),
   routeShortName: document.getElementById("routeShortName"),
   routeLongName: document.getElementById("routeLongName"),
@@ -31,6 +33,9 @@ const els = {
   saveRouteBtn: document.getElementById("saveRouteBtn"),
   discardRouteBtn: document.getElementById("discardRouteBtn"),
   routeEditStatus: document.getElementById("routeEditStatus"),
+  routeSearchInput: document.getElementById("routeSearchInput"),
+  routeModeFilterSelect: document.getElementById("routeModeFilterSelect"),
+  routeSearchInfo: document.getElementById("routeSearchInfo"),
   hideAllOperatorsBtn: document.getElementById("hideAllOperatorsBtn"),
   showAllOperatorsBtn: document.getElementById("showAllOperatorsBtn"),
   batchModeSelect: document.getElementById("batchModeSelect"),
@@ -55,10 +60,14 @@ const state = {
   mapReady: false,
   cities: [],
   currentCitySlug: "",
+  routeSearchQuery: "",
+  routeModeFilter: "",
+  underlayFeatures: [],
   selectedLineKey: "",
   selectedStationKey: "",
   selectedRouteOverride: null,
   selectedRouteReview: null,
+  routeOverlapPopup: null,
   operatorsByCity: new Map(),
   currentRouteStops: [],
   manualEdits: []
@@ -158,12 +167,15 @@ function renderManualEditsLog() {
 // ---------------------------------------------------------------------------
 
 function mapStyle() {
+  // Use the saved theme so the basemap is correct on first paint (before the
+  // toggle handler runs). admin-theme.js is loaded before this file.
+  const savedTheme = typeof getAdminTheme === "function" ? getAdminTheme() : "light";
   return {
     version: 8,
     sources: {
       streets: {
         type: "raster",
-        tiles: cartoTileUrls("light_all"),
+        tiles: cartoTileUrls(savedTheme === "dark" ? "dark_all" : "light_all"),
         tileSize: 256,
         attribution: cartoAttribution()
       },
@@ -298,10 +310,64 @@ async function updateUnderlay() {
     const payload = await fetch(`/api/transit/coverage?${params.toString()}`).then((r) => r.json());
     const source = state.map.getSource("routes-underlay");
     if (source && payload?.routesGeoJson) {
-      source.setData(payload.routesGeoJson);
+      // Cache the raw features so the search/filter controls can narrow which
+      // routes are shown and selectable without another API round-trip.
+      state.underlayFeatures = Array.isArray(payload.routesGeoJson.features)
+        ? payload.routesGeoJson.features
+        : [];
+      applyUnderlaySearchFilter();
     }
   } catch {
     // non-critical
+  }
+}
+
+function buildUnderlaySearchText(feature) {
+  const props = feature?.properties || {};
+  return [
+    props.line_key,
+    props.line_name,
+    props.line_short_name,
+    props.line_long_name,
+    props.operator_name,
+    props.onestop_id,
+    props.route_onestop_id
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+}
+
+function applyUnderlaySearchFilter() {
+  const source = state.map && state.map.getSource("routes-underlay");
+  if (!source) {
+    return;
+  }
+
+  const query = String(state.routeSearchQuery || "").trim().toLowerCase();
+  const modeFilter = String(state.routeModeFilter || "").trim();
+
+  const features = (state.underlayFeatures || []).filter((feature) => {
+    if (query) {
+      const haystack = buildUnderlaySearchText(feature);
+      if (!haystack.includes(query)) {
+        return false;
+      }
+    }
+    if (modeFilter) {
+      const routeType = Number(feature?.properties?.route_type);
+      if (!Number.isFinite(routeType) || String(routeType) !== modeFilter) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  source.setData({ type: "FeatureCollection", features });
+
+  if (els.routeSearchInfo) {
+    const total = state.underlayFeatures ? state.underlayFeatures.length : 0;
+    els.routeSearchInfo.textContent =
+      query || modeFilter ? `${features.length} of ${total} routes shown` : "";
   }
 }
 
@@ -317,11 +383,30 @@ async function loadCities() {
 function bindMapEvents() {
   state.map.on("click", "routes-hit", (event) => {
     const features = state.map.queryRenderedFeatures(event.point, { layers: ["routes-hit"] });
-    const feature = features && features[0];
-    if (!feature) {
+    if (!features || !features.length) {
       return;
     }
-    selectRouteFromFeature(feature);
+
+    // Deduplicate overlapping routes at the click point and show a selector
+    // when multiple lines share the same corridor (like the main map).
+    const seenLineKeys = new Set();
+    const uniqueFeatures = [];
+    for (const feature of features) {
+      const props = featureLineProps(feature);
+      const lineKey = String(props.lineKey || "").trim();
+      if (!lineKey || seenLineKeys.has(lineKey)) {
+        continue;
+      }
+      seenLineKeys.add(lineKey);
+      uniqueFeatures.push(feature);
+    }
+
+    if (uniqueFeatures.length === 1) {
+      selectRouteFromFeature(uniqueFeatures[0]);
+      return;
+    }
+
+    openRouteOverlapPopup(uniqueFeatures, event.lngLat);
   });
 
   state.map.on("click", "stops-layer", (event) => {
@@ -338,6 +423,7 @@ function bindMapEvents() {
       layers: ["routes-hit", "stops-layer"]
     });
     if (!clicked || !clicked.length) {
+      closeRouteOverlapPopup();
       clearSelection();
     }
   });
@@ -346,6 +432,79 @@ function bindMapEvents() {
     const hit = state.map.queryRenderedFeatures(event.point, { layers: ["routes-hit", "stops-layer"] });
     state.map.getCanvas().style.cursor = hit && hit.length ? "pointer" : "";
   });
+}
+
+function escapeAdminHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function adminLineDisplayName(props) {
+  return [props.lineShortName, props.lineLongName || props.lineName]
+    .filter(Boolean)
+    .join(" | ") || props.lineKey;
+}
+
+function openRouteOverlapPopup(features, lngLat) {
+  closeRouteOverlapPopup();
+  if (!state.map) {
+    return;
+  }
+
+  const rows = features
+    .map((feature) => {
+      const props = featureLineProps(feature);
+      const color = String(props.color || "#177ca2").trim();
+      return `
+        <button class="admin-route-select-btn" type="button" data-admin-route-select="${escapeAdminHtml(props.lineKey)}">
+          <span class="admin-route-select-dot" style="background:${escapeAdminHtml(color)}"></span>
+          <span class="admin-route-select-name">${escapeAdminHtml(adminLineDisplayName(props))}</span>
+          <span class="admin-route-select-meta">${escapeAdminHtml(props.lineKey)}</span>
+        </button>`;
+    })
+    .join("");
+
+  state.routeOverlapPopup = new maplibregl.Popup({
+    closeButton: true,
+    closeOnClick: false,
+    offset: 16
+  })
+    .setLngLat(lngLat)
+    .setHTML(
+      `<div class="admin-route-select-popup">
+        <h4>Select Route</h4>
+        <p class="admin-route-select-hint">${features.length} routes overlap here.</p>
+        <div class="admin-route-select-list">${rows}</div>
+      </div>`
+    )
+    .addTo(state.map);
+
+  const popupEl = state.routeOverlapPopup.getElement();
+  if (popupEl) {
+    popupEl.querySelectorAll("[data-admin-route-select]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const lineKey = String(button.getAttribute("data-admin-route-select") || "").trim();
+        const feature = features.find((f) => {
+          return String(featureLineProps(f).lineKey || "").trim() === lineKey;
+        });
+        closeRouteOverlapPopup();
+        if (feature) {
+          selectRouteFromFeature(feature);
+        }
+      });
+    });
+  }
+}
+
+function closeRouteOverlapPopup() {
+  if (state.routeOverlapPopup) {
+    state.routeOverlapPopup.remove();
+    state.routeOverlapPopup = null;
+  }
 }
 
 function featureLineProps(feature) {
@@ -362,6 +521,62 @@ function featureLineProps(feature) {
   };
 }
 
+// Deduplicate stop features by their station key — the same primary identity
+// the line view uses (stopIdentityKey falls back to station_key). The raw
+// route-stops payload contains one feature per source stop, so a route that
+// loops or interlines produces duplicate station keys; deduping here keeps the
+// stop-order list (and the saved custom order) consistent with line view.
+function dedupeAdminStopFeatures(features) {
+  const seen = new Set();
+  return (Array.isArray(features) ? features : []).filter((feature) => {
+    const key = String(feature?.properties?.station_key || "").trim();
+    if (!key) {
+      return true;
+    }
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+// Order stop features by a previously saved custom stop order (matched by
+// station key), appending any unmatched stops at the end — mirrors line view's
+// orderByCustomStopKeys so the editor shows exactly what line view will render.
+function orderAdminStopsByCustomOrder(features, customStops) {
+  const byKey = new Map();
+  for (const feature of features || []) {
+    const key = String(feature?.properties?.station_key || "").trim();
+    if (key) {
+      byKey.set(key, feature);
+    }
+  }
+
+  const ordered = [];
+  const seen = new Set();
+  for (const stop of customStops || []) {
+    const key = String(stop?.key || "").trim();
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    const feature = byKey.get(key);
+    if (feature) {
+      ordered.push(feature);
+      seen.add(key);
+    }
+  }
+
+  for (const feature of features || []) {
+    const key = String(feature?.properties?.station_key || "").trim();
+    if (!seen.has(key)) {
+      ordered.push(feature);
+    }
+  }
+
+  return ordered;
+}
+
 async function loadStopsForRoute(lineKey) {
   const source = state.map && state.map.getSource("stops");
   if (!source) {
@@ -372,7 +587,14 @@ async function loadStopsForRoute(lineKey) {
     const payload = await fetch(`/api/transit/route-stops?${params.toString()}`).then((r) => r.json());
     if (Array.isArray(payload?.stopsGeoJson?.features)) {
       source.setData(payload.stopsGeoJson);
-      state.currentRouteStops = payload.stopsGeoJson.features.slice();
+
+      // Deduplicate by station key, then apply a saved custom order if the
+      // admin has set one, so the editor matches line view exactly.
+      let stops = dedupeAdminStopFeatures(payload.stopsGeoJson.features);
+      if (state.selectedRouteOverride && Array.isArray(state.selectedRouteOverride.payload?.stops)) {
+        stops = orderAdminStopsByCustomOrder(stops, state.selectedRouteOverride.payload.stops);
+      }
+      state.currentRouteStops = stops.slice();
       renderStopsOrderList();
     }
   } catch {
@@ -497,6 +719,7 @@ async function clearStopOrder() {
 
 async function selectRouteFromFeature(feature) {
   const props = featureLineProps(feature);
+  closeRouteOverlapPopup();
   state.selectedLineKey = props.lineKey;
   state.selectedStationKey = "";
   state.selectedRouteOverride = null;
@@ -505,6 +728,12 @@ async function selectRouteFromFeature(feature) {
   els.stationEditPanel.hidden = true;
   els.routeEditPanel.hidden = false;
   els.routeIdentity.textContent = `${props.lineKey}${props.lineName ? " · " + props.lineName : ""}`;
+  if (els.routeEditColorDot) {
+    els.routeEditColorDot.style.background = props.color || "#177ca2";
+  }
+  if (els.routeEditMeta) {
+    els.routeEditMeta.textContent = `${props.lineName || "Unnamed route"}${props.operatorName ? " · " + props.operatorName : ""}`;
+  }
 
   els.routeName.value = props.lineName;
   els.routeShortName.value = props.lineShortName;
@@ -514,14 +743,17 @@ async function selectRouteFromFeature(feature) {
   els.routeColor.value = props.color;
   els.routeOrdering.value = "";
   els.routeProblematic.checked = false;
+  state.problematicTouched = false;
   setEditStatus(els.routeEditStatus, "Loaded from tile properties.");
 
   try {
-    const [overridePayload, reviewsPayload] = await Promise.all([
+    const [overridePayload, reviewsPayload, headwayPayload] = await Promise.all([
       apiRequest(`/api/admin/overrides/route/${encodeURIComponent(state.selectedLineKey)}`, { method: "GET" }),
       state.currentCitySlug
         ? apiRequest(`/api/admin/reviews/route?citySlug=${encodeURIComponent(state.currentCitySlug)}`, { method: "GET" })
-        : Promise.resolve({ reviews: [] })
+        : Promise.resolve({ reviews: [] }),
+      apiRequest(`/api/transit/route-headway/bulk?${new URLSearchParams({ lineKeys: state.selectedLineKey })}`, { method: "GET" })
+        .catch(() => ({ headwayByLineKey: {} }))
     ]);
 
     if (overridePayload?.override) {
@@ -537,11 +769,17 @@ async function selectRouteFromFeature(feature) {
       setEditStatus(els.routeEditStatus, "Loaded existing override + tile properties.");
     }
 
+    // Problematic checkbox reflects the system's auto-detection, but the manual
+    // override still wins: once the admin has decided, the checkbox shows their
+    // choice (checked = disabled by default).
     const review = (reviewsPayload.reviews || []).find((r) => r.line_key === state.selectedLineKey);
+    const manualOverride = review ? review.problematic_override : undefined;
+    const autoProblematic = Boolean(headwayPayload?.headwayByLineKey?.[state.selectedLineKey]?.problematicGeometry);
+    const effectiveProblematic = manualOverride === true || (manualOverride !== false && autoProblematic);
     if (review) {
       state.selectedRouteReview = review;
-      els.routeProblematic.checked = Boolean(review.problematic_override);
     }
+    els.routeProblematic.checked = Boolean(effectiveProblematic);
 
     loadStopsForRoute(state.selectedLineKey);
   } catch (error) {
@@ -551,6 +789,7 @@ async function selectRouteFromFeature(feature) {
 
 async function selectStationFromFeature(feature) {
   const p = feature?.properties || {};
+  closeRouteOverlapPopup();
   const stationKey = String(p.station_key || "").trim();
   const lineKey = String(p.line_key || "").trim();
   if (!stationKey) {
@@ -572,6 +811,7 @@ async function selectStationFromFeature(feature) {
 }
 
 function clearSelection() {
+  closeRouteOverlapPopup();
   state.selectedLineKey = "";
   state.selectedStationKey = "";
   if (els.routeEditPanel) {
@@ -615,13 +855,19 @@ async function saveRouteEdits() {
       body: { lineKey, citySlug: state.currentCitySlug, payload }
     });
 
-    const problematic = Boolean(els.routeProblematic.checked);
+    // Problematic geometry: persist an explicit decision only when the admin
+    // actually changed the toggle. If they left it as loaded (auto-detected or
+    // not), write null so the system's auto-detection keeps governing and the
+    // toggle keeps reflecting it on the next load. If they changed it, write
+    // their explicit true/false as the manual override.
+    const problematicTouched = Boolean(state.problematicTouched);
+    const problematicOverride = problematicTouched ? Boolean(els.routeProblematic.checked) : null;
     await apiRequest("/api/admin/reviews/route", {
       method: "POST",
       body: {
         lineKey,
         citySlug: state.currentCitySlug,
-        problematicOverride: problematic ? true : null
+        problematicOverride
       }
     });
 
@@ -1009,10 +1255,28 @@ function bindEvents() {
     }
   });
 
+  if (els.routeSearchInput) {
+    els.routeSearchInput.addEventListener("input", () => {
+      state.routeSearchQuery = String(els.routeSearchInput.value || "").trim();
+      applyUnderlaySearchFilter();
+    });
+  }
+  if (els.routeModeFilterSelect) {
+    els.routeModeFilterSelect.addEventListener("change", () => {
+      state.routeModeFilter = String(els.routeModeFilterSelect.value || "").trim();
+      applyUnderlaySearchFilter();
+    });
+  }
+
   els.saveRouteBtn.addEventListener("click", saveRouteEdits);
+  if (els.routeProblematic) {
+    els.routeProblematic.addEventListener("change", () => {
+      state.problematicTouched = true;
+    });
+  }
   els.discardRouteBtn.addEventListener("click", () => {
-    els.routeEditPanel.hidden = true;
-    state.selectedLineKey = "";
+    closeRouteOverlapPopup();
+    clearSelection();
   });
   els.saveStationBtn.addEventListener("click", saveStationEdits);
   els.discardStationBtn.addEventListener("click", () => {
@@ -1044,6 +1308,12 @@ async function init() {
   els.adminEmailInput.value = "";
   els.adminPasswordInput.value = "";
   bindEvents();
+
+  // Apply the saved light/dark theme and wire the toggle (basemap swap is
+  // handled automatically once the map exists).
+  if (typeof initAdminTheme === "function") {
+    initAdminTheme(document.getElementById("themeToggleBtn"));
+  }
 
   if (state.token) {
     try {

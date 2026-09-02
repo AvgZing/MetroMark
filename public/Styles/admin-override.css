@@ -1,10 +1,244 @@
 /* Admin Override Page Styles */
 
+html,
+body.override-body {
+  height: 100%;
+  margin: 0;
+}
+
 .admin-override-shell {
   display: grid;
   grid-template-columns: minmax(330px, 420px) 1fr;
   width: 100%;
   height: 100%;
+}
+
+/* The map needs an explicit height, otherwise the shell's `height: 100%`
+   resolves against nothing and the map renders at zero height (blank page). */
+.override-map-stage {
+  position: relative;
+  min-height: 100%;
+  height: 100%;
+}
+
+#overrideMap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* The `hidden` attribute must always win over display rules on the shell
+   elements (e.g. `.auth-shell { display: flex }`), otherwise the login screen
+   stays visible after a successful sign-in. */
+.admin-override-shell[hidden],
+.auth-shell[hidden],
+.admin-shell[hidden],
+.auth-card[hidden] {
+  display: none !important;
+}
+
+/* Admin line-view style route editor overlay (route + stop-order editing).
+   Mirrors the main app's line-view panel: a floating card over the map. */
+.admin-line-editor-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(430px, 46vw);
+  min-width: 340px;
+  z-index: 8;
+  pointer-events: auto;
+  padding: 10px;
+}
+
+.admin-line-editor-panel[hidden] {
+  display: none;
+}
+
+.admin-line-editor-card {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(254, 254, 252, 1);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 12px;
+  overflow: hidden;
+}
+
+body[data-theme="dark"] .admin-line-editor-card {
+  background: rgba(16, 28, 40, 1);
+}
+
+.admin-line-editor-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+}
+
+.admin-line-editor-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-line-color-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #177ca2;
+  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+.admin-line-editor-name {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.admin-line-editor-meta {
+  margin: 3px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.admin-line-editor-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+.admin-line-editor-close {
+  width: auto;
+  min-width: 44px;
+}
+
+.admin-line-editor-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 2px;
+}
+
+.admin-line-editor-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px dashed var(--line, #e5e0d5);
+  padding-bottom: 12px;
+}
+
+.admin-line-editor-section:last-child {
+  border-bottom: none;
+}
+
+.admin-line-editor-section h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.admin-line-editor-actions-row {
+  flex-direction: row;
+  align-items: center;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* Overlap route-selector popup on the admin map. */
+.admin-route-select-popup {
+  min-width: 220px;
+  max-height: min(60vh, calc(100dvh - 180px));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-route-select-popup h4 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.admin-route-select-hint {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.admin-route-select-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  max-height: min(52vh, calc(100dvh - 240px));
+}
+
+.admin-route-select-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--button-bg);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.admin-route-select-btn:hover {
+  background: var(--button-hover);
+}
+
+.admin-route-select-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.admin-route-select-name {
+  font-weight: 500;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.admin-route-select-meta {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-family: "IBM Plex Mono", monospace;
+  white-space: nowrap;
+}
+
+/* Mobile: the editor overlays full width. */
+@media (max-width: 768px) {
+  .admin-line-editor-panel {
+    width: 100%;
+    min-width: 0;
+  }
 }
 
 .override-sidebar {
@@ -14,10 +248,51 @@
   border-right: 1px solid var(--panel-border);
   background: var(--shell);
   backdrop-filter: blur(4px);
+  /* Long route/stop identities and log lines must wrap inside the sidebar
+     instead of overflowing the panel. */
+  min-width: 0;
 }
 
-.override-map-stage {
-  position: relative;
+/* Theme toggle in the sidebar head (the shell is already flex space-between). */
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.theme-toggle-btn .header-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.override-sidebar .panel,
+.override-sidebar .override-edit-panel {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.override-search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.override-search-panel input,
+.override-search-panel select {
+  width: 100%;
+}
+
+.override-search-panel .microcopy {
+  margin: 0;
 }
 
 .override-controls-panel,
@@ -413,6 +688,8 @@
 .manual-edit-row p {
   margin: 2px 0;
   font-size: 0.82rem;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .manual-edit-head {
@@ -459,6 +736,9 @@
 
 .stop-order-name {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .stop-order-row button {

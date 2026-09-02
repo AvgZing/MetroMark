@@ -19,6 +19,9 @@ const {
 const {
   geometrySourceHash
 } = require("./geometry");
+const {
+  detectProblematicGeometry
+} = require("./problematic-geometry");
 
 async function getRouteStopsTransit(lineKey, options = {}) {
   const normalizedLineKey = sanitizeText(lineKey);
@@ -155,6 +158,9 @@ async function getRouteStopsTransit(lineKey, options = {}) {
   const routeMetadata = Array.isArray(payload?.lineSummaries) ? payload.lineSummaries[0] : null;
   if (routeMetadata && normalizedLineKey) {
     try {
+      // Auto-detect problematic geometry using both the line geometry and the
+      // actual stop positions; refine the geometry-only guess from harvest time.
+      const problematicGeometry = detectProblematicGeometry(line.geometry, routeStops.stops);
       await db.setRouteMetadata(normalizedLineKey, {
         routeOnestopId: line.routeOnestopId || routeMetadata.routeOnestopId,
         lineName: line.lineName || routeMetadata.lineName,
@@ -166,7 +172,8 @@ async function getRouteStopsTransit(lineKey, options = {}) {
         routeFeedId: line.routeFeedId || routeMetadata.routeFeedId,
         serviceTier: line.serviceTier || routeMetadata.serviceTier,
         color: line.color || routeMetadata.color || "",
-        stopCount: Number(routeMetadata.stopCount || 0)
+        stopCount: Number(routeMetadata.stopCount || 0),
+        problematicGeometry
       });
     } catch {
       // Best-effort

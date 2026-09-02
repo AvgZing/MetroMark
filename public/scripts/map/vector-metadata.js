@@ -57,6 +57,7 @@ function rebuildLineMetadataFromTiles() {
     const existing = existingByKey.get(lineKey);
     const hasKnownHeadway = Boolean(existing && Number(existing.headwayChecked || 0) === 1);
     const knownStopCount = Number(existing?.stopCount || 0);
+    const knownProblematic = Boolean(existing?.problematicGeometry);
 
     const override = appState.routeOverridesByCity instanceof Map ? appState.routeOverridesByCity.get(lineKey) : null;
     const overridePayload = override?.payload || null;
@@ -83,6 +84,7 @@ function rebuildLineMetadataFromTiles() {
       mode: appliedMode || baseMode,
       routeOnestopId: String(props.onestop_id || ""),
       stopCount: Number.isFinite(knownStopCount) && knownStopCount > 0 ? knownStopCount : 0,
+      problematicGeometry: knownProblematic,
       frequencyBucket: hasKnownHeadway ? String(existing.frequencyBucket || "unknown").toLowerCase() : "unknown",
       headwayBestMinutes: hasKnownHeadway && Number.isFinite(Number(existing.headwayBestMinutes))
         ? Number(existing.headwayBestMinutes)

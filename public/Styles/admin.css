@@ -8,6 +8,32 @@
   --accent-strong: #15483b;
 }
 
+/* Dark theme for the admin console: the page defines its own color variables
+   (light values above), so re-map them here when the toggle sets data-theme. */
+body[data-theme="dark"] {
+  --bg: #0f1a24;
+  --card: #15232f;
+  --text: #dfe9f1;
+  --muted: #94a8b8;
+  --line: #2c3f4f;
+  --accent: #2ea9d2;
+  --accent-strong: #1a90b8;
+  background: radial-gradient(circle at 0% 0%, #182a38 0%, #0f1a24 55%, #0a131b 100%);
+}
+
+body[data-theme="dark"] .usage-bar-track {
+  background: #26394a;
+}
+
+body[data-theme="dark"] .usage-history-track {
+  background: #1e2f3d;
+}
+
+body[data-theme="dark"] pre {
+  background: #0a141d;
+  color: #c7e8d8;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -32,17 +58,56 @@ body.admin-locked .admin-shell > section:not(.auth-card) {
   gap: 16px;
 }
 
+/* The `hidden` attribute must always win over display rules on the shell
+   elements (e.g. `.admin-shell { display: grid }`), otherwise the login screen
+   stays visible after a successful sign-in. */
+.admin-shell[hidden],
+.auth-shell[hidden] {
+  display: none !important;
+}
+
 .card {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--card);
   padding: 16px;
   box-shadow: 0 8px 28px rgba(32, 32, 32, 0.07);
+  /* Allow the card to shrink inside its grid column so long content wraps
+     instead of spilling out of the panel. */
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .admin-header h1 {
   margin: 6px 0;
   font-size: 2rem;
+}
+
+.admin-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.theme-toggle-btn .header-icon {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .kicker {
@@ -108,6 +173,7 @@ button:hover {
   display: grid;
   grid-template-columns: 1fr;
   gap: 8px;
+  min-width: 0;
 }
 
 .kv div {
@@ -116,17 +182,25 @@ button:hover {
   gap: 12px;
   border-bottom: 1px dashed var(--line);
   padding-bottom: 6px;
+  min-width: 0;
 }
 
 .kv dt {
   color: var(--muted);
   font-size: 0.92rem;
+  flex-shrink: 0;
 }
 
 .kv dd {
   margin: 0;
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.9rem;
+  text-align: right;
+  /* Long values (paths, timestamps, kind lists) must wrap or truncate instead
+     of pushing the label/row out of the panel. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .action-grid {
@@ -145,6 +219,12 @@ button:hover {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.override-grid .bbox-label {
+  grid-column: span 3;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 .override-grid button {
@@ -168,6 +248,11 @@ td {
   text-align: left;
   padding: 8px 4px;
   vertical-align: top;
+  /* Long emails, user IDs, and timestamps must wrap/truncate within their
+     column instead of overflowing the panel. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 th {
@@ -207,6 +292,7 @@ pre {
 
 .kpi-card {
   padding: 14px 16px;
+  min-width: 0;
 }
 
 .kpi-label {
@@ -223,12 +309,16 @@ pre {
   font-weight: 700;
   font-family: "IBM Plex Mono", monospace;
   color: var(--text);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .kpi-sub {
   margin: 0;
   font-size: 0.8rem;
   color: var(--muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .session-row {
@@ -278,6 +368,11 @@ pre {
 
 #accountsBody td {
   vertical-align: middle;
+}
+
+/* Keep the action button on one line so it doesn't wrap awkwardly. */
+#accountsBody td:last-child {
+  white-space: nowrap;
 }
 
 #accountsBody button {

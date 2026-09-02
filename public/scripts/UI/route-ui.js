@@ -190,10 +190,13 @@ function lineIsVisible(line, options = {}) {
     return false;
   }
 
-  // Check problematic geometry review
+  // Check problematic geometry: manual admin override wins; otherwise use the
+  // auto-detected flag (synthesized straight-line geometry from harvest).
   if (!appState.showProblematicGeometries && line?.lineKey) {
     const routeReview = appState.routeReviewsByCity.get(line.lineKey);
-    if (routeReview?.problematic_override === true) {
+    const manualOverride = routeReview ? routeReview.problematic_override : undefined;
+    const effectiveProblematic = manualOverride === true || (manualOverride !== false && Boolean(line.problematicGeometry));
+    if (effectiveProblematic) {
       return false;
     }
   }

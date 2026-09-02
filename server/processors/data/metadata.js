@@ -35,7 +35,8 @@ async function getRouteMetadatasByLineKeys(lineKeys) {
         headwaySource: normalizeText(row.headway_source),
         headwayChecked: Number(row.headway_checked) === 1 ? 1 : 0,
         color: normalizeText(row.color),
-        stopCount: Number(row.stop_count) || 0
+        stopCount: Number(row.stop_count) || 0,
+        problematicGeometry: Number(row.problematic_geometry) === 1
       });
     }
   }
@@ -71,7 +72,8 @@ async function setRouteMetadata(lineKey, metadata) {
     headwaySource: "headway_source",
     headwayChecked: "headway_checked",
     color: "color",
-    stopCount: "stop_count"
+    stopCount: "stop_count",
+    problematicGeometry: "problematic_geometry"
   };
 
   const columns = [];
@@ -94,6 +96,8 @@ async function setRouteMetadata(lineKey, metadata) {
       value = Number(meta[prop] || 0) === 1 ? 1 : 0;
     } else if (prop === "stopCount") {
       value = Number(meta[prop] || 0);
+    } else if (prop === "problematicGeometry") {
+      value = Boolean(meta[prop]) ? 1 : 0;
     } else {
       value = normalizeText(meta[prop]);
     }

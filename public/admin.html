@@ -43,7 +43,7 @@
     </main>
 
     <main class="admin-shell" id="adminApp" hidden>
-      <header class="admin-header card">
+      <header class="admin-header card admin-header-row">
         <div>
           <p class="kicker">MetroMark Operations</p>
           <h1>Admin Console</h1>
@@ -54,6 +54,18 @@
             <a href="/">Open app</a>
           </p>
         </div>
+        <button
+          id="themeToggleBtn"
+          class="btn btn-icon theme-toggle-btn"
+          type="button"
+          aria-label="Toggle theme"
+          title="Toggle theme"
+        >
+          <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3.5v2.2m0 12.6v2.2M5.6 5.6l1.6 1.6m9.6 9.6 1.6 1.6M3.5 12h2.2m12.6 0h2.2M5.6 18.4l1.6-1.6m9.6-9.6 1.6-1.6" />
+            <circle cx="12" cy="12" r="4.4" />
+          </svg>
+        </button>
       </header>
 
       <section class="card session-row">
@@ -141,6 +153,7 @@
 
         <h3>Update Routes for Viewport (Data Correction)</h3>
         <div class="override-grid">
+          <label for="viewportBboxInput" class="bbox-label">Viewport bbox (west,south,east,north)</label>
           <input id="viewportBboxInput" type="text" placeholder="bbox west,south,east,north (e.g. -122.4,47.5,-122.2,47.7)" />
           <button id="updateViewportBtn" type="button">Fetch + Rebuild Viewport</button>
         </div>
@@ -153,6 +166,7 @@
       </section>
     </main>
 
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-01" defer></script>
     <script src="/Scripts/Admin/admin.js" defer></script>
   </body>
 </html>

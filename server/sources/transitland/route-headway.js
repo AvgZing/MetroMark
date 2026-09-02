@@ -214,14 +214,19 @@ async function getRouteHeadwaysBulk(lineKeys, options = {}) {
   for (const [lineKey, routeMeta] of meta) {
     const checked = Number(routeMeta?.headwayChecked || 0) === 1;
     const stopCount = Number(routeMeta?.stopCount || 0);
+    const problematicGeometry = Boolean(routeMeta?.problematicGeometry);
 
-    if (!checked && stopCount <= 0) {
+    // Emit the entry when there is anything to report — including the
+    // auto-detected problematic flag, which must reach the client even for
+    // lines whose headway/stop count is already known (or unknown).
+    if (!checked && stopCount <= 0 && !problematicGeometry) {
       continue;
     }
 
     const entry = {
       headwayChecked: checked ? 1 : 0,
-      stopCount
+      stopCount,
+      problematicGeometry
     };
 
     if (checked) {

@@ -119,8 +119,10 @@ const schemaStatements = [
   headway_checked integer not null default 0,
   color text not null default '',
   stop_count integer not null default 0,
+  problematic_geometry boolean not null default false,
   updated_at timestamptz not null default now()
 )`,
+  "alter table public.route_metadata add column if not exists problematic_geometry boolean not null default false",
   `create table if not exists public.route_review (
   line_key text primary key,
   city_slug text,

@@ -495,6 +495,11 @@ async function init() {
   els.adminPasswordInput.value = "";
   bindEvents();
 
+  // Apply the saved light/dark theme and wire the toggle.
+  if (typeof initAdminTheme === "function") {
+    initAdminTheme(document.getElementById("themeToggleBtn"));
+  }
+
   if (state.token) {
     try {
       await apiRequest("/api/admin/session");
