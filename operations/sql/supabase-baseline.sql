@@ -20,6 +20,7 @@ create table public.profiles (
   role text not null default 'user',
   is_active boolean not null default true,
   last_login_at timestamptz,
+  preferences jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 

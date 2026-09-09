@@ -22,4 +22,4 @@ operations/Logs/
 
 # Generated per-machine data (tiles, NDJSON, backups). Never synced via git -
 # each machine builds its own through the harvesters.
-data/
+/data/

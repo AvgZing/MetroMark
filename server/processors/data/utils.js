@@ -89,6 +89,9 @@ function normalizeProfileRow(row, authUser = null) {
 
   const createdAtIso = row?.created_at || authUser?.created_at || nowIso();
   const lastLoginIso = row?.last_login_at || authUser?.last_sign_in_at || null;
+  const preferences = row?.preferences && typeof row.preferences === "object" && !Array.isArray(row.preferences)
+    ? row.preferences
+    : {};
 
   return {
     id: normalizeText(row?.id || authUser?.id),
@@ -97,7 +100,8 @@ function normalizeProfileRow(row, authUser = null) {
     role: normalizeText(row?.role, "user"),
     isActive: row?.is_active === false ? false : true,
     lastLoginAt: toEpochSeconds(lastLoginIso),
-    createdAt: toEpochSeconds(createdAtIso) || nowSeconds()
+    createdAt: toEpochSeconds(createdAtIso) || nowSeconds(),
+    preferences
   };
 }
 

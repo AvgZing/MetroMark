@@ -107,7 +107,9 @@ function writeStoredPreference(key, value) {
     return;
   }
 
-  localStorage.setItem(storageKey, String(value));
+  if (typeof storageConsentAllowed !== "function" || storageConsentAllowed()) {
+    localStorage.setItem(storageKey, String(value));
+  }
 }
 
 function normalizePreferencePatch(patch = {}) {

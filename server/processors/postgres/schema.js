@@ -137,6 +137,34 @@ const schemaStatements = [
   updated_at timestamptz not null default now(),
   primary key (city_slug, operator_name)
 )`,
+  `create table if not exists public.reharvest_flag (
+  id bigserial primary key,
+  kind text not null,
+  line_key text,
+  station_key text,
+  message text,
+  status text not null default 'open',
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz
+)`,
+  "create index if not exists idx_reharvest_flag_status on public.reharvest_flag (status)",
+  "create index if not exists idx_reharvest_flag_line on public.reharvest_flag (line_key)",
+  "create index if not exists idx_reharvest_flag_station on public.reharvest_flag (station_key)",
+  `create table if not exists public.issue_report (
+  id bigserial primary key,
+  bbox jsonb not null,
+  zoom double precision,
+  center jsonb,
+  screenshot text,
+  description text,
+  reporter_name text,
+  reporter_email text,
+  status text not null default 'open',
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz
+)`,
+  "create index if not exists idx_issue_report_status on public.issue_report (status)",
+  "create index if not exists idx_issue_report_created on public.issue_report (created_at desc)",
 ];
 
 module.exports = { schemaStatements };

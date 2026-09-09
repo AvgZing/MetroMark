@@ -57,7 +57,7 @@ async function getProfileById(userId) {
 
   const { data, error } = await serviceClient
     .from("profiles")
-    .select("id,email,display_name,role,is_active,last_login_at,created_at")
+    .select("id,email,display_name,role,is_active,last_login_at,created_at,preferences")
     .eq("id", userId)
     .maybeSingle();
 
@@ -321,7 +321,7 @@ async function listProfiles() {
 
   const { data, error } = await serviceClient
     .from("profiles")
-    .select("id,email,display_name,role,is_active,last_login_at,created_at")
+    .select("id,email,display_name,role,is_active,last_login_at,created_at,preferences")
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -350,11 +350,60 @@ async function setProfileRole(userId, role, isActive) {
     .from("profiles")
     .update(updates)
     .eq("id", safeUserId)
-    .select("id,email,display_name,role,is_active,last_login_at,created_at")
+    .select("id,email,display_name,role,is_active,last_login_at,created_at,preferences")
     .maybeSingle();
 
   if (error) {
     throw new Error(`Unable to update profile role: ${error.message}`);
+  }
+
+  return normalizeProfileRow(data || null, null);
+}
+
+async function updateUserPreferences(userId, preferences) {
+  assertConfigured();
+  const safeUserId = normalizeText(userId);
+  if (!safeUserId) {
+    throw new Error("userId is required.");
+  }
+  const incoming = preferences && typeof preferences === "object" && !Array.isArray(preferences)
+    ? preferences
+    : {};
+  const safeIncoming = {};
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+    safeIncoming[key] = value;
+  }
+
+  const { serviceClient } = requireSupabaseClients();
+
+  const existingResult = await serviceClient
+    .from("profiles")
+    .select("preferences")
+    .eq("id", safeUserId)
+    .maybeSingle();
+  if (existingResult.error) {
+    throw new Error(`Unable to load preferences: ${existingResult.error.message}`);
+  }
+
+  const merged = {
+    ...(existingResult.data?.preferences && typeof existingResult.data.preferences === "object"
+      ? existingResult.data.preferences
+      : {}),
+    ...safeIncoming
+  };
+
+  const { data, error } = await serviceClient
+    .from("profiles")
+    .update({ preferences: merged })
+    .eq("id", safeUserId)
+    .select("id,email,display_name,role,is_active,last_login_at,created_at,preferences")
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Unable to update preferences: ${error.message}`);
   }
 
   return normalizeProfileRow(data || null, null);
@@ -398,6 +447,7 @@ module.exports = {
   verifyUser,
   getUserByEmail,
   getUserById,
+  updateUserPreferences,
   getAccountStats,
   listProfiles,
   setProfileRole,

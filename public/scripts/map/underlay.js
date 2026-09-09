@@ -1,13 +1,11 @@
 // Transitland route underlay.
 //
-// Shows Transitland's ground-truth route network for the current viewport as a
-// faint line layer BELOW the PMTiles archive's rendered routes, so users see
-// what routes exist even where the archive is incomplete. The same probe also
-// updates appState.transitCoverageCount, which the auto-backfill uses to
-// detect full and partial gaps. The underlay is a context layer: it is never
-// rendered above the archive routes and it is never used as fake data.
+// Historically drew a faint line layer of Transitland's ground-truth routes
+// below the archive. The underlay is now hidden: only the coverage probe is
+// kept, since appState.transitCoverageCount drives the auto-backfill gap
+// detector.
 
-const UNDERLAY_ENABLED = true;
+const UNDERLAY_ENABLED = false;
 const UNDERLAY_SOURCE = "routes-underlay";
 const UNDERLAY_LAYER = "routes-underlay";
 
@@ -22,7 +20,7 @@ function underlayBboxKey(bbox) {
 }
 
 function ensureUnderlaySource() {
-  if (!appState.map || underlaySourceReady) {
+  if (!UNDERLAY_ENABLED || !appState.map || underlaySourceReady) {
     return;
   }
   if (!appState.map.getSource(UNDERLAY_SOURCE)) {
@@ -120,7 +118,7 @@ let lastUnderlayFeatureCount = -1;
 let lastUnderlayModeKey = "";
 
 function applyUnderlayModeFilter() {
-  if (!appState.map || !appState.mapReady) {
+  if (!UNDERLAY_ENABLED || !appState.map || !appState.mapReady) {
     return;
   }
   ensureUnderlaySource();
@@ -154,7 +152,7 @@ function applyUnderlayModeFilter() {
 }
 
 function renderUnderlay(geojson) {
-  if (!appState.map || !appState.mapReady) {
+  if (!UNDERLAY_ENABLED || !appState.map || !appState.mapReady) {
     return;
   }
   const features = Array.isArray(geojson?.features) ? geojson.features : [];

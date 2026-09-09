@@ -389,9 +389,37 @@ function monitorServiceWorkerUpdates(registration) {
 }
 
 async function registerSw() {
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+  // Reload the app once when a freshly activated service worker takes control,
+  // so an installed update actually applies instead of leaving the old bundle
+  // running until the next manual reload. Fresh installs (no controller yet)
+  // are skipped — the first claim is just the initial activation.
+  let hadController = Boolean(navigator.serviceWorker.controller);
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshing) {
+      return;
+    }
+    if (!hadController) {
+      hadController = true;
+      return;
+    }
+    refreshing = true;
+    console.info("[sw] A new app version was installed — reloading.");
+    window.location.reload();
+  });
+
   try {
-    const registration = await navigator.serviceWorker.register("/sw.js");
+    // updateViaCache: "none" forces the browser to byte-check /sw.js against
+    // the network on every update check, so a deployed service worker is not
+    // served from the HTTP cache for up to 24h.
+    const registration = await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
     monitorServiceWorkerUpdates(registration);
+    // Explicit check right after registration; combined with the
+    // visibilitychange/pageshow checks this applies updates on the next launch.
+    registration.update().catch(() => {});
     if (registration.waiting) {
       registration.waiting.postMessage({ type: "SKIP_WAITING" });
     }
@@ -454,6 +482,11 @@ async function init() {
     if (typeof loadReviewsForCity === "function" && appState.initialCitySlug) {
       loadReviewsForCity(appState.initialCitySlug).catch(() => {});
     }
+
+    if (typeof maybeShowWhatsNew === "function") {
+      maybeShowWhatsNew();
+    }
+
 
     await loadProgress();
 

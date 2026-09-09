@@ -164,8 +164,18 @@ async function upsertRouteGeometryLod(lineKey, zoomLevel, geometry, options = {}
   };
 }
 
+async function deleteRouteGeometryLod(lineKey) {
+  assertLocalConfigured();
+  const normalizedLineKey = normalizeText(lineKey);
+  if (!normalizedLineKey) {
+    return;
+  }
+  await localQuery("delete from public.route_geometry_lod where line_key = $1", [normalizedLineKey]);
+}
+
 module.exports = {
   getRouteGeometryLod,
   getFractionOnRoute,
-  upsertRouteGeometryLod
+  upsertRouteGeometryLod,
+  deleteRouteGeometryLod
 };

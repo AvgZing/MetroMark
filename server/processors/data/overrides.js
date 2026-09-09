@@ -354,12 +354,62 @@ async function upsertAgencyReview(citySlug, operatorName, allowedOverride) {
   return getAgencyReview(city, operator);
 }
 
+async function countLineKeyUserData(lineKeys = []) {
+  assertLocalConfigured();
+  const normalizedLineKeys = Array.from(
+    new Set(Array.isArray(lineKeys) ? lineKeys.map((entry) => normalizeText(entry)).filter(Boolean) : [])
+  );
+  const byLineKey = new Map();
+  if (!normalizedLineKeys.length) {
+    return byLineKey;
+  }
+  for (const lineKey of normalizedLineKeys) {
+    byLineKey.set(lineKey, { overrides: 0, reviews: 0, votes: 0 });
+  }
+
+  const [overrideRows, reviewRows, voteRows] = await Promise.all([
+    localQuery(
+      `select line_key, count(*)::int as count from public.route_override where line_key = any($1::text[]) group by line_key`,
+      [normalizedLineKeys]
+    ),
+    localQuery(
+      `select line_key, count(*)::int as count from public.route_review where line_key = any($1::text[]) group by line_key`,
+      [normalizedLineKeys]
+    ),
+    localQuery(
+      `select line_key, count(*)::int as count from public.route_ordering_vote where line_key = any($1::text[]) group by line_key`,
+      [normalizedLineKeys]
+    )
+  ]);
+
+  for (const row of overrideRows.rows || []) {
+    const lineKey = normalizeText(row.line_key);
+    if (byLineKey.has(lineKey)) {
+      byLineKey.get(lineKey).overrides = Number(row.count || 0);
+    }
+  }
+  for (const row of reviewRows.rows || []) {
+    const lineKey = normalizeText(row.line_key);
+    if (byLineKey.has(lineKey)) {
+      byLineKey.get(lineKey).reviews = Number(row.count || 0);
+    }
+  }
+  for (const row of voteRows.rows || []) {
+    const lineKey = normalizeText(row.line_key);
+    if (byLineKey.has(lineKey)) {
+      byLineKey.get(lineKey).votes = Number(row.count || 0);
+    }
+  }
+  return byLineKey;
+}
+
 module.exports = {
   getRouteOverride,
   listRouteOverrides,
   listRouteOverridesByLineKeys,
   upsertRouteOverride,
   deleteRouteOverride,
+  countLineKeyUserData,
   getRouteOrderingVote,
   upsertRouteOrderingVote,
   listRouteOrderingVoteCountsByLineKeys,

@@ -13,7 +13,7 @@
  * HTTPS or http://localhost.
  */
 
-const VERSION = "3";
+const VERSION = "4";
 const APP_SHELL_CACHE = `metromark-shell-v${VERSION}`;
 const TILES_CACHE = `metromark-tiles-v${VERSION}`;
 const RUNTIME_CACHE = `metromark-runtime-v${VERSION}`;
@@ -21,7 +21,7 @@ const API_CACHE = `metromark-api-v${VERSION}`;
 const TILES_PATHNAME = "/api/tiles/routes.pmtiles";
 const NAV_TIMEOUT_MS = 3000;
 const API_TIMEOUT_MS = 20000;
-const TILE_REVALIDATE_MS = 10 * 60 * 1000;
+const TILE_REVALIDATE_MS = 3 * 60 * 1000;
 const API_STALE_MS = 5 * 60 * 1000;
 
 const PRECACHE_URLS = [
@@ -91,6 +91,12 @@ self.addEventListener("activate", (event) => {
       await self.clients.claim();
     })()
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 function sliceCachedResponse(response, rangeHeader) {

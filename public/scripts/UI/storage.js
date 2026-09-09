@@ -1,3 +1,7 @@
+function canPersistPreferences() {
+  return typeof storageConsentAllowed !== "function" || storageConsentAllowed();
+}
+
 /** Retrieve a parsed Set from localStorage, falling back to defaults if missing or corrupt. */
 function parseSetFromStorage(storageKey, defaults) {
   try {
@@ -34,11 +38,17 @@ function parseBooleanFromStorage(storageKey, defaultValue = false) {
 
 /** Persist a boolean value to localStorage as a "true"/"false" string. */
 function persistBooleanToStorage(storageKey, value) {
+  if (!canPersistPreferences()) {
+    return;
+  }
   localStorage.setItem(storageKey, value ? "true" : "false");
 }
 
 /** Persist a Set or array of values to localStorage as a JSON array. */
 function persistSetToStorage(storageKey, values) {
+  if (!canPersistPreferences()) {
+    return;
+  }
   localStorage.setItem(storageKey, JSON.stringify(Array.from(values)));
 }
 
@@ -126,6 +136,9 @@ function persistLineViewOrderingPreferencesToStorage(storageKey, preferenceMap) 
 
 /** Persist per-line visibility overrides from a Map into localStorage as a JSON object. */
 function persistVisibilityOverridesToStorage(storageKey, visibilityMap) {
+  if (!canPersistPreferences()) {
+    return;
+  }
   const payload = {};
   for (const [lineKeyRaw, valueRaw] of visibilityMap.entries()) {
     const lineKey = String(lineKeyRaw || "").trim();

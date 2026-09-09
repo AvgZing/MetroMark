@@ -318,6 +318,109 @@ function invalidateArchiveCount() {
   }
 }
 
+// Enumerate line keys currently in the archive whose feature geometry bbox
+// intersects a [west,south,east,north] bbox. Scans the sharded NDJSON; used by
+// the manual viewport reharvest to compute removals.
+async function listArchiveLineKeysInBbox(bboxArray) {
+  await ensureSharded();
+  const keys = new Set();
+  if (!Array.isArray(bboxArray) || bboxArray.length !== 4) {
+    return keys;
+  }
+  const [west, south, east, north] = bboxArray.map(Number);
+
+  for (let index = 0; index < SHARD_COUNT; index += 1) {
+    const shardMap = await readShardFeatures(index);
+    for (const [key, feature] of shardMap) {
+      const bbox = featureBbox(feature);
+      if (!bbox) {
+        continue;
+      }
+      if (bbox[0] <= east && bbox[2] >= west && bbox[1] <= north && bbox[3] >= south) {
+        keys.add(key);
+      }
+    }
+  }
+  return keys;
+}
+
+function featureBbox(feature) {
+  const geometry = feature?.geometry;
+  if (!geometry || !Array.isArray(geometry.coordinates)) {
+    return null;
+  }
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  const parts = geometry.type === "LineString" ? [geometry.coordinates] : geometry.type === "MultiLineString" ? geometry.coordinates : [];
+  for (const part of parts) {
+    if (!Array.isArray(part)) {
+      continue;
+    }
+    for (const coord of part) {
+      if (!Array.isArray(coord) || coord.length < 2) {
+        continue;
+      }
+      const lon = Number(coord[0]);
+      const lat = Number(coord[1]);
+      if (Number.isFinite(lon) && Number.isFinite(lat)) {
+        if (lon < minLon) minLon = lon;
+        if (lat < minLat) minLat = lat;
+        if (lon > maxLon) maxLon = lon;
+        if (lat > maxLat) maxLat = lat;
+      }
+    }
+  }
+  if (!Number.isFinite(minLon)) {
+    return null;
+  }
+  return [minLon, minLat, maxLon, maxLat];
+}
+
+// Remove features from the archive by line key (used after a reharvest confirms
+// a route no longer exists on Transitland).
+async function removeFeaturesFromArchive(lineKeys) {
+  const targets = Array.from(
+    new Set((Array.isArray(lineKeys) ? lineKeys : []).map((key) => String(key || "").trim()).filter(Boolean))
+  );
+  if (!targets.length) {
+    return { removed: 0 };
+  }
+
+  await ensureSharded();
+  const byShard = new Map();
+  for (const key of targets) {
+    const index = shardIndexFor(key);
+    if (!byShard.has(index)) {
+      byShard.set(index, []);
+    }
+    byShard.get(index).push(key);
+  }
+
+  return withArchiveLock(async () => {
+    const manifest = readManifest();
+    const counts = manifest ? manifest.counts.slice() : Array(SHARD_COUNT).fill(0);
+    let removed = 0;
+    for (const [index, keys] of byShard) {
+      const shardMap = await readShardFeatures(index);
+      let changed = false;
+      for (const key of keys) {
+        if (shardMap.delete(key)) {
+          removed += 1;
+          changed = true;
+        }
+      }
+      if (changed) {
+        await writeShardFeatures(index, shardMap);
+        counts[index] = shardMap.size;
+      }
+    }
+    writeManifest(counts);
+    return { removed };
+  });
+}
+
 const MAX_BACKFILL_SPAN_DEGREES = 1.8;
 
 function clampBackfillBbox(bboxArray) {
@@ -421,6 +524,8 @@ function getBackfillStats() {
 module.exports = {
   runBackfill,
   mergeBackfillFeatures,
+  removeFeaturesFromArchive,
+  listArchiveLineKeysInBbox,
   getBackfillStats,
   totalRoutesInArchive,
   invalidateArchiveCount,

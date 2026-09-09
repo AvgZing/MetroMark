@@ -8,6 +8,8 @@ const visits = require("./visits");
 const presets = require("./presets");
 const usage = require("./usage");
 const overrides = require("./overrides");
+const reharvestFlags = require("./reharvest-flags");
+const issueReports = require("./issue-reports");
 
 module.exports = {
   dbPath,
@@ -19,6 +21,7 @@ module.exports = {
   verifyUser: auth.verifyUser,
   getUserByEmail: auth.getUserByEmail,
   getUserById: auth.getUserById,
+  updateUserPreferences: auth.updateUserPreferences,
   listProfiles: auth.listProfiles,
   setProfileRole: auth.setProfileRole,
   seedDefaultAdmin: auth.seedDefaultAdmin,
@@ -28,8 +31,10 @@ module.exports = {
   setCache: cache.setCache,
   getRouteGeometryLod: geometry.getRouteGeometryLod,
   upsertRouteGeometryLod: geometry.upsertRouteGeometryLod,
+  deleteRouteGeometryLod: geometry.deleteRouteGeometryLod,
   getRouteMetadatasByLineKeys: metadata.getRouteMetadatasByLineKeys,
   setRouteMetadata: metadata.setRouteMetadata,
+  deleteRouteMetadata: metadata.deleteRouteMetadata,
   getRouteMetadataCoverageStats: metadata.getRouteMetadataCoverageStats,
   getFractionOnRoute: geometry.getFractionOnRoute,
   clearCacheByPrefix: cache.clearCacheByPrefix,
@@ -42,6 +47,7 @@ module.exports = {
   getRouteOverride: overrides.getRouteOverride,
   listRouteOverrides: overrides.listRouteOverrides,
   listRouteOverridesByLineKeys: overrides.listRouteOverridesByLineKeys,
+  countLineKeyUserData: overrides.countLineKeyUserData,
   upsertRouteOverride: overrides.upsertRouteOverride,
   deleteRouteOverride: overrides.deleteRouteOverride,
   getRouteOrderingVote: overrides.getRouteOrderingVote,
@@ -67,5 +73,14 @@ module.exports = {
   getDailyUsageCapsState: usage.getDailyUsageCapsState,
   getUsageHistory: usage.getUsageHistory,
   getDatabaseFileStats: usage.getDatabaseFileStats,
+  deleteRouteRelatedCaches: cache.deleteRouteRelatedCaches,
+  listReharvestFlags: reharvestFlags.listReharvestFlags,
+  openReharvestFlag: reharvestFlags.openReharvestFlag,
+  resolveReharvestFlag: reharvestFlags.resolveReharvestFlag,
+  createIssueReport: issueReports.createIssueReport,
+  listIssueReports: issueReports.listIssueReports,
+  getIssueReport: issueReports.getIssueReport,
+  resolveIssueReport: issueReports.resolveIssueReport,
+  reopenIssueReport: issueReports.reopenIssueReport,
   getRouteMetadataCoverageStats: metadata.getRouteMetadataCoverageStats
 };

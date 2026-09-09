@@ -10,7 +10,7 @@
       href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/Styles/admin.css" />
+    <link rel="stylesheet" href="/Styles/admin.css?v=2026-09-09" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -151,13 +151,61 @@
           <button id="rebuildTilesBtn" type="button">Rebuild Tiles</button>
         </div>
 
-        <h3>Update Routes for Viewport (Data Correction)</h3>
+        <h3>Viewport Reharvest</h3>
+        <p class="microcopy">Forces the whole pipeline for a viewport: fresh route catalog, geometry, headway, and stops. Runs uncapped (manual action). Route removals are confirmed against Transitland; admin overrides, reviews, and ordering votes on removed routes are preserved and flagged below. Limit: one push at a time, up to a metro region span.</p>
         <div class="override-grid">
-          <label for="viewportBboxInput" class="bbox-label">Viewport bbox (west,south,east,north)</label>
-          <input id="viewportBboxInput" type="text" placeholder="bbox west,south,east,north (e.g. -122.4,47.5,-122.2,47.7)" />
-          <button id="updateViewportBtn" type="button">Fetch + Rebuild Viewport</button>
+          <label for="reharvestBboxInput" class="bbox-label">Viewport bbox (west,south,east,north)</label>
+          <input id="reharvestBboxInput" type="text" placeholder="bbox west,south,east,north (e.g. -122.4,47.5,-122.2,47.7)" />
+          <label class="check-label"><input id="reharvestStopsCb" type="checkbox" checked /> Refresh stops + route metadata</label>
+          <label class="check-label"><input id="reharvestHeadwayCb" type="checkbox" checked /> Refresh headway</label>
+          <button id="reharvestBtn" type="button">Reharvest Viewport (full refresh)</button>
         </div>
-        <p id="viewportUpdateStatus" class="status"></p>
+        <p id="reharvestStatus" class="status"></p>
+
+        <h3>Reharvest Review Flags</h3>
+        <div class="action-grid">
+          <button id="reloadFlagsBtn" type="button">Reload Flags</button>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Kind</th>
+              <th>Line Key</th>
+              <th>Message</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="reharvestFlagsBody"></tbody>
+        </table>
+        <p id="reharvestFlagsStatus" class="status"></p>
+      </section>
+
+      <section class="card">
+        <h2>User Issue Reports</h2>
+        <p class="microcopy">Submitted from the map's "Report Issue" control. Open reports are area refresh requests: copy the bbox into the Viewport Reharvest tool above, then resolve the report. Screenshots open at full size in a new tab.</p>
+        <div class="action-grid">
+          <button id="reloadIssuesBtn" type="button">Reload</button>
+          <label class="check-label"><input id="issuesShowResolvedCb" type="checkbox" /> Show resolved</label>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Created</th>
+              <th>Reporter</th>
+              <th>View</th>
+              <th>Bounding Box</th>
+              <th>Zoom</th>
+              <th>Description</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="issueReportsBody"></tbody>
+        </table>
+        <p id="issueReportsStatus" class="status"></p>
       </section>
 
       <section class="card">
@@ -166,7 +214,7 @@
       </section>
     </main>
 
-    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-01" defer></script>
-    <script src="/Scripts/Admin/admin.js" defer></script>
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Admin/admin.js?v=2026-09-09" defer></script>
   </body>
 </html>

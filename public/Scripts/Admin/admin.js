@@ -441,52 +441,285 @@ function bindEvents() {
     });
   }
 
-  const bboxInput = document.getElementById("viewportBboxInput");
-  const updateBtn = document.getElementById("updateViewportBtn");
-  const statusEl = document.getElementById("viewportUpdateStatus");
-  if (bboxInput && updateBtn && statusEl) {
-    updateBtn.addEventListener("click", async () => {
-      const raw = String(bboxInput.value || "").trim();
+  const reharvestBboxInput = document.getElementById("reharvestBboxInput");
+  const reharvestStopsCb = document.getElementById("reharvestStopsCb");
+  const reharvestHeadwayCb = document.getElementById("reharvestHeadwayCb");
+  const reharvestBtn = document.getElementById("reharvestBtn");
+  const reharvestStatus = document.getElementById("reharvestStatus");
+  if (reharvestBboxInput && reharvestBtn && reharvestStatus) {
+    reharvestBtn.addEventListener("click", async () => {
+      const raw = String(reharvestBboxInput.value || "").trim();
       const parts = raw.split(",").map((value) => Number(value.trim()));
       const bbox = parts.length === 4 && parts.every((value) => Number.isFinite(value)) ? parts : null;
       if (!bbox || bbox[0] >= bbox[2] || bbox[1] >= bbox[3]) {
-        statusEl.textContent = "Enter a valid bbox: west,south,east,north.";
-        statusEl.style.color = "#a22828";
+        reharvestStatus.textContent = "Enter a valid bbox: west,south,east,north.";
+        reharvestStatus.style.color = "#a22828";
         return;
       }
       if (!state.token) {
-        statusEl.textContent = "Log in first.";
-        statusEl.style.color = "#a22828";
+        reharvestStatus.textContent = "Log in first.";
+        reharvestStatus.style.color = "#a22828";
         return;
       }
-      updateBtn.disabled = true;
-      statusEl.textContent = "Fetching viewport routes from Transitland and rebuilding tiles...";
-      statusEl.style.color = "#5a5a5a";
-      try {
-        const response = await fetch("/api/admin/tiles/backfill", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${state.token}`
-          },
-          body: JSON.stringify({ bbox, forceRefresh: true })
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload?.error || `Request failed (${response.status}).`);
+      reharvestBtn.disabled = true;
+      reharvestStatus.textContent = "Starting full viewport reharvest…";
+      reharvestStatus.style.color = "#5a5a5a";
+
+      const statusTimer = setInterval(async () => {
+        try {
+          const status = await apiRequest("/api/admin/tiles/reharvest/status", { method: "GET" });
+          if (status?.current) {
+            reharvestStatus.textContent = `${status.current.stage}: ${status.current.message}`;
+            reharvestStatus.style.color = "#5a5a5a";
+          }
+        } catch {
+          // Polling is best-effort; the main request reports failures.
         }
-        statusEl.textContent =
-          `Done. +${payload.addedRoutes} added, ${payload.updatedRoutes} updated, ` +
-          `${payload.skippedRoutes} skipped (${payload.fetchedRoutes} fetched), ` +
-          `${payload.totalRoutesInArchive} routes in archive.`;
-        statusEl.style.color = "#2e7d32";
+      }, 2000);
+
+      try {
+        const payload = await apiRequest("/api/admin/tiles/reharvest", {
+          method: "POST",
+          body: {
+            bbox,
+            refreshStops: reharvestStopsCb ? reharvestStopsCb.checked : true,
+            refreshHeadway: reharvestHeadwayCb ? reharvestHeadwayCb.checked : true
+          }
+        });
+        clearInterval(statusTimer);
+        const lines = [
+          `Done in ${Math.round(payload.elapsedMs / 1000)}s. ` +
+            `${payload.addedRoutes} added, ${payload.updatedRoutes} updated, ${payload.removedRoutes} removed, ` +
+            `${payload.confirmedStillPresent} kept (still on Transitland).`
+        ];
+        if (payload.flagsOpened?.length > 0) {
+          lines.push(`${payload.flagsOpened.length} review flag(s) opened for routes with admin/user data.`);
+        }
+        if (payload.refreshFailures?.length > 0) {
+          lines.push(`${payload.refreshFailures.length} route refresh(es) failed.`);
+        }
+        if (payload.tileCount !== null && payload.tileCount !== undefined) {
+          lines.push(`${payload.totalRoutesInArchive} routes in archive; tiles rebuilt (${payload.tileCount} tiles).`);
+        }
+        reharvestStatus.innerHTML = "";
+        for (const line of lines) {
+          const div = document.createElement("div");
+          div.textContent = line;
+          reharvestStatus.appendChild(div);
+        }
+        reharvestStatus.style.color = payload.refreshFailures?.length ? "#b26a00" : "#2e7d32";
+        loadReharvestFlags();
       } catch (error) {
-        statusEl.textContent = `Failed: ${error.message}`;
-        statusEl.style.color = "#a22828";
+        clearInterval(statusTimer);
+        reharvestStatus.textContent = `Failed: ${error.message}`;
+        reharvestStatus.style.color = "#a22828";
       } finally {
-        updateBtn.disabled = false;
+        reharvestBtn.disabled = false;
       }
     });
+  }
+
+  const reloadFlagsBtn = document.getElementById("reloadFlagsBtn");
+  if (reloadFlagsBtn) {
+    reloadFlagsBtn.addEventListener("click", () => {
+      loadReharvestFlags();
+    });
+  }
+
+  const reloadIssuesBtn = document.getElementById("reloadIssuesBtn");
+  const issuesShowResolvedCb = document.getElementById("issuesShowResolvedCb");
+  if (reloadIssuesBtn) {
+    reloadIssuesBtn.addEventListener("click", () => {
+      loadIssueReports({ showResolved: Boolean(issuesShowResolvedCb && issuesShowResolvedCb.checked) });
+    });
+  }
+  if (issuesShowResolvedCb) {
+    issuesShowResolvedCb.addEventListener("change", () => {
+      loadIssueReports({ showResolved: issuesShowResolvedCb.checked });
+    });
+  }
+}
+
+async function loadReharvestFlags() {
+  const body = document.getElementById("reharvestFlagsBody");
+  const statusEl = document.getElementById("reharvestFlagsStatus");
+  if (!body) {
+    return;
+  }
+  statusEl.textContent = "Loading flags…";
+  try {
+    const payload = await apiRequest("/api/admin/reharvest/flags?status=open", { method: "GET" });
+    const flags = Array.isArray(payload?.flags) ? payload.flags : [];
+    body.innerHTML = "";
+    if (!flags.length) {
+      statusEl.textContent = "No open reharvest flags.";
+      statusEl.style.color = "#2e7d32";
+      return;
+    }
+    statusEl.textContent = `${flags.length} open flag(s). Resolve a flag after you have reviewed the affected route data.`;
+    statusEl.style.color = "#b26a00";
+    for (const flag of flags) {
+      const row = document.createElement("tr");
+      const cellId = document.createElement("td");
+      cellId.textContent = String(flag.id);
+      const cellKind = document.createElement("td");
+      cellKind.textContent = flag.kind || "";
+      const cellLine = document.createElement("td");
+      cellLine.textContent = flag.lineKey || flag.stationKey || "";
+      const cellMessage = document.createElement("td");
+      cellMessage.textContent = flag.message || "";
+      const cellStatus = document.createElement("td");
+      cellStatus.textContent = flag.status || "";
+      const cellAction = document.createElement("td");
+      const resolveBtn = document.createElement("button");
+      resolveBtn.type = "button";
+      resolveBtn.textContent = "Resolve";
+      resolveBtn.addEventListener("click", async () => {
+        try {
+          await apiRequest(`/api/admin/reharvest/flags/${flag.id}/resolve`, { method: "POST" });
+          loadReharvestFlags();
+        } catch (error) {
+          statusEl.textContent = `Failed to resolve flag: ${error.message}`;
+          statusEl.style.color = "#a22828";
+        }
+      });
+      cellAction.appendChild(resolveBtn);
+      row.append(cellId, cellKind, cellLine, cellMessage, cellStatus, cellAction);
+      body.appendChild(row);
+    }
+  } catch (error) {
+    statusEl.textContent = `Failed to load flags: ${error.message}`;
+    statusEl.style.color = "#a22828";
+  }
+}
+
+function formatReportTime(value) {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  return date.toLocaleString();
+}
+
+function useBboxForReharvest(bboxArray) {
+  const input = document.getElementById("reharvestBboxInput");
+  if (!input || !Array.isArray(bboxArray)) {
+    return;
+  }
+  input.value = bboxArray.map((value) => Number(value).toFixed(6)).join(",");
+  const reharvestHeading = document.getElementById("reharvestBboxInput") && input.closest(".card");
+  if (reharvestHeading) {
+    reharvestHeading.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+async function loadIssueReports(options = {}) {
+  const body = document.getElementById("issueReportsBody");
+  const statusEl = document.getElementById("issueReportsStatus");
+  if (!body) {
+    return;
+  }
+  statusEl.textContent = "Loading issue reports…";
+  try {
+    const status = options.showResolved ? "resolved" : "open";
+    const payload = await apiRequest(`/api/admin/issues?status=${status}`, { method: "GET" });
+    const issues = Array.isArray(payload?.issues) ? payload.issues : [];
+    body.innerHTML = "";
+    if (!issues.length) {
+      statusEl.textContent = `No ${options.showResolved ? "resolved" : "open"} issue reports.`;
+      statusEl.style.color = "#2e7d32";
+      return;
+    }
+    statusEl.textContent = `${issues.length} ${options.showResolved ? "resolved" : "open"} report(s).`;
+    statusEl.style.color = "#5a5a5a";
+
+    for (const issue of issues) {
+      const row = document.createElement("tr");
+
+      const cellId = document.createElement("td");
+      cellId.textContent = String(issue.id);
+
+      const cellCreated = document.createElement("td");
+      cellCreated.textContent = formatReportTime(issue.createdAt);
+
+      const reporterName = issue.reporterName || issue.reporterEmail || "guest";
+      const cellReporter = document.createElement("td");
+      cellReporter.textContent = reporterName;
+
+      const cellView = document.createElement("td");
+      if (issue.screenshot) {
+        const viewBtn = document.createElement("button");
+        viewBtn.type = "button";
+        viewBtn.textContent = "Screenshot";
+        viewBtn.addEventListener("click", () => {
+          window.open(issue.screenshot, "_blank");
+        });
+        cellView.appendChild(viewBtn);
+      } else {
+        cellView.textContent = "-";
+      }
+
+      const cellBbox = document.createElement("td");
+      const bboxText = Array.isArray(issue.bbox) ? issue.bbox.map((v) => Number(v).toFixed(4)).join(", ") : "-";
+      cellBbox.textContent = bboxText;
+
+      const cellZoom = document.createElement("td");
+      cellZoom.textContent = issue.zoom !== null && issue.zoom !== undefined ? String(issue.zoom) : "-";
+
+      const cellDescription = document.createElement("td");
+      cellDescription.textContent = issue.description || "-";
+
+      const cellStatus = document.createElement("td");
+      cellStatus.textContent = issue.status || "";
+
+      const cellActions = document.createElement("td");
+      if (issue.status !== "resolved") {
+        const reharvestBtn = document.createElement("button");
+        reharvestBtn.type = "button";
+        reharvestBtn.textContent = "Reharvest";
+        reharvestBtn.addEventListener("click", () => {
+          useBboxForReharvest(issue.bbox);
+        });
+        cellActions.appendChild(reharvestBtn);
+
+        const resolveBtn = document.createElement("button");
+        resolveBtn.type = "button";
+        resolveBtn.textContent = "Resolve";
+        resolveBtn.addEventListener("click", async () => {
+          try {
+            await apiRequest(`/api/admin/issues/${issue.id}/resolve`, { method: "POST" });
+            loadIssueReports({ showResolved: Boolean(options.showResolved) });
+          } catch (error) {
+            statusEl.textContent = `Failed to resolve report: ${error.message}`;
+            statusEl.style.color = "#a22828";
+          }
+        });
+        cellActions.appendChild(resolveBtn);
+      } else {
+        const reopenBtn = document.createElement("button");
+        reopenBtn.type = "button";
+        reopenBtn.textContent = "Reopen";
+        reopenBtn.addEventListener("click", async () => {
+          try {
+            await apiRequest(`/api/admin/issues/${issue.id}/reopen`, { method: "POST" });
+            loadIssueReports({ showResolved: true });
+          } catch (error) {
+            statusEl.textContent = `Failed to reopen report: ${error.message}`;
+            statusEl.style.color = "#a22828";
+          }
+        });
+        cellActions.appendChild(reopenBtn);
+      }
+
+      row.append(cellId, cellCreated, cellReporter, cellView, cellBbox, cellZoom, cellDescription, cellStatus, cellActions);
+      body.appendChild(row);
+    }
+  } catch (error) {
+    statusEl.textContent = `Failed to load issue reports: ${error.message}`;
+    statusEl.style.color = "#a22828";
   }
 }
 
@@ -506,6 +739,8 @@ async function init() {
       setAdminLocked(false);
       setStatus("Logged in.");
       await refreshAll();
+      await loadReharvestFlags();
+      await loadIssueReports({ showResolved: false });
       startPolling();
       return;
     } catch {

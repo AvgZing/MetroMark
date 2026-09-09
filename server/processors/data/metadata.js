@@ -143,8 +143,18 @@ async function getRouteMetadataCoverageStats() {
   };
 }
 
+async function deleteRouteMetadata(lineKey) {
+  assertLocalConfigured();
+  const normalizedLineKey = normalizeText(lineKey);
+  if (!normalizedLineKey) {
+    return;
+  }
+  await localQuery("delete from public.route_metadata where line_key = $1", [normalizedLineKey]);
+}
+
 module.exports = {
   getRouteMetadatasByLineKeys,
   setRouteMetadata,
+  deleteRouteMetadata,
   getRouteMetadataCoverageStats
 };

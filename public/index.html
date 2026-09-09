@@ -11,9 +11,12 @@
       rel="stylesheet"
     />
     <link href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/Styles/base.css" />
-    <link rel="stylesheet" href="/Styles/map.css" />
-    <link rel="stylesheet" href="/Styles/lineview.css" />
+    <link rel="stylesheet" href="/Styles/base.css?v=2026-09-09" />
+    <link rel="stylesheet" href="/Styles/map.css?v=2026-09-09" />
+    <link rel="stylesheet" href="/Styles/lineview.css?v=2026-09-09" />
+    <link rel="stylesheet" href="/Styles/report-issue.css?v=2026-09-09" />
+    <link rel="stylesheet" href="/Styles/consent.css?v=2026-09-09" />
+    <link rel="stylesheet" href="/Styles/changelog.css?v=2026-09-09" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -219,6 +222,13 @@
                   >Transitland Terms of Service and Data Attributions</a
                 >
               </p>
+              <p class="backend-note legal-link-row">
+                <a href="/terms">Terms of Service</a>
+                <span class="legal-sep" aria-hidden="true">·</span>
+                <a href="/privacy">Privacy Policy</a>
+                <span class="legal-sep" aria-hidden="true">·</span>
+                <a href="#" id="whatsNewLink">What's New</a>
+              </p>
               <p class="backend-note legal-note">
                 Disclaimer: This is an in-development hobby app, with development help from AI. All services are
                 subject to change, do not store sensitive data on this website.
@@ -256,6 +266,18 @@
               <path d="m5 15 6 4 8-10-6-4-8 10Zm2.6-.5 3.8 2.5m2.2-8.5 3.8 2.5" />
             </svg>
             <span class="mode-label">Satellite</span>
+          </button>
+          <button
+            id="reportIssueBtn"
+            class="btn btn-icon map-mode-btn report-issue-btn"
+            type="button"
+            aria-label="Report a data issue"
+            title="Report a data issue for this area"
+          >
+            <svg class="map-mode-icon report-issue-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3 2.5 20.5h19L12 3Zm0 6.5v4.5m0 3.2v.1" />
+            </svg>
+            <span class="mode-label">Report Issue</span>
           </button>
         </div>
         <div id="map"></div>
@@ -366,53 +388,117 @@
       </section>
     </div>
 
+    <div class="report-modal-backdrop" id="reportModal" hidden>
+      <section class="report-modal panel" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
+        <header class="report-modal-header">
+          <h2 id="reportModalTitle">Report a data issue</h2>
+          <button id="reportModalCloseBtn" class="btn popup-close" type="button">Close</button>
+        </header>
+        <div class="report-modal-body">
+          <p class="report-modal-hint">
+            Your current map view (area, zoom, and a screenshot) is captured automatically. Add a description if it
+            helps, then send the report to the admin to review or refresh this area.
+          </p>
+          <div class="report-preview-row">
+            <div id="reportCapturePreview" class="report-capture-preview" aria-hidden="true"></div>
+            <dl class="report-meta kv">
+              <div>
+                <dt>Bounding box</dt>
+                <dd id="reportBboxText">-</dd>
+              </div>
+              <div>
+                <dt>Zoom</dt>
+                <dd id="reportZoomText">-</dd>
+              </div>
+            </dl>
+          </div>
+          <label for="reportDescriptionInput">
+            Description (optional)
+            <textarea id="reportDescriptionInput" rows="4" maxlength="2000" placeholder="e.g. Route 44 looks outdated after the service change."></textarea>
+          </label>
+          <p id="reportIssueStatus" class="status" hidden></p>
+          <div class="report-actions">
+            <button id="reportSubmitBtn" class="btn" type="button">Send Report</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel consent-banner" id="consentBanner" role="region" aria-label="Privacy notice" hidden>
+      <p class="consent-text">
+        MetroMark stores your preferences (theme, filters) and, if you have an account, your progress on this site.
+        It uses local storage only — no advertising or tracking cookies. See our
+        <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms of Service</a>.
+      </p>
+      <div class="consent-actions">
+        <button id="consentAcceptBtn" class="btn" type="button">Accept</button>
+        <button id="consentDeclineBtn" class="btn btn-subtle" type="button">Decline non-essential storage</button>
+        <span class="consent-links">
+          <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
+        </span>
+      </div>
+    </section>
+
+    <div class="whatsnew-modal-backdrop" id="whatsnewModal" hidden>
+      <section class="whatsnew-modal panel" role="dialog" aria-modal="true" aria-labelledby="whatsnewTitle">
+        <header class="whatsnew-modal-header">
+          <h2 id="whatsnewTitle">What's new in MetroMark</h2>
+          <button id="whatsnewCloseBtn" class="btn popup-close" type="button">Close</button>
+        </header>
+        <div id="whatsnewContent" class="whatsnew-modal-body"></div>
+      </section>
+    </div>
+
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
     <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
-    <script src="/Scripts/UI/formatters.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/Map/basemap-config.js?v=2026-08-27" defer></script>
-    <script src="/Scripts/UI/storage.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/UI/state.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/UI/dom-cache.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/UI/line-view/spatial.js" defer></script>
-    <script src="/Scripts/UI/line-view/stop-helpers.js" defer></script>
-    <script src="/Scripts/UI/line-view/ranking.js" defer></script>
-    <script src="/Scripts/UI/line-view/method-ushape.js" defer></script>
-    <script src="/Scripts/UI/line-view/branch-detection.js" defer></script>
-    <script src="/Scripts/UI/line-view/method-loop.js" defer></script>
-    <script src="/Scripts/UI/line-view/method-main.js" defer></script>
-    <script src="/Scripts/UI/line-view/method-auto.js" defer></script>
-    <script src="/Scripts/UI/line-view/stop-ordering.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/Map/geometry-utils.js" defer></script>
-    <script src="/Scripts/Map/tile-backfill.js" defer></script>
-    <script src="/Scripts/Map/zoom-readout.js" defer></script>
-    <script src="/Scripts/Map/map-stops.js" defer></script>
-    <script src="/Scripts/UI/map-helpers.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/UI/status-bar.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/UI/theme.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/UI/preferences.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/UI/api.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/UI/route-ui.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/UI/route-popups.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/UI/auth-panel.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/UI/line-view-ordering.js" defer></script>
-    <script src="/Scripts/UI/lineview.js?v=2026-08-21" defer></script>
-    <script src="/Scripts/Map/viewport-cache.js" defer></script>
-    <script src="/Scripts/UI/sidebar/route-data.js" defer></script>
-    <script src="/Scripts/UI/sidebar/filters-routes.js" defer></script>
-    <script src="/Scripts/UI/sidebar/map-data.js" defer></script>
-    <script src="/Scripts/UI/sidebar/filter-bar.js" defer></script>
-    <script src="/Scripts/UI/sidebar/route-list.js" defer></script>
-    <script src="/Scripts/UI/sidebar/progress-panel.js" defer></script>
-    <script src="/Scripts/UI/sidebar/routes-focus.js" defer></script>
-    <script src="/Scripts/UI/sidebar/filter-presets.js" defer></script>
-    <script src="/Scripts/Map/vector-metadata.js" defer></script>
-    <script src="/Scripts/Map/map-sources.js" defer></script>
-    <script src="/Scripts/Map/underlay.js" defer></script>
-    <script src="/Scripts/Map/transit-loading.js" defer></script>
-    <script src="/Scripts/Map/route-layer-defs.js" defer></script>
-    <script src="/Scripts/Map/map-events.js" defer></script>
-    <script src="/Scripts/Map/interactions.js" defer></script>
-    <script src="/Scripts/UI/progress-offline-queue.js" defer></script>
-    <script src="/Scripts/UI/bootstrap.js" defer></script>
+    <script src="/Scripts/UI/formatters.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/basemap-config.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/storage.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/state.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/dom-cache.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/line-view/spatial.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/line-view/stop-helpers.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/line-view/ranking.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/line-view/method-ushape.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/line-view/branch-detection.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/line-view/method-loop.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/line-view/method-main.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/line-view/method-auto.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/line-view/stop-ordering.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/geometry-utils.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/tile-backfill.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/zoom-readout.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/map-stops.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/map-helpers.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/status-bar.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/theme.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/preferences.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/api.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/route-ui.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/route-popups.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/auth-panel.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/line-view-ordering.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/lineview.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/viewport-cache.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/sidebar/route-data.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/sidebar/filters-routes.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/sidebar/map-data.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/sidebar/filter-bar.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/sidebar/route-list.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/sidebar/progress-panel.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/sidebar/routes-focus.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/sidebar/filter-presets.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/vector-metadata.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/map-sources.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/underlay.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/transit-loading.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/route-layer-defs.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/map-events.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Map/interactions.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/progress-offline-queue.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/changelog.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/consent.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/report-issue.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/UI/bootstrap.js?v=2026-09-09" defer></script>
   </body>
 </html>

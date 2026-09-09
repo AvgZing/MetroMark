@@ -45,6 +45,10 @@ function setTheme(theme, options = {}) {
     return;
   }
 
+  if (typeof storageConsentAllowed === "function" && !storageConsentAllowed()) {
+    return;
+  }
+
   localStorage.setItem("metromark_theme", appState.theme);
 }
 

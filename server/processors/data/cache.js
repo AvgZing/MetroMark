@@ -120,6 +120,26 @@ async function clearCacheByPrefix(prefix) {
   await localQuery("delete from public.transit_cache where cache_key like $1", [`${prefix}%`]);
 }
 
+async function deleteRouteRelatedCaches(lineKey, onestopId = "") {
+  assertLocalConfigured();
+  const key = normalizeText(lineKey);
+  const onestop = normalizeText(onestopId);
+  if (!key && !onestop) {
+    return;
+  }
+  const clauses = [];
+  const params = [];
+  if (key) {
+    params.push(`%route:${key}:%`);
+    clauses.push("cache_key like $1");
+  }
+  if (onestop) {
+    params.push(`%headway:${onestop}%`);
+    clauses.push(`cache_key like $${params.length}`);
+  }
+  await localQuery(`delete from public.transit_cache where ${clauses.join(" or ")}`, params);
+}
+
 async function getCacheStats() {
   assertLocalConfigured();
   const totalQuery = await localQuery("select count(*)::bigint as count from public.transit_cache");
@@ -149,5 +169,6 @@ module.exports = {
   getCacheByBbox,
   setCache,
   clearCacheByPrefix,
+  deleteRouteRelatedCaches,
   getCacheStats
 };
