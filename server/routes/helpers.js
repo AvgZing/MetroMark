@@ -6,6 +6,10 @@ function asBoolean(value) {
   return text === "1" || text === "true" || text === "yes";
 }
 
+// Station-level stop location types used for route stops. Mirrored by the
+// clients in public/scripts/shared/constants.js.
+const DEFAULT_STOP_TYPES = [0, 1];
+
 function parseStopTypes(value) {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -68,6 +72,7 @@ function userResponse(user, token) {
 
 module.exports = {
   asBoolean,
+  DEFAULT_STOP_TYPES,
   parseStopTypes,
   parseRouteTypes,
   withTransitlandMetrics,

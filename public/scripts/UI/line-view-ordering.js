@@ -302,7 +302,19 @@ function syncLineViewOrderingControls() {
 
   if (dom.lineViewOrderingReverseBtn) {
     const isActive = Boolean(appState.lineViewOrderingReversed);
-    dom.lineViewOrderingReverseBtn.textContent = "Reverse Route";
+    const mobile = typeof isPortraitMobileLayout === "function" && isPortraitMobileLayout();
+    if (mobile) {
+      // On mobile the reverse control collapses to a round icon sitting on the
+      // same line as the Auto / Main / U-Shape / Loop buttons.
+      dom.lineViewOrderingReverseBtn.innerHTML =
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8h8m0 0-2.4-2.4M15 8l-2.4 2.4M17 16H9m0 0 2.4-2.4M9 16l2.4 2.4" /></svg>';
+      dom.lineViewOrderingReverseBtn.setAttribute("aria-label", "Reverse route");
+      dom.lineViewOrderingReverseBtn.classList.add("line-view-reverse-icon");
+    } else {
+      dom.lineViewOrderingReverseBtn.textContent = "Reverse Route";
+      dom.lineViewOrderingReverseBtn.removeAttribute("aria-label");
+      dom.lineViewOrderingReverseBtn.classList.remove("line-view-reverse-icon");
+    }
     dom.lineViewOrderingReverseBtn.title = "Reverse the current stop order";
     dom.lineViewOrderingReverseBtn.classList.toggle("is-active", isActive);
     dom.lineViewOrderingReverseBtn.setAttribute("aria-pressed", isActive ? "true" : "false");

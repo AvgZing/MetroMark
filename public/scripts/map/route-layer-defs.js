@@ -433,26 +433,9 @@ function addMapRouteLayers(map) {
         14,
         7.1
       ],
-      "circle-color": [
-        "case",
-        ["==", ["coalesce", ["to-number", ["feature-state", "show_all"]], 0], 1],
-        "#ffffff",
-        ["==", ["coalesce", ["to-number", ["feature-state", "visited"]], 0], 1],
-        "#1a9b66",
-        "#d9563a"
-      ],
-      "circle-stroke-color": [
-        "case",
-        ["==", ["coalesce", ["to-number", ["feature-state", "show_all"]], 0], 1],
-        "#0f1b22",
-        "#ffffff"
-      ],
-      "circle-stroke-width": [
-        "case",
-        ["==", ["coalesce", ["to-number", ["feature-state", "show_all"]], 0], 1],
-        0.9,
-        1.2
-      ],
+      "circle-color": stopMarkerColorExpression(),
+      "circle-stroke-color": ["coalesce", ["get", "color"], "#d9563a"],
+      "circle-stroke-width": STOP_STYLE.strokeWidth,
       "circle-opacity": [
         "case",
         ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 0], 1],
@@ -467,4 +450,24 @@ function addMapRouteLayers(map) {
       ]
     }
   });
+
+  if (typeof applyStopStatusIcons === "function") {
+    applyStopStatusIcons();
+  }
+
+  for (const layerId of [
+    "routes-background-main",
+    "routes-background-main-vector",
+    "routes-main",
+    "routes-main-vector",
+    "routes-casing",
+    "routes-casing-vector"
+  ]) {
+    try {
+      map.setPaintProperty(layerId, "line-width-transition", { duration: 260, delay: 0 });
+      map.setPaintProperty(layerId, "line-opacity-transition", { duration: 260, delay: 0 });
+    } catch {
+      // layer may not exist in this style
+    }
+  }
 }

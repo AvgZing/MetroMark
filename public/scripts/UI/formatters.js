@@ -30,8 +30,6 @@ var GTFS_MODE_LABELS = {
   11: "Trolleybus", 12: "Monorail"
 };
 
-var FALLBACK_HEADWAY_MINUTES = Number((100000 / 60).toFixed(1));
-
 /** Constrain a numeric value between a minimum and maximum. */
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -164,36 +162,9 @@ function lineSearchText(line) {
     .join(" ");
 }
 
-/** Classify headway minutes into a frequency bucket (frequent, regular, local, unknown). */
-function frequencyBucketFromHeadwayMinutes(minutes) {
-  if (!Number.isFinite(minutes) || minutes <= 0) {
-    return FREQUENCY_FILTER_UNKNOWN;
-  }
-
-  if (minutes <= 10) {
-    return FREQUENCY_FILTER_FREQUENT;
-  }
-
-  if (minutes < 30) {
-    return FREQUENCY_FILTER_REGULAR;
-  }
-
-  return FREQUENCY_FILTER_LOCAL;
-}
-
 /** Check whether a headway value matches the system fallback (no real data). */
-function isFallbackHeadwayMinutes(minutes) {
-  const numeric = Number(minutes);
-  return Number.isFinite(numeric) && Math.abs(numeric - FALLBACK_HEADWAY_MINUTES) < 0.2;
-}
-
-/** Determine whether a line is using a fallback (estimated) headway value. */
 function lineHasFallbackHeadway(line) {
-  if (Number(line?.headwayFallback || 0) === 1) {
-    return true;
-  }
-
-  return isFallbackHeadwayMinutes(line?.headwayBestMinutes);
+  return Number(line?.headwayFallback || 0) === 1;
 }
 
 /** Return the best headway minutes for a line, or null if unavailable or fallback. */
@@ -206,25 +177,17 @@ function lineHeadwayBestMinutes(line) {
   return minutes;
 }
 
-/** Resolve the frequency bucket for a line using best-available headway data. */
+/** Frequency bucket for a line. The server classifies and stores the bucket, so
+    this only validates the value rather than re-deriving it from minutes. */
 function lineFrequencyBucket(line) {
-  const bestHeadwayMinutes = lineHeadwayBestMinutes(line);
-  if (bestHeadwayMinutes !== null) {
-    return frequencyBucketFromHeadwayMinutes(bestHeadwayMinutes);
-  }
-
-  if (lineHasFallbackHeadway(line)) {
-    return FREQUENCY_FILTER_LOCAL;
-  }
-
-  const explicit = String(line?.frequencyBucket || "").trim().toLowerCase();
+  const bucket = String(line?.frequencyBucket || "").trim().toLowerCase();
   if (
-    explicit === FREQUENCY_FILTER_FREQUENT ||
-    explicit === FREQUENCY_FILTER_REGULAR ||
-    explicit === FREQUENCY_FILTER_LOCAL ||
-    explicit === FREQUENCY_FILTER_UNKNOWN
+    bucket === FREQUENCY_FILTER_FREQUENT ||
+    bucket === FREQUENCY_FILTER_REGULAR ||
+    bucket === FREQUENCY_FILTER_LOCAL ||
+    bucket === FREQUENCY_FILTER_UNKNOWN
   ) {
-    return explicit;
+    return bucket;
   }
 
   return FREQUENCY_FILTER_UNKNOWN;
@@ -324,6 +287,7 @@ function lineLikeFromFeatureProperties(properties) {
     routeFeedId: properties?.route_feed_id || properties?.routeFeedId,
     frequencyBucket: properties?.frequency_bucket || properties?.frequencyBucket,
     headwayBestMinutes: Number.isFinite(headwayBestMinutes) ? headwayBestMinutes : null,
+    headwayFallback: Number(properties?.headway_fallback ?? properties?.headwayFallback ?? 0) === 1 ? 1 : 0,
     stopCount: Number((properties?.stop_count ?? properties?.stopCount) || 0)
   };
 }

@@ -3,8 +3,6 @@ function lineSummaryByKey() {
 }
 
 function renderModeFilterBar() {
-  dom.modeFilterBar.innerHTML = "";
-
   const linesForCounts = getToggleCountLines().filter((line) => lineEligibleForToggleCounts(line));
   const counts = new Map(MODE_DEFS.map((mode) => [mode.key, 0]));
 
@@ -19,6 +17,21 @@ function renderModeFilterBar() {
     count: modeDef.key === MODE_FILTER_ALL ? linesForCounts.length : counts.get(modeDef.key) || 0
   }));
   const uncertainCounts = false;
+
+  const existing = [...dom.modeFilterBar.querySelectorAll(".mode-chip")];
+  if (existing.length === chips.length) {
+    chips.forEach((chip, index) => {
+      const button = existing[index];
+      const text = `${chip.label} (${filterChipCountLabel(chip.count, uncertainCounts)})`;
+      if (button.textContent !== text) {
+        button.textContent = text;
+      }
+      button.classList.toggle("is-active", appState.activeModeKeys.has(chip.key));
+    });
+    return;
+  }
+
+  dom.modeFilterBar.innerHTML = "";
 
   for (const chip of chips) {
     const button = document.createElement("button");
@@ -80,8 +93,6 @@ function renderModeFilterBar() {
 }
 
 function renderFrequencyFilterBar() {
-  dom.frequencyFilterBar.innerHTML = "";
-
   const baseLines = getToggleCountLines().filter((line) =>
     lineEligibleForToggleCounts(line, {
       requireModeMatch: true
@@ -127,6 +138,21 @@ function renderFrequencyFilterBar() {
       count: buckets.get(FREQUENCY_FILTER_UNKNOWN) || 0
     }
   ];
+
+  const existing = [...dom.frequencyFilterBar.querySelectorAll(".mode-chip")];
+  if (existing.length === chips.length) {
+    chips.forEach((chip, index) => {
+      const button = existing[index];
+      const text = `${chip.label} (${chip.count})`;
+      if (button.textContent !== text) {
+        button.textContent = text;
+      }
+      button.classList.toggle("is-active", appState.activeFrequencyKeys.has(chip.key));
+    });
+    return;
+  }
+
+  dom.frequencyFilterBar.innerHTML = "";
 
   for (const chip of chips) {
     const button = document.createElement("button");

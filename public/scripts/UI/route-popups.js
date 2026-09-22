@@ -14,13 +14,8 @@ function stopHoverHtml(properties) {
   const lineLabel = [properties.line_short_name, properties.line_long_name || properties.line_name]
     .filter(Boolean)
     .join(" | ");
-
-  const line = lineFromPropertiesForHover(properties);
-  const operatorLabel = lineOperatorLabel(line);
-  const modeLabel = lineMode(line);
-  const hubCount = Math.max(1, Number(properties.hub_member_count || 1));
   const visited = Number(properties.visited) === 1;
-  const progressLabel = appState.user
+  const statusLabel = appState.user
     ? visited
       ? "Visited"
       : "Not visited"
@@ -28,24 +23,11 @@ function stopHoverHtml(properties) {
 
   return `
     <div class="station-hover">
-      <h4>${escapeHtml(properties.station_name || "Unnamed Station")}</h4>
+      <h4>${escapeHtml(properties.station_name || properties.stop_name || "Unnamed Station")}</h4>
       <p class="hover-subtitle">${escapeHtml(
         lineLabel || properties.line_name || properties.line_key || "Route details"
       )}</p>
-      <dl class="hover-grid">
-        <dt>Mode</dt>
-        <dd>${escapeHtml(modeLabel)}</dd>
-        <dt>Operator</dt>
-        <dd>${escapeHtml(operatorLabel)}</dd>
-        <dt>Frequency</dt>
-        <dd>${escapeHtml(lineHeadwayLabel(line))}</dd>
-        <dt>Stop Type</dt>
-        <dd>${escapeHtml(stopLocationTypeLabel(properties.stop_location_type))}</dd>
-        <dt>Hub</dt>
-        <dd>${hubCount} linked stops</dd>
-        <dt>Status</dt>
-        <dd>${escapeHtml(progressLabel)}</dd>
-      </dl>
+      <p class="hover-subtitle">${escapeHtml(statusLabel)}</p>
     </div>
   `;
 }
@@ -107,7 +89,7 @@ function routeSelectionPopupHtml(lines, options = {}) {
         <h4>Select Route</h4>
         ${
           includeClose
-            ? "<button class=\"route-select-close\" type=\"button\" data-route-select-close>Close</button>"
+            ? '<button class="btn dialog-close" type="button" aria-label="Close" data-route-select-close><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg></button>'
             : ""
         }
       </div>
@@ -161,6 +143,10 @@ function bindRouteSelectionButtons(container) {
 }
 
 function openRouteSelectionPopup(lines, lngLat) {
+  if (appState.hoverPopup) {
+    appState.hoverPopup.remove();
+  }
+
   if (isPortraitMobileLayout() && dom.routeSelectPanel) {
     closeRouteSelectionPopup();
     dom.routeSelectPanel.hidden = false;

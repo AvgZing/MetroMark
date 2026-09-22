@@ -145,6 +145,11 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
 
     const dot = document.createElement("span");
     dot.className = "line-view-stop-dot";
+    dot.style.backgroundColor = typeof stopFillForVisited === "function"
+      ? stopFillForVisited(visited)
+      : visited
+        ? "#1a9b66"
+        : "#ffffff";
     marker.append(dot);
 
     const content = document.createElement("div");
@@ -180,19 +185,95 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
 }
 
 /** Render or update the line view panel with the focused line's metadata and progress. */
+function setLineViewEmptyState() {
+  if (dom.lineViewPanel) {
+    dom.lineViewPanel.classList.add("is-empty");
+  }
+  if (dom.lineViewName) {
+    dom.lineViewName.textContent = "Select a route";
+  }
+  if (dom.lineViewMeta) {
+    dom.lineViewMeta.textContent = "Tap a route on the map to see stops and progress.";
+  }
+  if (dom.lineViewColor) {
+    dom.lineViewColor.style.backgroundColor = "transparent";
+  }
+  const emptyFacts = document.getElementById("lineViewFacts");
+  if (emptyFacts) {
+    emptyFacts.innerHTML = "";
+    emptyFacts.hidden = true;
+  }
+  if (dom.lineViewStatus) {
+    dom.lineViewStatus.hidden = true;
+  }
+  if (dom.lineViewProgress) {
+    dom.lineViewProgress.hidden = true;
+  }
+  if (dom.lineViewDiagnostics) {
+    dom.lineViewDiagnostics.hidden = true;
+  }
+  const statusCard = document.querySelector(".line-view-card .user-status-card");
+  if (statusCard) {
+    statusCard.hidden = true;
+  }
+  if (dom.lineViewStops) {
+    dom.lineViewStops.innerHTML = "";
+    const ordered = typeof getShownLines === "function"
+      ? getShownLines({ ignoreSearch: true })
+      : (Array.isArray(appState.lineSummaries) ? appState.lineSummaries : []);
+    const lines = ordered.slice(0, 60);
+    const fragment = document.createDocumentFragment();
+    for (const line of lines) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "sheet-route-item";
+      const dot = document.createElement("span");
+      dot.className = "line-color-dot";
+      dot.style.backgroundColor = line.color || "#177ca2";
+      const name = document.createElement("span");
+      name.textContent = typeof lineDisplayName === "function" ? lineDisplayName(line) : line.lineKey;
+      button.append(dot, name);
+      button.addEventListener("click", () => {
+        if (typeof openLineView === "function") {
+          openLineView(line.lineKey, { zoom: true });
+        }
+      });
+      fragment.appendChild(button);
+    }
+    dom.lineViewStops.appendChild(fragment);
+  }
+  document.body.classList.remove("route-selected");
+  if (typeof window.setMobileSheetState === "function") {
+    window.setMobileSheetState("peek");
+  }
+}
+
 function renderLineView(options = {}) {
   if (!dom.lineViewPanel) {
     return;
   }
 
   if (!appState.lineViewOpen) {
+    if (isPortraitMobileLayout()) {
+      appState.lineViewOpen = true;
+      dom.lineViewPanel.hidden = false;
+      document.body.classList.add("line-view-open");
+      setLineViewEmptyState();
+      return;
+    }
     dom.lineViewPanel.hidden = true;
     return;
   }
 
   const lineKey = String(appState.lineViewLineKey || appState.focusedLineKey || "").trim();
   if (!lineKey) {
-    dom.lineViewPanel.hidden = true;
+    if (isPortraitMobileLayout() && dom.lineViewPanel) {
+      dom.lineViewPanel.hidden = false;
+      document.body.classList.add("line-view-open");
+      setLineViewEmptyState();
+    } else if (dom.lineViewPanel) {
+      dom.lineViewPanel.hidden = true;
+    }
     return;
   }
 
@@ -208,6 +289,22 @@ function renderLineView(options = {}) {
     dom.lineViewPanel.hidden = false;
     dom.lineViewPanel.removeAttribute("hidden");
   }
+  const statusCard = document.querySelector(".line-view-card .user-status-card");
+  if (statusCard) {
+    statusCard.hidden = false;
+  }
+  if (dom.lineViewDiagnostics) {
+    dom.lineViewDiagnostics.hidden = false;
+  }
+  if (dom.lineViewPanel) {
+    dom.lineViewPanel.classList.remove("is-empty");
+  }
+  if (isPortraitMobileLayout()) {
+    document.body.classList.add("route-selected");
+    if (typeof window.setMobileSheetState === "function") {
+      window.setMobileSheetState(appState.lineViewPeekPinned ? "peek" : "half");
+    }
+  }
 
   if (dom.lineViewColor) {
     dom.lineViewColor.style.backgroundColor = lineColor;
@@ -219,11 +316,13 @@ function renderLineView(options = {}) {
 
   if (dom.lineViewMeta) {
     dom.lineViewMeta.textContent = line
-      ? `${lineMode(line)} | ${lineOperatorLabel(line)}`
+      ? `${lineMode(line)} · ${lineOperatorLabel(line)}`
       : "Route details";
+    dom.lineViewMeta.hidden = false;
   }
 
   const progress = line ? lineProgressMetrics(lineKey, Number(line.stopCount || 0)) : null;
+  const showProgress = Boolean(appState.user) && Boolean(progress) && Number(progress?.total || 0) > 0;
   const fullStopsLoaded = appState.lineStopsCache.has(routeStopCacheKey(lineKey));
   const hasStopTotals = Number(line?.stopCount || 0) > 0;
   const stopsLoaded = fullStopsLoaded || hasStopTotals;
@@ -231,28 +330,26 @@ function renderLineView(options = {}) {
 
   if (dom.lineViewStatus) {
     if (!stopsLoaded && stopsLoading) {
-      dom.lineViewStatus.textContent = "Loading stops...";
+      dom.lineViewStatus.textContent = "Loading stops…";
+      dom.lineViewStatus.hidden = false;
     } else if (!stopsLoaded) {
-      dom.lineViewStatus.textContent = "Stops not loaded yet.";
-    } else if (!fullStopsLoaded) {
-      dom.lineViewStatus.textContent = "Stop totals loaded. Tap to load full stops.";
-    } else if (!appState.user) {
-      dom.lineViewStatus.textContent = "Sign in to track visited stops.";
-    } else if (progress && progress.total > 0) {
-      dom.lineViewStatus.textContent = `Visited ${progress.visited} of ${progress.total} stations.`;
+      dom.lineViewStatus.textContent = "Tap to load stops";
+      dom.lineViewStatus.hidden = false;
     } else {
-      dom.lineViewStatus.textContent = "Stops loaded. Tap to mark visited.";
+      dom.lineViewStatus.textContent = "";
+      dom.lineViewStatus.hidden = true;
     }
   }
 
   if (dom.lineViewProgress && dom.lineViewProgressText && dom.lineViewProgressFill) {
-    const hasProgress = Boolean(appState.user) && Boolean(progress) && Number(progress?.total || 0) > 0;
-    if (hasProgress) {
-      const visited = Number(progress.visited || 0);
-      const total = Number(progress.total || 0);
+    const hasProgress = showProgress;
+    const forceBar = isPortraitMobileLayout();
+    if (hasProgress || forceBar) {
+      const visited = Number(progress?.visited || 0);
+      const total = Number(progress?.total || 0);
       const percent = total > 0 ? Math.round((visited / total) * 100) : 0;
       dom.lineViewProgress.hidden = false;
-      dom.lineViewProgressText.textContent = `${visited}/${total} stations visited (${percent}%)`;
+      dom.lineViewProgressText.textContent = hasProgress ? `${visited}/${total} stations visited (${percent}%)` : "";
       dom.lineViewProgressFill.style.width = `${percent}%`;
     } else {
       dom.lineViewProgress.hidden = true;
@@ -264,19 +361,42 @@ function renderLineView(options = {}) {
   // Update button labels based on layout
   const isMobileLayout = isPortraitMobileLayout();
   if (dom.lineViewReturnBtn) {
-    dom.lineViewReturnBtn.textContent = isMobileLayout ? "Ã¢â€ Â" : "Close";
+    if (isMobileLayout) {
+      dom.lineViewReturnBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>';
+      dom.lineViewReturnBtn.setAttribute("aria-label", "Deselect route");
+    } else {
+      dom.lineViewReturnBtn.textContent = "Back";
+    }
     dom.lineViewReturnBtn.classList.toggle("mobile-icon-only", isMobileLayout);
   }
   if (dom.lineViewMapBtn) {
-    dom.lineViewMapBtn.textContent = isMobileLayout ? "Map" : "Zoom";
+    dom.lineViewMapBtn.textContent = "Zoom";
+  }
+
+  const facts = document.getElementById("lineViewFacts");
+  if (facts) {
+    facts.innerHTML = "";
+    // Subheader carries mode/operator and the progress bar the stop count, so
+    // the facts row is only the headway.
+    const headway = typeof lineHeadwayLabel === "function" ? lineHeadwayLabel(line) : "";
+    if (!headway) {
+      facts.hidden = true;
+    } else {
+      facts.hidden = false;
+      const item = document.createElement("span");
+      item.className = "line-view-fact";
+      item.textContent = headway;
+      facts.appendChild(item);
+    }
   }
 
   // renderLineViewStops will manage dataset.lineKey itself to detect line changes
   renderLineViewStops(lineKey, lineColor, { forceRefresh: forceStopRefresh }).catch(() => {});
 }
 
-/** Open the line view panel for a given line, saving prior map/focus state for restoration. */
-async function openLineView(lineKey) {
+/** Open the line view panel for a given line, saving prior map/focus state for restoration.
+    Pass { zoom: true } when the selection came from a list so the map frames the route. */
+async function openLineView(lineKey, options = {}) {
   const normalizedLineKey = String(lineKey || "").trim();
   if (!normalizedLineKey) {
     return;
@@ -293,8 +413,17 @@ async function openLineView(lineKey) {
 
   appState.lineViewOpen = true;
   appState.lineViewLineKey = normalizedLineKey;
+  appState.lineViewPeekPinned = false;
   document.body.classList.toggle("line-view-open", true);
   closeRouteSelectionPopup();
+
+  if (document.body.classList.contains("filters-panel-open") && typeof window.setFiltersPanelOpen === "function") {
+    window.setFiltersPanelOpen(false);
+  }
+
+  if (isPortraitMobileLayout() && typeof window.resetMobileSheet === "function") {
+    window.resetMobileSheet();
+  }
 
   if (isPortraitMobileLayout()) {
     setMobilePanelsOpen(false);
@@ -308,6 +437,10 @@ async function openLineView(lineKey) {
 
   renderLineView();
   renderUserStatus();
+
+  if (options.zoom && typeof fitMapToLine === "function") {
+    fitMapToLine(normalizedLineKey);
+  }
 
   await Promise.all([
     ensureLineStopsLoaded(normalizedLineKey, { silent: true }),
@@ -348,8 +481,13 @@ function restoreLineViewReturnState() {
   }
 }
 
-/** Close the line view panel and optionally restore the prior map and focus appState. */
+/** Close the line view. Per the unified status/line-view model, closing always
+    unselects the current route. */
 function closeLineView(options = {}) {
+  if (closeLineView._closing) {
+    return;
+  }
+  closeLineView._closing = true;
   const shouldRestore = options.restore !== false;
 
   appState.lineViewOpen = false;
@@ -357,15 +495,65 @@ function closeLineView(options = {}) {
   document.body.classList.toggle("line-view-open", false);
 
   if (dom.lineViewPanel) {
-    dom.lineViewPanel.hidden = true;
+    const panel = dom.lineViewPanel;
+    if (isPortraitMobileLayout()) {
+      panel.hidden = false;
+      document.body.classList.add("line-view-open");
+      if (typeof renderLineView === "function") {
+        renderLineView("");
+      }
+    } else if (!panel.hidden) {
+      panel.classList.add("line-view-closing");
+      window.setTimeout(() => {
+        panel.classList.remove("line-view-closing");
+        panel.hidden = true;
+      }, 200);
+    } else {
+      panel.hidden = true;
+    }
   }
 
   if (shouldRestore) {
-    restoreLineViewReturnState();
+    const saved = appState.lineViewReturn;
+    if (saved && saved.mapView && typeof mapViewChanged === "function" && !mapViewChanged(saved.mapView)) {
+      restoreMapView(saved.mapView);
+    }
   }
 
   appState.lineViewReturn = null;
+
+  if (typeof clearFocusedLine === "function") {
+    clearFocusedLine("Route unselected.", "Select a route to focus it.");
+  }
+
   renderUserStatus();
+  closeLineView._closing = false;
+}
+
+/** Resolve once the sheet's height transition has finished (or shortly after). */
+function waitForSheetSettled(el) {
+  return new Promise((resolve) => {
+    if (!el) {
+      resolve();
+      return;
+    }
+    let done = false;
+    const finish = () => {
+      if (done) {
+        return;
+      }
+      done = true;
+      el.removeEventListener("transitionend", onEnd);
+      resolve();
+    };
+    const onEnd = (event) => {
+      if (event.target === el && event.propertyName === "height") {
+        finish();
+      }
+    };
+    el.addEventListener("transitionend", onEnd);
+    window.setTimeout(finish, 420);
+  });
 }
 
 async function openLineViewMap() {
@@ -375,13 +563,55 @@ async function openLineViewMap() {
     return;
   }
 
-  const shouldClosePanel = isPortraitMobileLayout();
-  if (shouldClosePanel) {
-    closeLineView({ restore: false });
+  const panel = dom.lineViewPanel;
+  if (isPortraitMobileLayout()) {
+    appState.lineViewPeekPinned = true;
+    if (typeof window.setMobileSheetState === "function") {
+      window.setMobileSheetState("peek");
+    }
+    // Fit after the sheet shrinks, or padding uses the tall sheet height.
+    await waitForSheetSettled(panel);
   }
 
   await setFocusedLine(lineKey, { forceRefresh: false });
   fitMapToLine(lineKey);
+
+  if (isPortraitMobileLayout() && typeof window.setMobileSheetState === "function") {
+    window.setMobileSheetState("peek");
+  }
 }
+
+(function bindLineProgressLongPress() {
+  const target = document.getElementById("lineViewProgress");
+  if (!target) {
+    return;
+  }
+  let timer = null;
+  const start = () => {
+    timer = window.setTimeout(() => {
+      const clearBtn = document.getElementById("clearRouteProgressBtn");
+      if (!clearBtn || clearBtn.disabled) {
+        return;
+      }
+      // Long-press arms the two-step clear confirmation; a second press resets.
+      const actions = clearBtn.closest(".line-view-progress-actions");
+      if (actions) {
+        actions.classList.add("is-revealed");
+      }
+      clearBtn.hidden = false;
+      clearBtn.click();
+    }, 550);
+  };
+  const cancel = () => {
+    if (timer) {
+      window.clearTimeout(timer);
+      timer = null;
+    }
+  };
+  target.addEventListener("pointerdown", start);
+  target.addEventListener("pointerup", cancel);
+  target.addEventListener("pointerleave", cancel);
+  target.addEventListener("pointercancel", cancel);
+})();
 
 try { syncLineViewOrderingControls(); } catch (e) { /* DOM elements may not be ready yet */ }

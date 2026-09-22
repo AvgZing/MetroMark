@@ -129,11 +129,7 @@ function normalizeHeadwayUpdate(payload) {
       : null;
 
   const headwayFallback = Boolean(payload?.headwayFallback);
-
-  const normalizedBucket = String(payload?.frequencyBucket || "").trim().toLowerCase();
-  const frequencyBucket = normalizedBestMinutes
-    ? frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)
-    : normalizedBucket || FREQUENCY_FILTER_UNKNOWN;
+  const frequencyBucket = String(payload?.frequencyBucket || "").trim().toLowerCase() || FREQUENCY_FILTER_UNKNOWN;
 
   return {
     headwayBestMinutes: headwayFallback ? null : normalizedBestMinutes,
@@ -419,7 +415,7 @@ async function loadVisibleRouteStops() {
   const batch = candidates.slice(0, MAX_PREFETCH);
   if (batch.length > 0) {
     setStatus(
-      `Loading stops for ${batch.length} visible route${batch.length === 1 ? "" : "s"}…`,
+      `Loading route stops…`,
       "neutral",
       "Prefetching stops so they appear without clicking."
     );

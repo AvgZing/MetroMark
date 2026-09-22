@@ -8,6 +8,7 @@ const {
 } = require("./helpers");
 const {
   isFallbackHeadwaySeconds,
+  isFallbackHeadwayMinutes,
   frequencyBucketFromHeadwayMinutes,
   fallbackFrequencyBucketForRoute
 } = require("./headway");
@@ -183,6 +184,7 @@ function routeFeatureFromLine(line) {
       headway_best_minutes: Number.isFinite(headwayBestMinutes)
         ? Number(headwayBestMinutes.toFixed(1))
         : null,
+      headway_fallback: isFallbackHeadwayMinutes(headwayBestMinutes) ? 1 : 0,
       headway_checked: Number(line?.headwayChecked || 0) === 1 ? 1 : 0,
       color: line.color
     }

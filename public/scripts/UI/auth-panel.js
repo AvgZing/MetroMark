@@ -31,6 +31,16 @@ function updateAuthUi() {
   dom.authLoggedOut.hidden = loggedIn;
   dom.authLoggedIn.hidden = !loggedIn;
   dom.currentUserLabel.textContent = loggedIn ? `${appState.user.displayName} (${appState.user.email})` : "-";
+  if (dom.topbarUserLabel) {
+    const name = loggedIn
+      ? appState.user.displayName || String(appState.user.email || "").split("@")[0]
+      : "Sign In";
+    dom.topbarUserLabel.textContent = name;
+    dom.topbarUserLabel.hidden = false;
+    if (dom.accountPopupBtn) {
+      dom.accountPopupBtn.title = loggedIn ? `${appState.user.displayName || ""} (${appState.user.email})` : "Sign in";
+    }
+  }
   if (typeof window.updateFilterPresetAuthState === "function") {
     window.updateFilterPresetAuthState();
   }

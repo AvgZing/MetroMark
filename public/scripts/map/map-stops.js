@@ -46,6 +46,25 @@ function normalizeStopFeature(feature) {
   };
 }
 
+var pendingStopsData = null;
+var stopsCommitTimer = null;
+
+function scheduleStopsSourceCommit(stops) {
+  pendingStopsData = stops;
+  if (stopsCommitTimer) {
+    clearTimeout(stopsCommitTimer);
+  }
+  stopsCommitTimer = setTimeout(() => {
+    stopsCommitTimer = null;
+    const data = pendingStopsData;
+    pendingStopsData = null;
+    const source = appState.map && appState.map.getSource ? appState.map.getSource("stops") : null;
+    if (source && data) {
+      source.setData(data);
+    }
+  }, 140);
+}
+
 function syncStopsSourceData() {
   if (!appState.mapReady || !appState.map) {
     return;
@@ -70,6 +89,13 @@ function syncStopsSourceData() {
   }
 
   const stopByKey = new Map();
+  const colorByLineKey = new Map();
+  for (const line of Array.isArray(appState.lineSummaries) ? appState.lineSummaries : []) {
+    if (line && line.lineKey) {
+      colorByLineKey.set(line.lineKey, line.color || "#d9563a");
+    }
+  }
+
   for (const entry of appState.lineStopsCache.values()) {
     if (!entry || entry.stopTypesKey !== ROUTE_STOP_TYPES_KEY) {
       continue;
@@ -87,11 +113,19 @@ function syncStopsSourceData() {
         continue;
       }
 
+      const colored = {
+        ...feature,
+        properties: {
+          ...feature.properties,
+          color: colorByLineKey.get(lineKey) || feature?.properties?.color || "#d9563a"
+        }
+      };
+
       const stopKey = `${lineKey}|${stationKey}`;
       if (stopByKey.has(stopKey)) {
-        stopByKey.set(stopKey, mergeStopFeature(stopByKey.get(stopKey), feature));
+        stopByKey.set(stopKey, mergeStopFeature(stopByKey.get(stopKey), colored));
       } else {
-        stopByKey.set(stopKey, feature);
+        stopByKey.set(stopKey, colored);
       }
     }
   }
@@ -115,6 +149,6 @@ function syncStopsSourceData() {
     appState.transit.stopsGeoJson = stops;
   }
   if (stopsSource) {
-    stopsSource.setData(stops);
+    scheduleStopsSourceCommit(stops);
   }
 }

@@ -9,16 +9,7 @@ function getVisitedSetForLine(lineKey) {
 }
 
 function renderProgress() {
-  if (!appState.user) {
-    dom.progressSummary.textContent = "Sign in to track progress.";
-    dom.lineProgressList.innerHTML = "";
-    const overallProgressCard = document.getElementById("overallProgressCard");
-    if (overallProgressCard) {
-      overallProgressCard.hidden = true;
-    }
-    dom.lineProgressList.hidden = true;
-    return;
-  }
+  const demo = !appState.user;
 
   const overallProgressCard = document.getElementById("overallProgressCard");
   if (overallProgressCard) {
@@ -26,13 +17,16 @@ function renderProgress() {
   }
   dom.lineProgressList.hidden = false;
 
-  if (!appState.transit) {
+  if (!appState.transit && !demo) {
     dom.progressSummary.textContent = "Pan or zoom the map and routes will load automatically.";
     dom.lineProgressList.innerHTML = "";
     return;
   }
 
-  const visibleLines = getShownLines();
+  let visibleLines = getShownLines();
+  if (!visibleLines.length && demo) {
+    visibleLines = (Array.isArray(appState.lineSummaries) ? appState.lineSummaries : []).slice(0, 8);
+  }
   if (!visibleLines.length) {
     dom.progressSummary.textContent = "No routes are visible for the active mode/frequency filters.";
     dom.lineProgressList.innerHTML = "";
@@ -65,21 +59,63 @@ function renderProgress() {
       return a.lineName.localeCompare(b.lineName);
     });
 
+  if (demo) {
+    const factors = [0.62, 0.41, 0.78, 0.29, 0.55, 0.33];
+    rows.forEach((row, index) => {
+      const total = row.total > 0 ? row.total : 14 + ((row.lineName.length * 7) % 26);
+      row.total = total;
+      row.visited = Math.round(total * factors[index % factors.length]);
+      row.percent = total ? Math.round((row.visited / total) * 100) : 0;
+    });
+    rows.sort((a, b) => (b.percent - a.percent) || (b.visited - a.visited) || a.lineName.localeCompare(b.lineName));
+    if (rows.length > 6) {
+      rows.length = 6;
+    }
+  }
+
+  const loading = !demo && Boolean(appState.inFlightLineStopKeys && appState.inFlightLineStopKeys.size > 0);
+  const card = document.getElementById("overallProgressCard");
+  if (card) {
+    card.classList.toggle("is-loading", loading);
+  }
+  if (loading) {
+    return;
+  }
+
   const withKnownStops = rows.filter((row) => row.total > 0).length;
-  dom.progressSummary.textContent = `${visibleLines.length} visible routes. ${withKnownStops} with loaded stop totals.`;
+  dom.progressSummary.hidden = demo;
+  if (!demo) {
+    dom.progressSummary.textContent = `${withKnownStops}/${visibleLines.length} routes with stop data.`;
+  }
+
+  if (card) {
+    card.classList.toggle("is-demo", demo);
+  }
+  const cta = document.getElementById("progressSignInCta");
+  if (cta) {
+    cta.hidden = !demo;
+    cta.onclick = () => {
+      if (typeof setActivePopup === "function") {
+        setActivePopup("account");
+      }
+    };
+  }
 
   // Calculate and render overall progress
   const totalVisited = rows.reduce((sum, row) => sum + row.visited, 0);
   const totalStops = rows.reduce((sum, row) => sum + row.total, 0);
   const overallPercent = totalStops > 0 ? Math.round((totalVisited / totalStops) * 100) : 0;
-  
+
+  const overallProgressPercent = document.getElementById("overallProgressPercent");
   const overallProgressText = document.getElementById("overallProgressText");
   const overallProgressFill = document.getElementById("overallProgressFill");
-  
-  if (overallProgressText) {
-    overallProgressText.textContent = `${totalVisited} / ${totalStops} (${overallPercent}%)`;
+
+  if (overallProgressPercent) {
+    overallProgressPercent.textContent = `${overallPercent}%`;
   }
-  
+  if (overallProgressText) {
+    overallProgressText.textContent = `${totalVisited} of ${totalStops} stations`;
+  }
   if (overallProgressFill) {
     overallProgressFill.style.width = `${overallPercent}%`;
   }
@@ -107,6 +143,7 @@ function renderProgress() {
     const label = document.createElement("button");
     label.type = "button";
     label.className = "line-progress-name";
+    label.dataset.lineKey = row.lineKey;
     label.textContent =
       row.total > 0
         ? `${row.lineName} (${row.visited}/${row.total})`
@@ -116,7 +153,7 @@ function renderProgress() {
       event.preventDefault();
       event.stopPropagation();
       if (typeof openLineView === "function") {
-        openLineView(row.lineKey);
+        openLineView(row.lineKey, { zoom: true });
       }
     });
 
@@ -148,7 +185,39 @@ function renderProgress() {
   if (rows.length > MAX_PROGRESS_ROWS) {
     const note = document.createElement("p");
     note.className = "microcopy";
-    note.textContent = `Showing ${MAX_PROGRESS_ROWS} of ${rows.length} routes — zoom in to narrow the list.`;
+    note.textContent = `Showing first ${MAX_PROGRESS_ROWS} routes.`;
     dom.lineProgressList.append(note);
+  }
+
+  // Expanded progress dialog mirrors the same values; the sidebar copy stays.
+  const overlayPercent = document.getElementById("overlayProgressPercent");
+  if (overlayPercent) {
+    overlayPercent.textContent = `${overallPercent}%`;
+  }
+  const overlayText = document.getElementById("overlayProgressText");
+  if (overlayText) {
+    overlayText.textContent = `${totalVisited} of ${totalStops} stations`;
+  }
+  const overlayFill = document.getElementById("overlayProgressFill");
+  if (overlayFill) {
+    overlayFill.style.width = `${overallPercent}%`;
+  }
+  const overlaySummary = document.getElementById("overlayProgressSummary");
+  if (overlaySummary) {
+    overlaySummary.hidden = demo;
+    overlaySummary.textContent = `${withKnownStops}/${visibleLines.length} routes with stop data.`;
+  }
+  const overlayCta = document.getElementById("overlayProgressSignInCta");
+  if (overlayCta) {
+    overlayCta.hidden = !demo;
+    overlayCta.onclick = () => {
+      if (typeof setActivePopup === "function") {
+        setActivePopup("account");
+      }
+    };
+  }
+  const overlayList = document.getElementById("overlayProgressList");
+  if (overlayList) {
+    overlayList.innerHTML = dom.lineProgressList.innerHTML;
   }
 }

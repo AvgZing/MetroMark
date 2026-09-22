@@ -4,10 +4,16 @@
 
 ### Frontend (`public/`)
 - `index.html`, `admin.html`, `admin-override.html`
-- `Styles/` — map.css, styles.css, lineview.css, admin.css, admin-override.css, theme.css
+- `Styles/` — base.css, map.css, lineview.css, ui-shell.css,
+  ui-foundation.css, ui-controls.css, ui-panels.css, ui-progress.css, ui-mobile.css,
+  ui-overrides.css, mobile-nav.css,
+  consent.css, changelog.css, legal.css, report-issue.css, admin.css, admin-override.css
 - `Scripts/UI/` — bootstrap.js, state.js, dom-cache.js, api.js, formatters.js, storage.js,
   theme.js, preferences.js, status-bar.js, map-helpers.js, route-ui.js, route-popups.js,
-  lineview.js, auth-panel.js
+  lineview.js, line-view-ordering.js, auth-panel.js, report-issue.js, consent.js, changelog.js,
+  progress-offline-queue.js
+  - `UI/shell/` — sheet.js (sheet states + drag), mobile-nav.js (bottom tabs), filters-panel.js,
+    progress-overlay.js
   - `UI/line-view/` — stop-ordering.js, stop-helpers.js, branch-detection.js, method-auto.js,
     method-loop.js, method-main.js, method-ushape.js, ranking.js, spatial.js
   - `UI/sidebar/` — filters-routes.js, filter-bar.js, filter-presets.js, map-data.js,
@@ -15,9 +21,10 @@
   - `UI/progress-offline-queue.js` — IndexedDB queue that syncs visited-station toggles made
     while offline
 - `Scripts/Map/` — interactions.js, map-events.js, route-layer-defs.js, transit-loading.js,
-  map-sources.js, map-stops.js, vector-metadata.js, tile-backfill.js, underlay.js,
-  viewport-cache.js, geometry-utils.js, zoom-readout.js
-- `Scripts/Admin/` — admin.js, admin-override.js
+  map-sources.js, map-stops.js, stop-style.js, stop-status.js, vector-metadata.js, tile-backfill.js,
+  underlay.js, viewport-cache.js, geometry-utils.js, zoom-readout.js, basemap-config.js
+- `Scripts/Admin/` — admin.js, admin-override.js, admin-theme.js
+- `Scripts/Shared/` — constants.js (values shared by the app and the admin override tool)
 - `Assets/` — images, icons, fonts
 
 ### Server (`server/`)

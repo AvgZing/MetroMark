@@ -7,16 +7,24 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/Styles/base.css?v=2026-09-09" />
-    <link rel="stylesheet" href="/Styles/map.css?v=2026-09-09" />
-    <link rel="stylesheet" href="/Styles/lineview.css?v=2026-09-09" />
-    <link rel="stylesheet" href="/Styles/report-issue.css?v=2026-09-09" />
-    <link rel="stylesheet" href="/Styles/consent.css?v=2026-09-09" />
-    <link rel="stylesheet" href="/Styles/changelog.css?v=2026-09-09" />
+    <link rel="stylesheet" href="/Styles/base.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/map.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/lineview.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/report-issue.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/consent.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/changelog.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/ui-shell.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/ui-foundation.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/ui-controls.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/ui-panels.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/ui-progress.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/ui-mobile.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/ui-overrides.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/mobile-nav.css?v=2026-09-22" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -29,174 +37,109 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   </head>
   <body>
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="topbar-brand" aria-label="MetroMark">
+          <img class="topbar-logo" src="/Assets/icons/favicon.svg" alt="" aria-hidden="true" />
+          <span class="topbar-brand-text">
+            <span class="topbar-name">MetroMark</span>
+            <span class="topbar-tagline">Transit Exploration Tracker</span>
+          </span>
+        </span>
+        <nav class="topbar-nav" aria-label="Primary">
+          <button id="citiesButton" class="btn topbar-nav-btn" type="button" title="Curated cities coming soon">
+            <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="M3.8 12h16.4M12 3.5c2.4 2.3 3.6 5.2 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.2-3.6-8.5S9.6 5.8 12 3.5Z" />
+            </svg>
+            <span class="topbar-cities-label">Cities</span>
+          </button>
+          <button id="topbarFiltersBtn" class="btn topbar-nav-btn" type="button" aria-expanded="false">
+            <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 6h16M7 12h10M10 18h4" />
+            </svg>
+            <span class="topbar-cities-label">Filters</span>
+          </button>
+          <button id="topbarProgressBtn" class="btn topbar-nav-btn" type="button" aria-expanded="false">
+            <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.5" />
+              <path d="m8.4 12.4 2.5 2.5 4.7-5.2" />
+            </svg>
+            <span class="topbar-cities-label">Progress</span>
+          </button>
+        </nav>
+      </div>
+      <div class="topbar-actions">
+        <button
+          id="themeToggleBtn"
+          class="btn btn-icon header-icon-btn theme-icon-btn"
+          type="button"
+          aria-label="Toggle theme"
+          title="Toggle theme"
+        >
+          <svg class="header-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3.5v2.2m0 12.6v2.2M5.6 5.6l1.6 1.6m9.6 9.6 1.6 1.6M3.5 12h2.2m12.6 0h2.2M5.6 18.4l1.6-1.6m9.6-9.6 1.6-1.6" />
+            <circle cx="12" cy="12" r="4.4" />
+          </svg>
+          <svg class="header-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" />
+          </svg>
+        </button>
+        <button
+          id="accountPopupBtn"
+          class="btn header-icon-btn account-btn"
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded="false"
+          title="Account"
+        >
+          <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="8" r="3.2" />
+            <path d="M4.7 19c.8-3.3 3.8-5.4 7.3-5.4s6.5 2.1 7.3 5.4" />
+          </svg>
+          <span id="topbarUserLabel" class="topbar-user-label">Sign In</span>
+        </button>
+      </div>
+    </header>
+
     <div class="app-shell">
       <aside class="sidebar">
-        <div class="sidebar-head panel">
-          <div>
-            <p class="brand-kicker">Transit Exploration Tracker</p>
-            <h1>MetroMark</h1>
+        <div class="sidebar-quickfilter" aria-label="Search and filter routes">
+          <p class="quickfilter-title">Search &amp; filters</p>
+          <div class="quickfilter-search">
+            <img class="quickfilter-logo" src="/Assets/icons/favicon.svg" alt="" aria-hidden="true" />
+            <input id="lineSearch" type="search" placeholder="Search routes" autocomplete="off" />
           </div>
-          <div class="head-actions">
-            <button
-              id="themeToggleBtn"
-              class="btn btn-icon header-icon-btn theme-icon-btn"
-              type="button"
-              aria-label="Toggle theme"
-              title="Toggle theme"
-            >
-              <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 3.5v2.2m0 12.6v2.2M5.6 5.6l1.6 1.6m9.6 9.6 1.6 1.6M3.5 12h2.2m12.6 0h2.2M5.6 18.4l1.6-1.6m9.6-9.6 1.6-1.6" />
-                <circle cx="12" cy="12" r="4.4" />
-              </svg>
-            </button>
-            <button
-              id="accountPopupBtn"
-              class="btn btn-icon header-icon-btn"
-              type="button"
-              aria-haspopup="dialog"
-              aria-expanded="false"
-            >
-              <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="8" r="3.2" />
-                <path d="M4.7 19c.8-3.3 3.8-5.4 7.3-5.4s6.5 2.1 7.3 5.4" />
-              </svg>
-              <span class="header-label">Profile</span>
+          <div class="quickfilter-pills">
+            <button id="mobileModePill" class="quickfilter-pill" type="button">Mode</button>
+            <button id="mobileFreqPill" class="quickfilter-pill" type="button">Frequency</button>
+            <button id="layersBtn" class="quickfilter-pill quickfilter-icon-pill" type="button" aria-label="Map layers and report" aria-expanded="false">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 8.5 4.5L12 13 3.5 8.5 12 4Zm8.5 8L12 16.5 3.5 12M20.5 16 12 20.5 3.5 16" /></svg>
             </button>
           </div>
+          <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
+          <div id="frequencyFilterBar" class="mode-filter-bar" aria-label="Frequency filters"></div>
+          <div id="mapSearchResults" class="map-search-results" hidden></div>
         </div>
-
-        <!-- User Status Panel -->
-        <details class="panel panel-dropdown user-status-panel" open>
-          <summary class="panel-summary"><span class="panel-summary-label">Status</span></summary>
-          <div class="user-status-card" aria-live="polite">
-            <div class="user-status-header-actions">
-              <button
-                id="lineViewBtn"
-                class="btn btn-icon line-view-btn"
-                type="button"
-                aria-label="Open line view"
-                aria-pressed="false"
-                hidden
-              >
-                <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M5 6h10M5 12h10M5 18h10" />
-                  <circle cx="19" cy="6" r="1.5" />
-                  <circle cx="19" cy="12" r="1.5" />
-                  <circle cx="19" cy="18" r="1.5" />
-                </svg>
-              </button>
-            </div>
-            <p id="userStatusTitle" class="user-status-title">No route selected.</p>
-            <p id="userStatusSubtitle" class="user-status-subtitle">Select a route or station.</p>
-            <p id="userStatusFeedback" class="user-status-feedback" hidden></p>
-            <dl id="userStatusDetails" class="user-status-details"></dl>
-            <div id="userStatusRouteProgress" class="user-status-route-progress" hidden>
-              <p id="userStatusRouteProgressText" class="user-status-route-progress-text">0 / 0 (0%)</p>
-              <div class="progress-track">
-                <div id="userStatusRouteProgressFill" class="progress-fill"></div>
-              </div>
-            </div>
-            <div class="user-status-actions">
-              <button id="clearRouteProgressBtn" class="btn" type="button" hidden>
-                Clear Route Progress
-              </button>
-              <button id="deselectRouteBtn" class="btn" type="button" hidden>Show All Filtered Routes</button>
-            </div>
-            <p id="clearRouteProgressConfirmText" class="clear-progress-confirm" hidden></p>
-          </div>
-        </details>
-
-        <!-- Routes panel open by default -->
-        <details class="panel panel-dropdown routes-panel" id="routesPanel" open>
-          <summary class="panel-summary"><span class="panel-summary-label">Routes</span></summary>
-          <div class="panel-dropdown-body routes-panel-body">
-            <!-- Search Input -->
-            <label class="mono-label routes-top-controls">
-              Search Routes
-              <input id="lineSearch" type="search" placeholder="Search route name, number, or operator" />
-            </label>
-
-            <!-- Filters Dropdown containing Modes and Frequencies -->
-            <details class="filter-dropdown-wrapper" id="filtersDropdown" open>
-              <summary class="filter-section-summary">
-                <p class="filter-section-title">Filters</p>
-              </summary>
-              <button
-                id="filterPresetsBtn"
-                class="btn btn-icon filter-presets-btn"
-                type="button"
-                aria-haspopup="true"
-                aria-expanded="false"
-                title="Saved filter presets"
-              >
-                <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M5 5h14v2H5V5Zm2 6h10v2H7v-2Zm2 6h6v2H9v-2Z" />
-                </svg>
-              </button>
-
-              <div class="filter-sections routes-top-controls" aria-label="Route filters">
-                <div id="filterPresetsPanel" class="filter-presets-panel" hidden>
-                  <label class="mono-label" for="filterPresetList">Saved Presets</label>
-                  <select id="filterPresetList"></select>
-                  <label class="mono-label" for="filterPresetName">New Preset Name</label>
-                  <input id="filterPresetName" type="text" maxlength="48" placeholder="e.g. Seattle RapidRide + 1/2" />
-                  <div class="filter-presets-actions">
-                    <button id="saveFilterPresetBtn" class="btn" type="button">Save</button>
-                    <button id="applyFilterPresetBtn" class="btn" type="button">Apply</button>
-                    <button id="deleteFilterPresetBtn" class="btn" type="button">Delete</button>
-                  </div>
-                  <p id="filterPresetsStatus" class="microcopy"></p>
-                </div>
-
-                <div class="filter-section">
-                  <details class="filter-section-dropdown" id="modeFilterSection" open>
-                    <summary class="filter-section-summary">
-                      <p class="filter-section-title">Modes</p>
-                    </summary>
-                    <div class="filter-section-header">
-                      <button
-                        id="showAllStopsBtn"
-                        class="btn show-stops-btn"
-                        type="button"
-                        aria-pressed="false"
-                      >
-                        Show All Stops
-                      </button>
-                    </div>
-                    <div id="modeFilterBar" class="mode-filter-bar" aria-label="Mode filters"></div>
-                  </details>
-                </div>
-                <div class="filter-section-divider" aria-hidden="true"></div>
-                <div class="filter-section">
-                  <details class="filter-section-dropdown" id="frequencyFilterSection">
-                    <summary class="filter-section-summary">
-                      <p class="filter-section-title">Frequencies</p>
-                    </summary>
-                    <div id="frequencyFilterBar" class="mode-filter-bar" aria-label="Frequency filters"></div>
-                  </details>
-                </div>
-              </div>
-            </details>
-
-            <!-- Visible Routes (moved back out) -->
-            <details id="routeListDropdown" class="route-list-dropdown">
-              <summary id="routeListSummary" class="route-list-summary">Visible Routes (0)</summary>
-              <div id="lineList" class="line-list" aria-live="polite"></div>
-            </details>
-          </div>
-        </details>
-
+        <button id="mapSearchReopen" class="btn map-search-reopen" type="button" aria-label="Show search and filters">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+          <span>Search</span>
+        </button>
         <details class="panel panel-dropdown progress-panel" id="progressPanel" open>
           <summary class="panel-summary"><span class="panel-summary-label">Progress</span></summary>
           <div class="panel-dropdown-body">
             <div id="overallProgressCard" class="overall-progress-card">
               <p class="overall-progress-label">Overall Progress</p>
-              <p id="overallProgressText" class="overall-progress-text">0 / 0 (0%)</p>
+              <p id="overallProgressPercent" class="overall-progress-percent">0%</p>
+              <p id="overallProgressText" class="overall-progress-text">0 of 0 stations</p>
               <div class="progress-track">
                 <div id="overallProgressFill" class="progress-fill"></div>
               </div>
+              <p id="progressSummary">Sign in to track your progress.</p>
+              <button id="progressSignInCta" class="btn btn-primary" type="button" hidden>
+                Sign in to start tracking
+              </button>
             </div>
-            <p id="progressSummary">Sign in to mark visited stations.</p>
             <div id="lineProgressList" class="line-progress-list"></div>
           </div>
         </details>
@@ -214,12 +157,13 @@
               <p id="apiRequestCounterDetail" class="backend-note"></p>
             </div>
             <div class="advanced-section">
+              <p class="filter-section-title">Helpful links</p>
               <p class="backend-note legal-link-row">
                 <a href="/admin" target="_blank" rel="noopener noreferrer">Open Admin Console</a>
               </p>
               <p class="backend-note legal-link-row">
                 <a href="https://www.transit.land/terms" target="_blank" rel="noopener noreferrer"
-                  >Transitland Terms of Service and Data Attributions</a
+                  >Transitland Terms and Data Attributions</a
                 >
               </p>
               <p class="backend-note legal-link-row">
@@ -230,16 +174,14 @@
                 <a href="#" id="whatsNewLink">What's New</a>
               </p>
               <p class="backend-note legal-note">
-                Disclaimer: This is an in-development hobby app, with development help from AI. All services are
-                subject to change, do not store sensitive data on this website.
+                In-development hobby app with AI development help. Services may change; do not store sensitive data.
               </p>
               <p class="backend-note legal-note">
-                Copyright &copy; <script>document.write(new Date().getFullYear())</script> MetroMark by Zing. All Rights
-                Reserved.
+                Copyright &copy; <script>document.write(new Date().getFullYear())</script> MetroMark by Zing.
               </p>
             </div>
             <div class="advanced-section">
-              <button id="clearSessionCacheBtn" class="btn btn-subtle" type="button">Clear Local Cache</button>
+              <button id="clearSessionCacheBtn" class="btn" type="button">Clear local cache</button>
             </div>
           </div>
         </details>
@@ -282,23 +224,48 @@
         </div>
         <div id="map"></div>
         <div id="mapNotice" class="map-notice" hidden></div>
-        <div id="mapLoadingBadge" class="map-loading-badge" hidden aria-hidden="true"></div>
+        <div id="mapLoadingBadge" class="map-loading-badge" hidden aria-hidden="true">
+          <img class="map-loading-logo" src="/Assets/icons/apple-touch-icon.png" alt="" aria-hidden="true" />
+        </div>
         <div id="routeSelectPanel" class="route-select-panel" hidden></div>
+        <div class="map-corner-brand" aria-hidden="true">MetroMark</div>
+
         <aside id="lineViewPanel" class="line-view-panel" hidden>
           <div class="line-view-card">
+            <div
+              class="line-view-sheet-handle"
+              id="lineViewSheetHandle"
+              role="button"
+              tabindex="0"
+              aria-label="Expand or collapse route details"
+              aria-expanded="false"
+            ></div>
             <header class="line-view-header">
               <div class="line-view-title">
                 <span id="lineViewColor" class="line-color-dot" aria-hidden="true"></span>
-                <div>
+                <div class="line-view-title-block">
                   <p id="lineViewName" class="line-view-name">Line View</p>
                   <p id="lineViewMeta" class="line-view-meta">Route details</p>
+                  <div id="lineViewFacts" class="line-view-facts"></div>
                 </div>
               </div>
               <div class="line-view-actions">
                 <button id="lineViewMapBtn" class="btn line-view-nav" type="button">Zoom</button>
-                <button id="lineViewReturnBtn" class="btn line-view-nav" type="button">Close</button>
+                <button id="lineViewReturnBtn" class="btn btn-primary line-view-nav" type="button">Back</button>
               </div>
             </header>
+            <div class="user-status-card" aria-live="polite">
+              <p id="userStatusTitle" class="user-status-title">No route selected.</p>
+              <p id="userStatusSubtitle" class="user-status-subtitle">Select a route or station.</p>
+              <p id="userStatusFeedback" class="user-status-feedback" hidden></p>
+              <dl id="userStatusDetails" class="user-status-details"></dl>
+              <div id="userStatusRouteProgress" class="user-status-route-progress" hidden>
+                <p id="userStatusRouteProgressText" class="user-status-route-progress-text">0 / 0 (0%)</p>
+                <div class="progress-track">
+                  <div id="userStatusRouteProgressFill" class="progress-fill"></div>
+                </div>
+              </div>
+            </div>
             <div class="line-view-status">
               <p id="lineViewStatus" class="line-view-status-text">Loading stops...</p>
               <div id="lineViewProgress" class="line-view-progress" hidden>
@@ -306,6 +273,12 @@
                 <div class="progress-track">
                   <div id="lineViewProgressFill" class="progress-fill"></div>
                 </div>
+              </div>
+              <div class="line-view-progress-actions">
+                <button id="clearRouteProgressBtn" class="btn line-view-clear-btn" type="button" hidden>
+                  Clear progress
+                </button>
+                <p id="clearRouteProgressConfirmText" class="clear-progress-confirm" hidden></p>
               </div>
               <div id="lineViewDiagnostics" class="line-view-diagnostics">
                 <span class="diagnostic-label">Sort stops (WIP):</span>
@@ -335,7 +308,9 @@
       <section class="panel dropdown-panel" id="authPopup" hidden>
         <div class="popup-header">
           <h2>Profile</h2>
-          <button id="closeAuthPopupBtn" class="btn popup-close" type="button">Close</button>
+          <button id="closeAuthPopupBtn" class="btn dialog-close" type="button" aria-label="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
         </div>
 
         <div id="authLoggedOut">
@@ -379,11 +354,171 @@
           <p>
             Signed in as <strong id="currentUserLabel">-</strong>
           </p>
-          <div class="settings-list">
-            <label><input id="showPrivateOperators" type="checkbox" /> Show Private Operators</label>
-            <label><input id="showProblematicGeometries" type="checkbox" /> Show Problematic Geometries</label>
-          </div>
           <button id="logoutBtn" class="btn" type="button">Log Out</button>
+        </div>
+
+        <div class="popup-settings">
+          <p class="filter-section-title">Accessibility</p>
+          <div class="settings-list">
+            <label>
+              <input id="colorblindModeToggle" type="checkbox" />
+              Colorblind mode
+            </label>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="filters-panel-backdrop" id="progressOverlay" hidden>
+      <section class="filters-panel" role="dialog" aria-modal="true" aria-labelledby="progressOverlayTitle">
+        <header class="filters-panel-header">
+          <span class="sheet-handle" data-sheet-drag aria-hidden="true"></span>
+          <h2 id="progressOverlayTitle">Progress</h2>
+          <button id="progressOverlayCloseBtn" class="btn dialog-close" type="button" aria-label="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div id="progressOverlayBody" class="filters-panel-body">
+          <div class="progress-overlay-grid">
+            <div class="progress-overlay-stats">
+              <p id="overlayProgressPercent" class="overall-progress-percent">0%</p>
+              <p id="overlayProgressText" class="overall-progress-text">0 of 0 stations</p>
+              <div class="progress-track">
+                <div id="overlayProgressFill" class="progress-fill"></div>
+              </div>
+              <p id="overlayProgressSummary" class="microcopy"></p>
+              <button id="overlayProgressSignInCta" class="btn btn-primary" type="button" hidden>
+                Sign in to track
+              </button>
+              <div class="progress-action-prompt">
+                <p class="filter-hint">Filter the routes you're viewing to change what appears here.</p>
+                <button id="overlayAdjustFiltersBtn" class="btn" type="button">Adjust filters</button>
+              </div>
+            </div>
+            <div id="overlayProgressList" class="line-progress-list"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="filters-panel-backdrop" id="filtersPanelBackdrop" hidden>
+      <section class="filters-panel" id="filtersPanel" role="dialog" aria-modal="true" aria-labelledby="filtersPanelTitle">
+        <header class="filters-panel-header">
+          <span class="sheet-handle" data-sheet-drag aria-hidden="true"></span>
+          <h2 id="filtersPanelTitle">Filters</h2>
+          <div class="filters-panel-actions">
+            <button id="filtersBackBtn" class="btn" type="button" hidden>Back to progress</button>
+            <button id="filtersPanelCloseBtn" class="btn dialog-close" type="button" aria-label="Close">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
+          </div>
+        </header>
+        <div class="filters-panel-body">
+          <input id="filterPanelSearch" type="search" placeholder="Search routes" autocomplete="off" />
+          <div class="filters-grid">
+            <div class="filters-col">
+              <div class="filter-tabs">
+                <input class="filter-tab-input" type="radio" name="filterTab" id="filterTabModes" checked />
+                <label class="filter-tab-label" for="filterTabModes">Modes</label>
+                <input class="filter-tab-input" type="radio" name="filterTab" id="filterTabFrequency" />
+                <label class="filter-tab-label" for="filterTabFrequency">Frequency</label>
+                <input class="filter-tab-input" type="radio" name="filterTab" id="filterTabMore" />
+                <label class="filter-tab-label" for="filterTabMore">More</label>
+                <div class="filter-tab-panel filter-tab-panel-modes">
+                  <div class="filter-section">
+                    <div id="modeFilterBarMirror" class="mode-filter-bar" aria-label="Mode filters"></div>
+                  </div>
+                </div>
+                <div class="filter-tab-panel filter-tab-panel-frequency">
+                  <div class="filter-section">
+                    <div id="frequencyFilterBarMirror" class="mode-filter-bar" aria-label="Frequency filters"></div>
+                  </div>
+                </div>
+                <div class="filter-tab-panel filter-tab-panel-more">
+                  <div class="filter-section">
+                    <p class="filter-section-title">Operators &amp; geometry</p>
+                    <div class="settings-list filter-advanced-list">
+                      <label><input id="showPrivateOperators" type="checkbox" /> Show private operators</label>
+                      <label><input id="showProblematicGeometries" type="checkbox" /> Show problematic geometries</label>
+                    </div>
+                  </div>
+                  <div class="filter-section">
+                    <p class="filter-section-title">Display</p>
+                    <button id="showAllStopsBtn" class="btn show-stops-btn" type="button" aria-pressed="false">
+                      Show all stops
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="filter-section" hidden>
+                <div id="filterPresetsPanel" class="filter-presets-panel" hidden>
+                  <label class="mono-label" for="filterPresetList">Preset</label>
+                  <select id="filterPresetList"></select>
+                  <label class="mono-label" for="filterPresetName">Name</label>
+                  <input id="filterPresetName" type="text" maxlength="48" placeholder="e.g. Seattle RapidRide + 1/2" />
+                  <div class="filter-presets-actions">
+                    <button id="saveFilterPresetBtn" class="btn" type="button">Save</button>
+                    <button id="applyFilterPresetBtn" class="btn" type="button">Apply</button>
+                    <button id="deleteFilterPresetBtn" class="btn" type="button">Delete</button>
+                  </div>
+                  <p id="filterPresetsStatus" class="microcopy"></p>
+                </div>
+              </div>
+            </div>
+            <div class="filters-col filters-col-routes">
+              <div class="filter-section">
+                <div class="filter-section-head">
+                  <p id="routeListSummary" class="route-list-summary">Routes (0)</p>
+                  <label class="sort-control">
+                    Sort by
+                    <select id="routeSortSelect">
+                      <option value="default">Default</option>
+                    </select>
+                  </label>
+                </div>
+                <p class="filter-hint">ON keeps a route visible regardless of filters · OFF keeps it hidden · — follows the filters.</p>
+                <div id="lineList" class="line-list" aria-live="polite"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="filters-panel-backdrop" id="citiesBackdrop" hidden>
+      <section class="filters-panel" id="citiesPanel" role="dialog" aria-label="Cities">
+        <header class="filters-panel-header">
+          <span class="sheet-handle" data-sheet-drag aria-hidden="true"></span>
+          <h2>Cities</h2>
+          <div class="filters-panel-actions">
+            <button id="citiesCloseBtn" class="btn dialog-close" type="button" aria-label="Close">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            </button>
+          </div>
+        </header>
+        <div class="filters-panel-body">
+          <p class="cities-menu-note">Curated city collections are coming. Listed cities are vetted for accuracy, and selecting one restricts routes to that city.</p>
+          <p class="cities-menu-note">For now, Global is the only mode.</p>
+          <button class="cities-menu-option is-active" type="button" aria-pressed="true">
+            Global <span aria-hidden="true">✓</span>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <div class="layers-sheet-backdrop" id="layersSheetBackdrop" hidden>
+      <section class="layers-sheet" role="dialog" aria-label="Map layers">
+        <header class="layers-sheet-header">
+          <h2>Map type</h2>
+          <button id="layersSheetCloseBtn" class="btn dialog-close" type="button" aria-label="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <div class="layers-sheet-body">
+          <div class="layers-options" id="layersOptions"></div>
+          <div class="layers-separator" aria-hidden="true"></div>
+          <p class="filter-hint">Having an issue with the map, or route data that looks outdated? Let us know.</p>
+          <div class="layers-report" id="layersReport"></div>
         </div>
       </section>
     </div>
@@ -391,26 +526,17 @@
     <div class="report-modal-backdrop" id="reportModal" hidden>
       <section class="report-modal panel" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
         <header class="report-modal-header">
-          <h2 id="reportModalTitle">Report a data issue</h2>
-          <button id="reportModalCloseBtn" class="btn popup-close" type="button">Close</button>
+          <h2 id="reportModalTitle">Report an issue</h2>
+          <button id="reportModalCloseBtn" class="btn dialog-close" type="button" aria-label="Close">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
         </header>
         <div class="report-modal-body">
           <p class="report-modal-hint">
-            Your current map view (area, zoom, and a screenshot) is captured automatically. Add a description if it
-            helps, then send the report to the admin to review or refresh this area.
+            Your current map view is captured automatically. Add a description if it helps.
           </p>
           <div class="report-preview-row">
             <div id="reportCapturePreview" class="report-capture-preview" aria-hidden="true"></div>
-            <dl class="report-meta kv">
-              <div>
-                <dt>Bounding box</dt>
-                <dd id="reportBboxText">-</dd>
-              </div>
-              <div>
-                <dt>Zoom</dt>
-                <dd id="reportZoomText">-</dd>
-              </div>
-            </dl>
           </div>
           <label for="reportDescriptionInput">
             Description (optional)
@@ -418,24 +544,20 @@
           </label>
           <p id="reportIssueStatus" class="status" hidden></p>
           <div class="report-actions">
-            <button id="reportSubmitBtn" class="btn" type="button">Send Report</button>
+            <button id="reportSubmitBtn" class="btn btn-primary" type="button">Send report</button>
           </div>
         </div>
       </section>
     </div>
 
-    <section class="panel consent-banner" id="consentBanner" role="region" aria-label="Privacy notice" hidden>
-      <p class="consent-text">
-        MetroMark stores your preferences (theme, filters) and, if you have an account, your progress on this site.
-        It uses local storage only — no advertising or tracking cookies. See our
-        <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms of Service</a>.
+    <section class="consent-banner" id="consentBanner" role="region" aria-label="Privacy notice" hidden>
+      <p class="consent-copy">
+        We store your preferences and sign-in locally on this device &mdash; no tracking cookies. See our
+        <a href="/privacy">Privacy Policy</a> and <a href="/terms">Terms</a>.
       </p>
       <div class="consent-actions">
-        <button id="consentAcceptBtn" class="btn" type="button">Accept</button>
-        <button id="consentDeclineBtn" class="btn btn-subtle" type="button">Decline non-essential storage</button>
-        <span class="consent-links">
-          <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
-        </span>
+        <button id="consentAcceptBtn" class="btn btn-primary" type="button">Accept</button>
+        <button id="consentDeclineBtn" class="btn" type="button">Decline</button>
       </div>
     </section>
 
@@ -449,56 +571,82 @@
       </section>
     </div>
 
+    <nav class="tabbar" id="mobileTabbar" aria-label="Primary">
+      <button class="tabbar-btn" type="button" data-screen="map" aria-current="page">
+        <svg class="tabbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19.5 21 12 16.8 4.5 21 12 3.5Z" /></svg>
+        <span>Map</span>
+      </button>
+      <button class="tabbar-btn" type="button" data-screen="cities">
+        <svg class="tabbar-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="M3.8 12h16.4M12 3.5c2.4 2.3 3.6 5.2 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.2-3.6-8.5S9.6 5.8 12 3.5Z" /></svg>
+        <span>Cities</span>
+      </button>
+      <button class="tabbar-btn" type="button" data-screen="filters">
+        <svg class="tabbar-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+        <span>Filters</span>
+      </button>
+      <button class="tabbar-btn" type="button" data-screen="progress">
+        <svg class="tabbar-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" /><path d="m8.4 12.4 2.5 2.5 4.7-5.2" /></svg>
+        <span>Progress</span>
+      </button>
+    </nav>
+
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
     <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
-    <script src="/Scripts/UI/formatters.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/basemap-config.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/storage.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/state.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/dom-cache.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/line-view/spatial.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/line-view/stop-helpers.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/line-view/ranking.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/line-view/method-ushape.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/line-view/branch-detection.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/line-view/method-loop.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/line-view/method-main.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/line-view/method-auto.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/line-view/stop-ordering.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/geometry-utils.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/tile-backfill.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/zoom-readout.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/map-stops.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/map-helpers.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/status-bar.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/theme.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/preferences.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/api.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/route-ui.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/route-popups.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/auth-panel.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/line-view-ordering.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/lineview.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/viewport-cache.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/sidebar/route-data.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/sidebar/filters-routes.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/sidebar/map-data.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/sidebar/filter-bar.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/sidebar/route-list.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/sidebar/progress-panel.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/sidebar/routes-focus.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/sidebar/filter-presets.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/vector-metadata.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/map-sources.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/underlay.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/transit-loading.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/route-layer-defs.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/map-events.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/Map/interactions.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/progress-offline-queue.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/changelog.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/consent.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/report-issue.js?v=2026-09-09" defer></script>
-    <script src="/Scripts/UI/bootstrap.js?v=2026-09-09" defer></script>
+    <script src="/Scripts/Shared/constants.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/formatters.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/basemap-config.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/stop-style.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/storage.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/state.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/dom-cache.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/line-view/spatial.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/line-view/stop-helpers.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/line-view/ranking.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/line-view/method-ushape.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/line-view/branch-detection.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/line-view/method-loop.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/line-view/method-main.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/line-view/method-auto.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/line-view/stop-ordering.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/geometry-utils.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/tile-backfill.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/zoom-readout.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/map-stops.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/stop-status.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/map-helpers.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/status-bar.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/theme.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/preferences.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/api.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/route-ui.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/route-popups.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/auth-panel.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/line-view-ordering.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/lineview.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/viewport-cache.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/sidebar/route-data.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/sidebar/filters-routes.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/sidebar/map-data.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/sidebar/filter-bar.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/sidebar/route-list.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/sidebar/progress-panel.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/sidebar/routes-focus.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/sidebar/filter-presets.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/vector-metadata.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/map-sources.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/underlay.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/transit-loading.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/route-layer-defs.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/map-events.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/interactions.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/progress-offline-queue.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/changelog.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/shell/filters-panel.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/shell/sheet.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/shell/progress-overlay.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/shell/mobile-nav.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/consent.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/report-issue.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/UI/bootstrap.js?v=2026-09-22" defer></script>
   </body>
 </html>

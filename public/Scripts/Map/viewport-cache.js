@@ -1,4 +1,5 @@
 function createMapStyle() {
+  const dark = typeof appState !== "undefined" && appState.theme === "dark";
   return {
     version: 8,
     projection: {
@@ -7,7 +8,7 @@ function createMapStyle() {
     sources: {
       streets: {
         type: "raster",
-        tiles: cartoTileUrls("light_all"),
+        tiles: cartoTileUrls(dark ? "dark_all" : "light_all"),
         tileSize: 256,
         attribution: cartoAttribution()
       },
@@ -50,6 +51,8 @@ function setMapMode(mode) {
     return;
   }
 
+  document.body.classList.add("basemap-switching");
+  window.setTimeout(() => document.body.classList.remove("basemap-switching"), 260);
   appState.map.setLayoutProperty("satellite-base", "visibility", mode === "satellite" ? "visible" : "none");
   updateMapModeButtons();
 }

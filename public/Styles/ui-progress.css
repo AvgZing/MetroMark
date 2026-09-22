@@ -1,0 +1,241 @@
+/* UI progress: the progress dialog and its rows. */
+
+/* Progress dialog reuses the same surface but lays its content out for the
+   extra space: overall stats beside the per-route list. */
+#progressOverlayBody .panel-summary {
+  display: none;
+}
+
+#progressOverlayBody #progressPanel {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+#progressOverlayBody .panel-dropdown-body {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) 1fr;
+  gap: var(--sp-5);
+  align-items: start;
+  padding: 0;
+}
+
+#progressOverlayBody #overallProgressCard,
+#progressOverlayBody #progressSummary,
+#progressOverlayBody #progressSignInCta {
+  grid-column: 1;
+}
+
+#progressOverlayBody #lineProgressList {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  max-height: 52vh;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.progress-overlay-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) 1fr;
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.progress-overlay-stats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.progress-action-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--button-bg);
+}
+
+.progress-action-prompt .filter-hint {
+  margin: 0;
+}
+
+.progress-action-prompt .btn {
+  align-self: stretch;
+  width: 100%;
+}
+
+.dropdown-panel {
+  z-index: 60;
+}
+
+#overlayProgressList {
+  max-height: 60vh;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.filters-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.line-view-panel.is-empty .line-view-diagnostics,
+.line-view-panel.is-empty .line-view-status,
+.line-view-panel.is-empty .line-view-actions,
+.line-view-panel.is-empty .user-status-card {
+  display: none !important;
+}
+
+.sheet-route-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--button-bg);
+  color: var(--ink);
+  font-size: var(--fs-caption);
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.line-view-diagnostics[hidden],
+.line-view-status[hidden] {
+  display: none !important;
+}
+
+.show-stops-btn {
+  text-transform: none;
+}
+
+.sheet-handle {
+  display: none;
+}
+
+.theme-spin .header-icon {
+  animation: theme-spin 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theme-icon-moon {
+  display: none;
+}
+
+body[data-theme="dark"] .theme-icon-sun {
+  display: none;
+}
+
+body[data-theme="dark"] .theme-icon-moon {
+  display: block;
+}
+
+@keyframes theme-spin {
+  from {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(150deg) scale(0.82);
+  }
+  to {
+    transform: rotate(360deg) scale(1);
+  }
+}
+
+.filter-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: var(--sp-2);
+}
+
+.filter-section-head .route-list-summary {
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+}
+
+.filter-section-head + .filter-hint {
+  margin: 2px 0 var(--sp-2);
+}
+
+.route-list-summary::before {
+  display: none;
+}
+
+.sort-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+
+.sort-control select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 26px 0 10px;
+  font-size: var(--fs-label);
+  color: var(--ink);
+  background-color: var(--input-bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.filter-hint {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-caption);
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.overall-progress-card.is-loading .progress-fill {
+  transition: none;
+}
+
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-left: var(--sp-3);
+}
+
+.topbar-nav-btn {
+  height: 34px;
+  padding: 0 var(--sp-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 8px;
+  background: var(--topbar-btn-bg);
+  color: var(--topbar-fg);
+  border-color: transparent;
+}
+
+.topbar-nav-btn:hover {
+  background: var(--topbar-btn-hover);
+}
+
+.topbar-nav-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

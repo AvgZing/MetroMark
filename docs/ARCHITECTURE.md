@@ -18,6 +18,9 @@ Responsibilities:
 - Trigger on-demand tile backfill for uncovered viewports (`/api/tiles/backfill`).
 - Handle auth forms and session token storage.
 - Toggle station visited state.
+- Shell navigation: desktop top bar; mobile bottom tabs (Map / Cities / Filters /
+  Progress) with peek/half/full bottom sheets driven by `UI/shell/*`.
+- Colorblind mode adds a status glyph to stop markers (`Map/stop-status.js`).
 
 The browser never directly calls Transitland.
 
@@ -197,3 +200,46 @@ Frequency labels contract:
 - Regular: 11-29m
 - Local: 30m+
 - Unknown: Frequency Unknown
+
+## UI Shell Contract (desktop + mobile)
+
+- One action surface per platform: a desktop top bar (brand / theme / account) and a
+  mobile bottom tab bar (Map / Cities / Filters / Progress); profile is top-right on
+  both.
+- Cities, Filters and Progress open as bottom sheets on mobile. Sheet states are
+  `sheet-peek` / `sheet-half` / `sheet-full` in `panel.dataset.sheetState`, applied by
+  `UI/shell/sheet.js`. Tapping the active tab alternates half/full; swiping up goes
+  full, down goes peek, and a release near half snaps to half. Page sheets never
+  navigate back to the map tab on their own.
+- Map sheet (`#lineViewPanel`): peek hides the route list; focused routes use half
+  height with the bottom nav hidden and peek shows name + X/Zoom + progress.
+- Progress bars for a focused route expose a two-step clear confirmation (desktop
+  button, mobile long-press); both share `clearRouteProgressConfirmLineKey`.
+- The size of the visible sheet drives the map-control offset so MapLibre controls
+  are never clipped by a sheet.
+
+## User Preferences Contract
+
+- Preferences live in the single `public.profiles.preferences` JSON object (Supabase).
+  The API merges incoming keys into it, so adding a UI toggle needs **no SQL
+  migration**: add the key to `UI/preferences.js` (+ `UI/state.js` default) and it is
+  persisted for signed-in users, with a localStorage mirror for signed-out users.
+- Keys in use: `showAllStops`, `showPrivateOperators`, `showProblematicGeometries`,
+  `lineViewAutoOpen`, `lineViewOrdering` state, `colorblindMode`.
+- `normalizeProfileRow` and the nonrecoverable backup pass `preferences` through
+  wholesale, so backups capture new keys automatically.
+
+## Shared Constants & Server-Owned Classification
+
+- Values needed by both the app and the admin override tool live in
+  `public/scripts/shared/constants.js` (currently `ROUTE_STOP_TYPES`), mirroring
+  `DEFAULT_STOP_TYPES` in `server/routes/helpers.js`. `parseStopTypes` stays the
+  server-side validator.
+- Frequency bucketing is server-owned: `frequencyBucketFromHeadwayMinutes` lives in
+  `server/sources/transitland/headway.js`, is persisted as `route_metadata.frequency_bucket`,
+  and is returned as `frequencyBucket` on route features and headway payloads. The
+  client only validates that value (`lineFrequencyBucket`), it does not re-derive it.
+- Fallback headway ("frequency varies") is classified server-side and exposed as the
+  `headway_fallback` feature property, so the client does not need the sentinel
+  minutes constant.
+

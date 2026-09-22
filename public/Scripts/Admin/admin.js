@@ -246,6 +246,25 @@ function fmtMb(bytes) {
   return `${(Number(bytes || 0) / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// Chrome blocks top-level navigation to data: URLs, so hand the browser an
+// object URL built from the stored screenshot instead.
+function openReportScreenshot(dataUrl) {
+  try {
+    const [meta, base64] = String(dataUrl).split(",");
+    const mime = /data:([^;]+)/.exec(meta)?.[1] || "image/png";
+    const binary = atob(base64 || "");
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const objectUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+    window.open(objectUrl, "_blank");
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  } catch {
+    window.open(dataUrl, "_blank");
+  }
+}
+
 async function refreshStats() {
   const payload = await apiRequest("/api/admin/stats", { method: "GET" });
   const accounts = payload.accounts;
@@ -655,7 +674,7 @@ async function loadIssueReports(options = {}) {
         viewBtn.type = "button";
         viewBtn.textContent = "Screenshot";
         viewBtn.addEventListener("click", () => {
-          window.open(issue.screenshot, "_blank");
+          openReportScreenshot(issue.screenshot);
         });
         cellView.appendChild(viewBtn);
       } else {

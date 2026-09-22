@@ -86,7 +86,7 @@ async function buildSnapshot(triggerSource = "script") {
   const users = await listAllAuthUsers();
   const profiles = await readTable(
     "profiles",
-    "id,email,display_name,role,is_active,last_login_at,created_at"
+    "id,email,display_name,role,is_active,last_login_at,created_at,preferences"
   );
   const filterPresets = await readTable(
     "user_filter_presets",
@@ -100,10 +100,34 @@ async function buildSnapshot(triggerSource = "script") {
     "station_override",
     "stable_key,manual_name,manual_lat,manual_lon,note,updated_at"
   );
+  const routeOverrides = await readLocalTable(
+    "route_override",
+    "line_key,city_slug,payload,updated_at"
+  );
+  const routeReviews = await readLocalTable(
+    "route_review",
+    "line_key,city_slug,problematic_override,updated_at"
+  );
+  const agencyReviews = await readLocalTable(
+    "agency_review",
+    "city_slug,operator_name,allowed_override,updated_at"
+  );
+  const routeOrderingVotes = await readLocalTable(
+    "route_ordering_vote",
+    "line_key,user_id,city_slug,ordering_mode,vote_source,updated_at"
+  );
+  const issueReports = await readLocalTable(
+    "issue_report",
+    "id,bbox,zoom,center,screenshot,description,reporter_name,reporter_email,status,created_at,resolved_at"
+  );
+  const reharvestFlags = await readLocalTable(
+    "reharvest_flag",
+    "id,kind,line_key,station_key,message,status,created_at,resolved_at"
+  );
 
   return {
     createdAtIso: new Date().toISOString(),
-    schemaVersion: 2,
+    schemaVersion: 3,
     triggerSource,
     storageBackend: "hybrid-supabase-local-postgres",
     nonrecoverable: {
@@ -111,7 +135,13 @@ async function buildSnapshot(triggerSource = "script") {
       profiles,
       filterPresets,
       userStationVisits,
-      stationOverrides
+      stationOverrides,
+      routeOverrides,
+      routeReviews,
+      agencyReviews,
+      routeOrderingVotes,
+      issueReports,
+      reharvestFlags
     }
   };
 }
@@ -132,7 +162,14 @@ async function runNonrecoverableBackup(options = {}) {
   fs.writeFileSync(latestPath, json, "utf8");
 
   log.info(`Backup written to ${filePath}`);
-  log.info(`Row counts: auth=${snapshot.nonrecoverable.authUsers.length} profiles=${snapshot.nonrecoverable.profiles.length} presets=${snapshot.nonrecoverable.filterPresets.length} visits=${snapshot.nonrecoverable.userStationVisits.length} overrides=${snapshot.nonrecoverable.stationOverrides.length}`);
+  log.info(
+    `Row counts: auth=${snapshot.nonrecoverable.authUsers.length} profiles=${snapshot.nonrecoverable.profiles.length} ` +
+      `presets=${snapshot.nonrecoverable.filterPresets.length} visits=${snapshot.nonrecoverable.userStationVisits.length} ` +
+      `stationOverrides=${snapshot.nonrecoverable.stationOverrides.length} routeOverrides=${snapshot.nonrecoverable.routeOverrides.length} ` +
+      `routeReviews=${snapshot.nonrecoverable.routeReviews.length} agencyReviews=${snapshot.nonrecoverable.agencyReviews.length} ` +
+      `orderingVotes=${snapshot.nonrecoverable.routeOrderingVotes.length} issueReports=${snapshot.nonrecoverable.issueReports.length} ` +
+      `reharvestFlags=${snapshot.nonrecoverable.reharvestFlags.length}`
+  );
 
   return {
     filePath,
@@ -142,7 +179,13 @@ async function runNonrecoverableBackup(options = {}) {
       profiles: snapshot.nonrecoverable.profiles.length,
       filterPresets: snapshot.nonrecoverable.filterPresets.length,
       userStationVisits: snapshot.nonrecoverable.userStationVisits.length,
-      stationOverrides: snapshot.nonrecoverable.stationOverrides.length
+      stationOverrides: snapshot.nonrecoverable.stationOverrides.length,
+      routeOverrides: snapshot.nonrecoverable.routeOverrides.length,
+      routeReviews: snapshot.nonrecoverable.routeReviews.length,
+      agencyReviews: snapshot.nonrecoverable.agencyReviews.length,
+      routeOrderingVotes: snapshot.nonrecoverable.routeOrderingVotes.length,
+      issueReports: snapshot.nonrecoverable.issueReports.length,
+      reharvestFlags: snapshot.nonrecoverable.reharvestFlags.length
     }
   };
 }

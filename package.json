@@ -12,8 +12,8 @@
     "check": "node --check server/index.js",
     "harvest:headway": "set METROMARK_ENV_FILE=.env.development&& node server/admin/harvest-headway.js",
     "harvest:headway:prod": "set METROMARK_ENV_FILE=.env.production&& node server/admin/harvest-headway.js",
-  "harvest:stops": "set METROMARK_ENV_FILE=.env.development&& node server/admin/harvest-stops.js",
-  "harvest:stops:prod": "set METROMARK_ENV_FILE=.env.production&& node server/admin/harvest-stops.js",
+    "harvest:stops": "set METROMARK_ENV_FILE=.env.development&& node server/admin/harvest-stops.js",
+    "harvest:stops:prod": "set METROMARK_ENV_FILE=.env.production&& node server/admin/harvest-stops.js",
     "harvest:world": "set METROMARK_ENV_FILE=.env.development&& node operations/harvest/harvest-world.js",
     "harvest:world:prod": "set METROMARK_ENV_FILE=.env.production&& node operations/harvest/harvest-world.js",
     "backup:nonrecoverable": "set METROMARK_ENV_FILE=.env.development&& node server/admin/backup-nonrecoverable.js",
@@ -30,5 +30,20 @@
     "express": "^4.21.2",
     "pbf": "^4.0.1",
     "pg": "^8.20.0"
-  }
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AvgZing/MetroMark.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/AvgZing/MetroMark/issues"
+  },
+  "homepage": "https://github.com/AvgZing/MetroMark#readme"
 }

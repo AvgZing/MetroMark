@@ -28,14 +28,39 @@ async function apiRequest(path, options = {}) {
     headers.Authorization = `Bearer ${appState.token}`;
   }
 
+  let body = options.body;
+  if (
+    body &&
+    typeof body === "object" &&
+    !(body instanceof FormData) &&
+    !(body instanceof URLSearchParams) &&
+    !(body instanceof Blob) &&
+    !(body instanceof ArrayBuffer) &&
+    !ArrayBuffer.isView(body)
+  ) {
+    body = JSON.stringify(body);
+  }
+
   let response;
-  try {
-    response = await fetch(path, {
-      ...options,
-      headers
-    });
-  } catch (error) {
-    throw error;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      response = await fetch(path, {
+        ...options,
+        body,
+        headers
+      });
+      break;
+    } catch (error) {
+      if (attempt === 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, 500));
+        continue;
+      }
+      throw new Error("Failed to fetch. Please try again.");
+    }
+  }
+
+  if (!response) {
+    throw new Error("Failed to fetch. Please try again.");
   }
 
   const payload = await response.json().catch(() => ({}));

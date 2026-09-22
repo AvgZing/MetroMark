@@ -64,7 +64,7 @@ async function setFocusedLine(lineKey, options = {}) {
   // If line view is open, update the line shown in line view to match focused line
   if (appState.lineViewOpen) {
     appState.lineViewLineKey = normalizedLineKey;
-  } else if (appState.lineViewAutoOpenEnabled && !isPortraitMobileLayout()) {
+  } else if (typeof openLineView === "function") {
     // Auto-open line view on desktop if enabled
     await openLineView(normalizedLineKey);
   }
@@ -77,7 +77,7 @@ async function setFocusedLine(lineKey, options = {}) {
   setStatus(
     `Focused on ${lineDisplayName(line)}.`,
     "ok",
-    "Loading route-linked stops and details. Other routes stay visible in a dimmed appState."
+    "Loading route details…"
   );
 
   const headwayLookupPromise = ensureLineHeadwayLoaded(normalizedLineKey, {

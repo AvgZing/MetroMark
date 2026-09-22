@@ -118,7 +118,7 @@ function updateShowAllStopsUi() {
   const active = Boolean(appState.showAllStops);
   dom.showAllStopsBtn.classList.toggle("is-active", active);
   dom.showAllStopsBtn.setAttribute("aria-pressed", active ? "true" : "false");
-  dom.showAllStopsBtn.textContent = active ? "All Stops On" : "Show All Stops";
+  dom.showAllStopsBtn.textContent = active ? "All stops shown" : "Show all stops";
 }
 
 function setShowAllStops(enabled, options = {}) {

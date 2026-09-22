@@ -144,6 +144,25 @@ function mapSafeAreaPadding(extraPadding = 24) {
     }
   }
 
+  // Portrait: the line view is a bottom sheet; keep fitBounds above it.
+  if (isPortraitMobileLayout() && dom.lineViewPanel && !dom.lineViewPanel.hidden) {
+    const sheetRect = dom.lineViewPanel.getBoundingClientRect();
+    if (sheetRect.height > 0) {
+      basePadding.bottom = Math.max(basePadding.bottom, Math.ceil(sheetRect.height) + extraPadding);
+    }
+  }
+
+  // Portrait: the floating search/filters sit at the top; keep fitBounds below.
+  if (isPortraitMobileLayout()) {
+    const floating = document.querySelector(".sidebar-quickfilter");
+    if (floating && !document.body.classList.contains("quickfilter-hidden")) {
+      const rect = floating.getBoundingClientRect();
+      if (rect.height > 0) {
+        basePadding.top = Math.max(basePadding.top, Math.ceil(rect.height) + extraPadding);
+      }
+    }
+  }
+
   return basePadding;
 }
 
@@ -152,29 +171,53 @@ function fitMapToBbox(bbox, options = {}) {
     return;
   }
 
+  const coords = bbox.map((value) => Number(value));
+  if (!coords.every((value) => Number.isFinite(value))) {
+    return;
+  }
+
   const duration = Number.isFinite(Number(options.duration)) ? Number(options.duration) : 650;
   const maxZoom = Number.isFinite(Number(options.maxZoom)) ? Number(options.maxZoom) : 12.5;
   const extraPadding = Number.isFinite(Number(options.extraPadding)) ? Number(options.extraPadding) : 24;
-  const padding = options.useSafeAreaPadding === false
-    ? {
-        top: extraPadding,
-        right: extraPadding,
-        bottom: extraPadding,
-        left: extraPadding
-      }
-    : mapSafeAreaPadding(extraPadding);
 
-  appState.map.fitBounds(
-    [
-      [bbox[0], bbox[1]],
-      [bbox[2], bbox[3]]
-    ],
-    {
-      padding,
-      duration,
-      maxZoom
-    }
-  );
+  const sanitizePadding = (value) => (Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : extraPadding);
+  const rawPadding = options.useSafeAreaPadding === false
+    ? { top: extraPadding, right: extraPadding, bottom: extraPadding, left: extraPadding }
+    : mapSafeAreaPadding(extraPadding);
+  const padding = {
+    top: sanitizePadding(rawPadding?.top),
+    right: sanitizePadding(rawPadding?.right),
+    bottom: sanitizePadding(rawPadding?.bottom),
+    left: sanitizePadding(rawPadding?.left)
+  };
+
+  try {
+    appState.map.fitBounds(
+      [
+        [coords[0], coords[1]],
+        [coords[2], coords[3]]
+      ],
+      {
+        padding,
+        duration,
+        maxZoom
+      }
+    );
+  } catch {
+    // A degenerate bbox or an unready map transform can make fitBounds throw;
+    // zooming is a convenience, never a hard failure.
+  }
+}
+
+function unionBbox(a, b) {
+  if (!a) return b || null;
+  if (!b) return a || null;
+  return [
+    Math.min(a[0], b[0]),
+    Math.min(a[1], b[1]),
+    Math.max(a[2], b[2]),
+    Math.max(a[3], b[3])
+  ];
 }
 
 function fitMapToLine(lineKey) {
@@ -182,13 +225,18 @@ function fitMapToLine(lineKey) {
     return;
   }
 
-  const bbox = buildLineBboxFromStops(lineKey) || buildLineBboxFromRoutes(lineKey);
+  // Union of the full stop extents and any available geometry, so the whole
+  // route is framed. The viewport route features can be clipped, so they are
+  // only an addition to the stop extents, never the sole source.
+  const stopBbox = buildLineBboxFromStops(lineKey);
+  const routeBbox = buildLineBboxFromRoutes(lineKey);
+  const bbox = unionBbox(stopBbox, routeBbox);
   if (!bbox) {
     return;
   }
 
   fitMapToBbox(bbox, {
-    extraPadding: isPortraitMobileLayout() ? 24 : 24,
+    extraPadding: 24,
     duration: 650,
     maxZoom: 12.5
   });

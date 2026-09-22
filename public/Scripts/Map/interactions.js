@@ -156,9 +156,19 @@ function initializeMap() {
     center: [-122.335, 47.608],
     zoom: 9.5,
     maxPitch: 80,
-    antialias: true
+    antialias: true,
+    attributionControl: { compact: true, customAttribution: "MapLibre" }
   });
 
+  const collapseAttribution = () => {
+    const attrib = document.querySelector(".maplibregl-ctrl-attrib");
+    if (attrib) {
+      attrib.classList.remove("maplibregl-compact-show");
+      attrib.removeAttribute("open");
+    }
+  };
+  appState.map.on("load", collapseAttribution);
+  appState.map.on("idle", collapseAttribution);
   appState.map.addControl(new maplibregl.NavigationControl({ showCompass: false, showZoom: true }), "bottom-right");
   appState.map.dragRotate.disable();
   appState.map.touchZoomRotate.disableRotation();
@@ -194,6 +204,11 @@ function initializeMap() {
 
   appState.map.on("load", () => {
     registerMapSources(appState.map);
+
+    // The style may have been built before the theme resolved; sync it now.
+    if (typeof applyThemeToMap === "function") {
+      applyThemeToMap();
+    }
 
     if (typeof initVectorMetadataWiring === "function") {
       initVectorMetadataWiring();

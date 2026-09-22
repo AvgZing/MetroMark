@@ -10,7 +10,7 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(5, 18, 28, 0.55);
+  background: rgba(10, 11, 12, 0.5);
 }
 
 .report-modal-backdrop[hidden] {
@@ -29,7 +29,7 @@
   justify-content: space-between;
   gap: 12px;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--border, rgba(14, 42, 60, 0.18));
+  border-bottom: 1px solid var(--border);
 }
 
 .report-modal-header h2 {
@@ -60,7 +60,7 @@
   flex: 0 0 40%;
   max-width: 200px;
   aspect-ratio: 4 / 3;
-  border: 1px solid var(--border, rgba(14, 42, 60, 0.18));
+  border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
   display: flex;
@@ -68,7 +68,7 @@
   justify-content: center;
   font-size: 12px;
   color: var(--muted, #5a5a5a);
-  background: rgba(14, 42, 60, 0.05);
+  background: rgba(20, 20, 22, 0.04);
 }
 
 .report-capture-preview img {

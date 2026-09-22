@@ -2,6 +2,23 @@ function canPersistPreferences() {
   return typeof storageConsentAllowed !== "function" || storageConsentAllowed();
 }
 
+function canonicalLineViewOrderingMode(orderingMode) {
+  const mode = String(orderingMode || "").trim();
+  if (mode === "auto" || mode === "geometry-revised" || mode === "legacy-geometry" || mode === "fractions") {
+    return mode;
+  }
+  if (mode === "geometry-only" || mode === "geometry") {
+    return "legacy-geometry";
+  }
+  if (mode === "fractions-only") {
+    return "fractions";
+  }
+  if (mode === "geometry-revised-endpoint-anchored") {
+    return "geometry-revised";
+  }
+  return "geometry-revised";
+}
+
 /** Retrieve a parsed Set from localStorage, falling back to defaults if missing or corrupt. */
 function parseSetFromStorage(storageKey, defaults) {
   try {
@@ -104,7 +121,7 @@ function parseLineViewOrderingPreferencesFromStorage(storageKey) {
       }
 
       preferenceMap.set(lineKey, {
-        mode: normalizeLineViewOrderingMode(valueRaw.mode),
+        mode: canonicalLineViewOrderingMode(valueRaw.mode),
         reversed: Boolean(valueRaw.reversed)
       });
     }

@@ -571,7 +571,7 @@ async function loadStopsForRoute(lineKey) {
     return;
   }
   try {
-    const params = new URLSearchParams({ lineKey, stopTypes: "0,1" });
+    const params = new URLSearchParams({ lineKey, stopTypes: ROUTE_STOP_TYPES_QUERY });
     const payload = await fetch(`/api/transit/route-stops?${params.toString()}`).then((r) => r.json());
     if (Array.isArray(payload?.stopsGeoJson?.features)) {
       source.setData(payload.stopsGeoJson);

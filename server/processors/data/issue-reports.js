@@ -1,6 +1,10 @@
 const { localQuery, assertLocalConfigured } = require("./core");
 const { normalizeText } = require("./utils");
 
+// Guard for stored screenshot payloads. Mirrors REPORT_SCREENSHOT_MAX_CHARS in
+// public/scripts/shared/constants.js, which keeps the client under this limit.
+const MAX_SCREENSHOT_CHARS = 600000;
+
 function mapRow(row) {
   return {
     id: Number(row.id),
@@ -30,7 +34,7 @@ async function createIssueReport(data = {}) {
     ? { lon: Number(data.center.lon), lat: Number(data.center.lat) }
     : null;
   const zoom = Number.isFinite(Number(data.zoom)) ? Number(data.zoom) : null;
-  const screenshot = String(data.screenshot || "").slice(0, 800000) || null;
+  const screenshot = String(data.screenshot || "").slice(0, MAX_SCREENSHOT_CHARS) || null;
   const description = String(data.description || "").trim().slice(0, 2000) || null;
 
   const { rows } = await localQuery(

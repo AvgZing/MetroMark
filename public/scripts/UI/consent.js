@@ -22,11 +22,23 @@
 
   window.storageConsentAllowed = storageConsentAllowed;
 
+  function syncBannerLayout() {
+    var banner = document.getElementById("consentBanner");
+    if (!banner || banner.hidden) {
+      document.body.classList.remove("consent-open");
+      document.documentElement.style.removeProperty("--consent-h");
+      return;
+    }
+    document.body.classList.add("consent-open");
+    document.documentElement.style.setProperty("--consent-h", banner.getBoundingClientRect().height + "px");
+  }
+
   function showBanner() {
     var banner = document.getElementById("consentBanner");
     if (banner) {
       banner.hidden = false;
     }
+    syncBannerLayout();
   }
 
   function hideBanner() {
@@ -34,6 +46,7 @@
     if (banner) {
       banner.hidden = true;
     }
+    syncBannerLayout();
   }
 
   function recordChoice(choice) {
@@ -63,6 +76,8 @@
       });
     }
     showBanner();
+    window.addEventListener("resize", syncBannerLayout);
+    window.addEventListener("orientationchange", syncBannerLayout);
   }
 
   if (document.readyState === "loading") {

@@ -1,0 +1,198 @@
+/* UI controls: buttons, inputs, chips, filter tabs, popup settings, list rows. */
+
+/* ---------- Controls ---------- */
+.btn {
+  height: var(--control-h);
+  padding: 0 var(--sp-4);
+  border-radius: var(--control-radius);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  box-shadow: none;
+}
+
+.btn:hover,
+.btn:active {
+  transform: none;
+  box-shadow: none;
+}
+
+input,
+select,
+textarea {
+  min-height: var(--control-h);
+  padding: 6px var(--sp-3);
+  border-radius: var(--control-radius);
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+  color: var(--ink);
+  font-size: var(--fs-body);
+}
+
+.sidebar input:not([type="checkbox"]):not([type="radio"]),
+.sidebar select,
+.sidebar textarea,
+.dropdown-panel input:not([type="checkbox"]):not([type="radio"]),
+.dropdown-panel select,
+.dropdown-panel textarea,
+.filter-presets-panel input,
+.filter-presets-panel select {
+  border-radius: var(--control-radius);
+  border: 1px solid var(--line);
+  background: var(--input-bg);
+  font-family: inherit;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.filter-presets-panel {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+  padding: 0;
+}
+
+.filter-section {
+  padding: 0;
+  margin: 0;
+}
+
+.filter-section + .filter-section {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+
+.mode-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.mode-chip {
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: var(--fs-caption);
+  font-weight: 500;
+}
+
+.mode-chip:hover {
+  background: var(--button-hover);
+}
+
+.mode-chip[aria-pressed="true"],
+.mode-chip.is-active {
+  background: var(--soft-accent);
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.filter-advanced-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0 0;
+}
+
+.settings-list.filter-advanced-list label {
+  min-height: 0;
+  padding: 3px 0;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.settings-list.filter-advanced-list input[type="checkbox"] {
+  min-height: 16px;
+}
+
+/* Filter tab box: the desktop panel shows every section at once, so the tab
+   chrome is inert there (see mobile-nav.css for the mobile tab behavior). */
+.filter-tabs {
+  display: contents;
+}
+
+.filter-tab-input,
+.filter-tab-label {
+  display: none;
+}
+
+.filter-tab-panel {
+  display: contents;
+}
+
+.filter-tab-panel ~ .filter-tab-panel > .filter-section:first-child {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+
+.filter-advanced-list label,
+.settings-list label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--control-h);
+  font-size: var(--fs-body);
+  color: var(--ink);
+}
+
+/* User settings block inside the profile popup. */
+.popup-settings {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+
+.popup-settings .settings-list label {
+  min-height: 0;
+  padding: 4px 0;
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+
+.popup-settings .settings-list input[type="checkbox"] {
+  min-height: 16px;
+}
+
+/* ---------- List rows (flat, separated) ---------- */
+.line-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: transparent;
+  border: none;
+}
+
+.line-list > li,
+.line-list > .line-item {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.line-list > li:last-child,
+.line-list > .line-item:last-child {
+  border-bottom: none;
+}
+
+/* Line-view action icons are stroke-only SVG paths (e.g. the deselect X). */
+.line-view-nav svg {
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

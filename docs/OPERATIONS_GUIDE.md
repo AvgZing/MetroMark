@@ -25,6 +25,13 @@
   - resetting the working copy from the live route payload
 - Route overrides are stored in `public.route_override`, so they survive cache refreshes.
 
+## User preferences
+- Per-user UI settings (filters, display and accessibility toggles such as Colorblind mode)
+  live in the single `public.profiles.preferences` JSON object in Supabase.
+- Adding a new preference toggle needs no SQL migration: the API merges the new key into the
+  existing object, and the nonrecoverable backup includes `preferences` wholesale.
+- Signed-out users get a localStorage mirror of the same keys.
+
 ## Transit data and cleanup
 - Transit cache and route geometry live in local Postgres/PostGIS.
 - User auth and user preferences live in Supabase.

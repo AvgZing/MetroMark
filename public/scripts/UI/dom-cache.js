@@ -58,6 +58,7 @@ const dom = {
   streetsModeBtn: document.getElementById("streetsModeBtn"),
   satelliteModeBtn: document.getElementById("satelliteModeBtn"),
   accountPopupBtn: document.getElementById("accountPopupBtn"),
+  topbarUserLabel: document.getElementById("topbarUserLabel"),
   authPopup: document.getElementById("authPopup"),
   closeAuthPopupBtn: document.getElementById("closeAuthPopupBtn"),
   themeToggleBtn: document.getElementById("themeToggleBtn"),

@@ -35,8 +35,24 @@ if (typeof openLineView === 'undefined') {
   console.warn('openLineView not found in global scope - check route-ui.js loading');
 }
 
+function syncLineViewAutoToggle() {
+  const toggleBtn = dom.toggleLineViewAutoBtn;
+  if (!toggleBtn) {
+    return;
+  }
+  const enabled = Boolean(appState.lineViewAutoOpenEnabled);
+  toggleBtn.textContent = enabled ? "Auto-open: on" : "Auto-open: off";
+  toggleBtn.setAttribute("aria-pressed", enabled ? "true" : "false");
+}
+
 function bindEvents() {
-  dom.themeToggleBtn.addEventListener("click", toggleTheme);
+  dom.themeToggleBtn.addEventListener("click", () => {
+    toggleTheme();
+    dom.themeToggleBtn.classList.remove("theme-spin");
+    void dom.themeToggleBtn.offsetWidth;
+    dom.themeToggleBtn.classList.add("theme-spin");
+    window.setTimeout(() => dom.themeToggleBtn.classList.remove("theme-spin"), 360);
+  });
 
   if (dom.mobileDrawerTab) {
     dom.mobileDrawerTab.addEventListener("click", () => {
@@ -84,6 +100,7 @@ function bindEvents() {
       if (typeof saveUserPreferences === "function") {
         saveUserPreferences({ lineViewAutoOpenEnabled: appState.lineViewAutoOpenEnabled }).catch(() => {});
       }
+      syncLineViewAutoToggle();
       renderUserStatus();
       const status = appState.lineViewAutoOpenEnabled ? "enabled" : "disabled";
       setStatus(`Line view auto-open ${status} for desktop`, "ok");
@@ -144,6 +161,21 @@ function bindEvents() {
         }
         if (typeof saveDefaultPresetDebounced === "function") {
           try { saveDefaultPresetDebounced(); } catch (e) {}
+        }
+      });
+    }
+
+    const colorblindEl = document.getElementById("colorblindModeToggle");
+    if (colorblindEl) {
+      colorblindEl.checked = Boolean(appState.colorblindMode);
+      colorblindEl.addEventListener("change", () => {
+        appState.colorblindMode = Boolean(colorblindEl.checked);
+        document.body.classList.toggle("colorblind-mode", appState.colorblindMode);
+        if (typeof applyStopStatusIcons === "function") {
+          applyStopStatusIcons();
+        }
+        if (typeof saveUserPreferences === "function") {
+          saveUserPreferences({ colorblindMode: appState.colorblindMode }).catch(() => {});
         }
       });
     }
@@ -486,6 +518,16 @@ async function init() {
     if (typeof maybeShowWhatsNew === "function") {
       maybeShowWhatsNew();
     }
+    syncLineViewAutoToggle();
+
+    if (typeof isPortraitMobileLayout === "function" && isPortraitMobileLayout() && dom.lineViewPanel) {
+      appState.lineViewOpen = true;
+      dom.lineViewPanel.hidden = false;
+      document.body.classList.add("line-view-open");
+      if (typeof renderLineView === "function") {
+        renderLineView("");
+      }
+    }
 
 
     await loadProgress();
@@ -506,7 +548,7 @@ async function init() {
     setStatus(
       "Routes render from vector tiles for the area you are viewing.",
       "ok",
-      `Visible by default: ${activeModeLabels.join(", ")} | All Frequencies. Stops load only when you focus a route.`
+      `Showing ${activeModeLabels.join(", ")} at all frequencies.`
     );
     console.log(`[perf] init: total app init in ${(performance.now() - initT0).toFixed(1)}ms`);
   } catch (error) {

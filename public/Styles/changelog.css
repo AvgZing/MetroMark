@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(5, 18, 28, 0.55);
+  background: rgba(10, 11, 12, 0.5);
 }
 
 .whatsnew-modal-backdrop[hidden] {
@@ -25,7 +25,7 @@
   justify-content: space-between;
   gap: 12px;
   padding-bottom: 10px;
-  border-bottom: 1px solid var(--border, rgba(14, 42, 60, 0.18));
+  border-bottom: 1px solid var(--border);
 }
 
 .whatsnew-modal-header h2 {

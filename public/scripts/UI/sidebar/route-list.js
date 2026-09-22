@@ -62,17 +62,9 @@ function renderLineList() {
   const overrideCount = routeListLines.filter((line) => Boolean(lineVisibilityOverride(line.lineKey))).length;
 
   if (dom.routeListSummary) {
-    if (hasQuery) {
-      dom.routeListSummary.textContent =
-        overrideCount > 0
-          ? `Results (${routeListLines.length}, ${overrideCount} overrides)`
-          : `Results (${routeListLines.length})`;
-    } else {
-      dom.routeListSummary.textContent =
-        overrideCount > 0
-          ? `Filtered routes (${visibleCount} visible, ${overrideCount} overrides)`
-          : `Filtered routes (${visibleCount} visible)`;
-    }
+    dom.routeListSummary.textContent = hasQuery
+      ? `Results (${routeListLines.length})`
+      : `Routes (${visibleCount}${overrideCount > 0 ? `, ${overrideCount} overridden` : ""})`;
   }
   if (dom.routeListDropdown && hasQuery) {
     dom.routeListDropdown.open = true;
@@ -130,17 +122,9 @@ function renderLineList() {
       row.classList.add("is-manual-off");
     }
 
-    const focusButton = document.createElement("button");
-    focusButton.type = "button";
-    focusButton.className = "line-item-focus";
-    focusButton.disabled = !visible;
-    focusButton.title = visible ? "Focus this route on the map" : "Set route visibility to ON to focus it";
-
     const dot = document.createElement("span");
     dot.className = "line-color-dot";
     dot.style.backgroundColor = line.color;
-
-    const labelBlock = document.createElement("div");
 
     const name = document.createElement("span");
     name.className = "line-name line-name-btn";
@@ -150,7 +134,7 @@ function renderLineList() {
       event.preventDefault();
       event.stopPropagation();
       if (typeof openLineView === "function") {
-        openLineView(line.lineKey);
+        openLineView(line.lineKey, { zoom: true });
       }
     });
 
@@ -158,32 +142,9 @@ function renderLineList() {
     meta.className = "line-meta";
     meta.textContent = `${lineMode(line)} - ${lineOperatorLabel(line)} - ${lineHeadwayLabel(line)}`;
 
-    if (override === "on" || override === "off") {
-      meta.textContent = `${meta.textContent} - Manual ${override.toUpperCase()}`;
-    }
-
     if (!visible && !override) {
       meta.textContent = `${meta.textContent} - Hidden by filters`;
     }
-
-    labelBlock.append(name, meta);
-
-    focusButton.append(dot, labelBlock);
-
-    focusButton.addEventListener("click", async () => {
-      try {
-        await setFocusedLine(line.lineKey);
-        // On desktop, open Line View by default when selecting a route
-        if (!isPortraitMobileLayout() && typeof openLineView === "function") {
-          openLineView(line.lineKey);
-        }
-      } catch (error) {
-        setStatus(error.message, "error");
-      }
-    });
-
-    const sideStack = document.createElement("div");
-    sideStack.className = "line-side-stack";
 
     const sideTop = document.createElement("div");
     sideTop.className = "line-side-top";
@@ -279,16 +240,19 @@ function renderLineList() {
     onButton.type = "button";
     onButton.className = "line-visibility-btn is-on";
     onButton.textContent = "ON";
+    onButton.title = "Always show this route, regardless of filters";
 
     const defaultButton = document.createElement("button");
     defaultButton.type = "button";
     defaultButton.className = "line-visibility-btn is-default";
-    defaultButton.textContent = "-";
+    defaultButton.textContent = "—";
+    defaultButton.title = "Follow the filters (no override)";
 
     const offButton = document.createElement("button");
     offButton.type = "button";
     offButton.className = "line-visibility-btn is-off";
     offButton.textContent = "OFF";
+    offButton.title = "Always hide this route, regardless of filters";
 
     if (override === "on") {
       onButton.classList.add("is-active");
@@ -329,9 +293,7 @@ function renderLineList() {
 
     controls.append(onButton, defaultButton, offButton);
 
-    sideStack.append(sideTop, controls);
-
-    row.append(focusButton, sideStack);
+    row.append(dot, name, meta, sideTop, controls);
 
     fragment.append(row);
   });
@@ -339,7 +301,7 @@ function renderLineList() {
   if (totalRouteCount > MAX_ROUTE_LIST_ROWS) {
     const note = document.createElement("p");
     note.className = "microcopy";
-    note.textContent = `Showing ${MAX_ROUTE_LIST_ROWS} of ${totalRouteCount} routes — refine with search or zoom in to narrow the list.`;
+      note.textContent = `Showing first ${MAX_ROUTE_LIST_ROWS} routes.`;
     fragment.append(note);
   }
 

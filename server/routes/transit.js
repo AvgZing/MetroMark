@@ -10,6 +10,7 @@ const {
 const { getTransitCoverageForBbox } = require("../sources/transitland/coverage");
 const {
   asBoolean,
+  DEFAULT_STOP_TYPES,
   parseStopTypes,
   withTransitlandMetrics
 } = require("./helpers");
@@ -47,7 +48,7 @@ router.get("/transit/route-stops", async (req, res) => {
       cacheStatus: data.cacheStatus,
       cacheKey: data.cacheKey,
       cacheExpiresAt: data.cacheExpiresAt || null,
-      stopLocationTypes: data.stopLocationTypes || [0, 1],
+      stopLocationTypes: data.stopLocationTypes || DEFAULT_STOP_TYPES,
       ...(data.payload || {})
     }));
   } catch (error) {

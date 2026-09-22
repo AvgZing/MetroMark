@@ -1,0 +1,1240 @@
+/* Mobile bottom navigation and screen presentation. Applies only to the
+   portrait mobile layout; desktop keeps the sidebar + top bar shell. */
+
+.tabbar {
+  display: none;
+}
+
+.map-search-reopen,
+.quickfilter-pills,
+.quickfilter-logo,
+.map-corner-brand,
+.quickfilter-icon-pill {
+  display: none;
+}
+
+.mobile-drawer-tab {
+  display: none;
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+
+  body.quickfilter-hidden .sidebar-quickfilter {
+    display: none;
+  }
+
+  body.quickfilter-hidden .map-search-reopen {
+    display: inline-flex;
+    position: fixed;
+    top: calc(var(--topbar-h) + 10px);
+    left: 10px;
+    z-index: 14;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    box-shadow: var(--elev-1);
+  }
+
+  .quickfilter-title {
+    display: none;
+  }
+
+  .topbar {
+    display: none;
+  }
+
+  .sidebar-quickfilter {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 10px);
+    left: 10px;
+    right: 10px;
+    margin: 0;
+    z-index: 14;
+    padding: 0;
+    gap: 10px;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+
+  .quickfilter-logo {
+    display: block;
+    flex: none;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    box-shadow: var(--elev-1);
+    object-fit: contain;
+    padding: 3px;
+  }
+
+
+  .map-search-reopen {
+    display: none !important;
+  }
+
+  .quickfilter-icon-pill {
+    display: inline-flex;
+    flex: 0 0 44px;
+    width: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .quickfilter-icon-pill svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .quickfilter-pill {
+    height: 30px;
+    font-size: var(--fs-label);
+  }
+
+  .sidebar-quickfilter .quickfilter-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 48px;
+    padding: 0 6px 0 12px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 999px;
+    box-shadow: var(--elev-1);
+  }
+
+  .sidebar-quickfilter .quickfilter-search input[type="search"] {
+    flex: 1;
+    min-width: 0;
+    height: 42px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    font-size: 14px;
+  }
+
+  .quickfilter-logo {
+    background: none;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    width: 26px;
+    height: 26px;
+  }
+
+  #accountPopupBtn {
+    width: auto;
+    max-width: 132px;
+    height: 34px;
+    min-width: 0;
+    padding: 0 10px;
+    border: none;
+    border-radius: 999px;
+    background: var(--button-bg);
+    box-shadow: none;
+    gap: 6px;
+    justify-content: center;
+  }
+
+  #accountPopupBtn .topbar-user-label {
+    font-size: 13px;
+    max-width: 74px;
+  }
+
+  #themeToggleBtn {
+    width: 40px;
+    height: 30px;
+    min-width: 0;
+    padding: 0;
+    border-radius: 999px;
+    justify-content: center;
+  }
+
+  .quickfilter-pills #themeToggleBtn {
+    flex: 0 0 40px;
+  }
+
+  .map-corner-brand {
+    display: block;
+    position: fixed;
+    left: 12px;
+    bottom: calc(var(--tabbar-h) + 12px + env(safe-area-inset-bottom));
+    z-index: 5;
+    font-size: var(--fs-caption);
+    color: var(--muted);
+  }
+
+  .sidebar-quickfilter .quickfilter-pill {
+    height: 34px;
+  }
+
+  .sidebar-quickfilter .quickfilter-icon-pill {
+    height: 34px;
+    flex: 0 0 40px;
+    width: 40px;
+  }
+
+  .map-overlay-controls {
+    display: none;
+  }
+
+  .quickfilter-search {
+    gap: 8px;
+  }
+
+  .sidebar-quickfilter .quickfilter-search input[type="search"] {
+    height: 44px;
+    min-height: 44px;
+    border-radius: 999px;
+    padding: 0 16px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    box-shadow: var(--elev-1);
+  }
+
+  .quickfilter-pills {
+    display: flex;
+    gap: 10px;
+  }
+
+  .quickfilter-pill {
+    flex: 1;
+    height: 44px;
+    border-radius: 999px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
+    color: var(--ink);
+    font-size: var(--fs-body);
+    font-weight: 500;
+    box-shadow: var(--elev-1);
+  }
+
+  .sidebar-quickfilter .mode-filter-bar {
+    display: none;
+    gap: 6px;
+  }
+
+  body.qf-mode-open #modeFilterBar,
+  body.qf-freq-open #frequencyFilterBar {
+    display: flex;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    margin-top: 8px;
+    padding: 10px;
+    gap: 6px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    z-index: 15;
+  }
+
+  #mapSearchResults {
+    margin-top: 2px;
+    padding: 8px;
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    background: var(--panel);
+    box-shadow: var(--elev-1);
+  }
+
+  :root {
+    --tabbar-h: 58px;
+  }
+
+  .tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 80;
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
+    background: var(--shell);
+    border-top: 1px solid var(--panel-border);
+  }
+
+  .tabbar-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 5px 2px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 8px;
+  }
+
+  .tabbar-btn[aria-current="page"] {
+    color: var(--accent-text);
+  }
+
+  .tabbar-icon {
+    width: 21px;
+    height: 21px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  body.line-view-open .tabbar {
+    display: flex;
+  }
+
+  .map-overlay-controls {
+    bottom: 12px;
+  }
+
+  .consent-banner {
+    left: 8px;
+    right: 8px;
+    bottom: calc(var(--tabbar-h) + 10px + env(safe-area-inset-bottom));
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .consent-copy {
+    font-size: 12.5px;
+    line-height: 1.35;
+  }
+
+  .consent-actions .btn {
+    font-size: 12.5px;
+    padding: 5px 12px;
+  }
+
+  /* Keep map controls clear of the consent notice while it is shown. */
+  body.consent-open .map-overlay-controls {
+    bottom: calc(var(--consent-h, 100px) + 16px);
+  }
+
+  body.consent-open .maplibregl-ctrl-bottom-right,
+  body.consent-open .maplibregl-ctrl-bottom-left {
+    bottom: calc(var(--consent-h, 100px) + 10px);
+  }
+
+  .sidebar {
+    bottom: auto;
+  }
+
+  body.mobile-panels-open .sidebar {
+    bottom: 10px;
+    overflow-y: auto;
+  }
+
+  body.mobile-progress-open .progress-panel {
+    display: block;
+  }
+
+  body.mobile-progress-open .sidebar {
+    position: fixed;
+    top: var(--topbar-h);
+    left: 0;
+    right: 0;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    border-radius: 0;
+    background: var(--panel);
+    padding: 0;
+    overflow-y: auto;
+    z-index: 21;
+  }
+
+  body.mobile-progress-open .sidebar-quickfilter {
+    display: none;
+  }
+
+  body:not(.mobile-progress-open) .progress-panel {
+    display: none;
+  }
+
+  body.mobile-panels-open .status-panel,
+  body.mobile-progress-open .status-panel,
+  body.mobile-profile-open .status-panel {
+    display: none;
+  }
+
+  body.mobile-profile-open .sidebar {
+    display: none;
+  }
+
+  body.mobile-profile-open .dropdown-panel {
+    top: var(--topbar-h);
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    left: 0;
+    right: 0;
+    width: auto;
+    max-height: none;
+    padding: 0 var(--sp-4) var(--sp-4);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: var(--panel);
+  }
+
+  /* Line view is a bottom sheet above the tab bar: peek by default, expand by
+     the handle (tap or drag) to the full line view. */
+  body.line-view-open .line-view-panel {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    height: var(--sheet-peek, 208px);
+    max-height: calc(100dvh - var(--topbar-h) - var(--tabbar-h) - 20px);
+    width: auto;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    border-top: 1px solid var(--panel-border);
+    border-radius: 14px 14px 0 0;
+    overflow: hidden;
+    background: var(--panel);
+    align-items: stretch;
+    justify-content: flex-start;
+    transition: height 0.34s cubic-bezier(0.2, 0.9, 0.25, 1);
+    z-index: 23;
+  }
+
+  body.line-view-open .line-view-panel.sheet-full {
+    height: min(78dvh, calc(100dvh - var(--topbar-h) - var(--tabbar-h) - 20px));
+  }
+
+  body.line-view-open .line-view-panel.sheet-peek {
+    height: 76px;
+  }
+
+  body.line-view-open .line-view-panel.sheet-half {
+    height: 52dvh;
+  }
+
+  body.line-view-open .line-view-panel.sheet-full {
+    height: calc(100dvh - env(safe-area-inset-top) - 16px);
+  }
+
+  body.route-selected .tabbar {
+    display: none;
+  }
+
+  body.line-view-open .line-view-panel.sheet-dragging {
+    transition: none;
+  }
+
+  body.line-view-open .line-view-panel.line-view-closing {
+    animation: none;
+    height: 0 !important;
+    opacity: 0;
+    transition: height 0.2s ease, opacity 0.2s ease;
+  }
+
+  body.line-view-open .line-view-card {
+    border: none;
+    border-radius: 0;
+    height: 100%;
+    width: 100%;
+    background: var(--panel);
+  }
+
+  .line-view-sheet-handle {
+    display: block;
+    flex: none;
+    width: 40px;
+    min-height: 4px;
+    height: 4px;
+    margin: 8px auto 4px;
+    border-radius: 999px;
+    background: var(--gray-4, rgba(0, 0, 0, 0.25));
+    cursor: grab;
+    touch-action: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Final mobile overrides. This file is loaded after the ui-* layers, so rules
+   here win for the portrait layout; keep mobile-specific overrides in this
+   section rather than the ui-* files to avoid silent override conflicts.
+--------------------------------------------------------------------------- */
+.layers-sheet-backdrop {
+  z-index: 90;
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+  body.route-selected .line-view-panel {
+    bottom: env(safe-area-inset-bottom);
+  }
+
+  .line-view-sheet-handle {
+    display: block;
+    flex: none;
+    width: 26px;
+    min-height: 3px;
+    height: 3px;
+    margin: 0 auto 2px;
+    border-radius: 999px;
+    background: var(--gray-4, rgba(0, 0, 0, 0.25));
+    opacity: 0.6;
+    touch-action: none;
+  }
+
+  .sheet-handle {
+    width: 26px;
+    min-height: 3px;
+    height: 3px;
+    margin: 0 auto 2px;
+    opacity: 0.6;
+  }
+
+  .filters-panel-header,
+  .line-view-header {
+    padding-top: 0;
+  }
+
+  .sidebar-quickfilter {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 10px);
+    left: 10px;
+    right: 10px;
+    margin: 0;
+    z-index: 14;
+    padding: 0;
+    gap: 10px;
+    border-radius: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+
+  .sidebar-quickfilter .quickfilter-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 48px;
+    padding: 0 6px 0 12px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 999px;
+    box-shadow: var(--elev-1);
+  }
+
+  .sidebar-quickfilter .quickfilter-search input[type="search"] {
+    flex: 1;
+    min-width: 0;
+    height: 42px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
+    font-size: 15px;
+  }
+
+  .quickfilter-logo {
+    flex: none;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background: none;
+    border: none;
+    box-shadow: none;
+  }
+
+  #accountPopupBtn {
+    width: auto;
+    max-width: 132px;
+    height: 34px;
+    min-width: 0;
+    padding: 0 10px;
+    border: none;
+    border-radius: 999px;
+    background: var(--button-bg);
+    box-shadow: none;
+    gap: 6px;
+    justify-content: center;
+  }
+
+  #accountPopupBtn .topbar-user-label {
+    font-size: 13px;
+    max-width: 74px;
+  }
+
+  .quickfilter-pill {
+    height: 30px;
+    font-size: var(--fs-label);
+  }
+
+  .filters-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .filters-col-routes {
+    order: 1;
+  }
+
+  .filters-col:not(.filters-col-routes) {
+    order: 2;
+  }
+
+  .filters-panel .mode-filter-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .filters-panel .mode-filter-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .filters-panel .mode-chip {
+    flex: 0 0 auto;
+  }
+
+  .progress-action-prompt {
+    display: none;
+  }
+
+  #routeSelectPanel {
+    position: fixed;
+    top: auto;
+    left: 10px;
+    right: 10px;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 8px);
+    max-height: 45vh;
+    overflow-y: auto;
+    z-index: 25;
+    padding: 10px;
+    border-radius: 14px;
+    border: 1px solid var(--panel-border);
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+
+  #routeSelectPanel .route-select-btn {
+    width: 100%;
+  }
+
+  body.map-chrome-hidden .sidebar-quickfilter,
+  body.map-chrome-hidden .map-corner-brand,
+  body.map-chrome-hidden .map-overlay-controls,
+  body.map-chrome-hidden .maplibregl-control-container {
+    display: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Round 9 mobile fixes
+--------------------------------------------------------------------------- */
+@media (max-width: 900px) and (orientation: portrait) {
+  .line-view-sheet-handle,
+  .sheet-handle {
+    margin: 0 auto 0;
+  }
+
+  body.cities-panel-open .line-view-panel {
+    display: none;
+  }
+
+  /* Line view header: name + facts left, compact equal-width actions right. */
+  .line-view-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 4px 10px;
+  }
+
+  .line-view-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .line-view-actions .btn {
+    height: 30px;
+    min-width: 62px;
+    padding: 0 10px;
+    font-size: 12px;
+    justify-content: center;
+  }
+
+  .line-view-panel .user-status-details,
+  .line-view-panel .user-status-route-progress {
+    display: none !important;
+  }
+
+  /* Progress rows: compact like desktop. */
+  .line-progress-row {
+    padding: 3px 0;
+    gap: 2px;
+  }
+
+  .line-progress-list {
+    gap: 0;
+  }
+
+  .line-progress-row .progress-track {
+    height: 6px;
+  }
+
+  /* Attribution must not tuck under the sheet corner. */
+  .maplibregl-control-container {
+    z-index: 5;
+  }
+}
+
+/* Layers panel: animate in and out, label the report action, mark the active mode. */
+.layers-sheet {
+  animation: layers-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.layers-sheet-closing {
+  animation: layers-out 0.2s ease forwards;
+}
+
+@keyframes layers-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+@keyframes layers-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.layers-report .map-mode-btn .mode-label {
+  display: inline;
+}
+
+.layers-options .map-mode-btn.btn-primary {
+  border: 2px solid var(--accent);
+  background: var(--soft-accent);
+  color: var(--accent-text);
+}
+
+.cities-menu-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: var(--fs-body);
+}
+
+.cities-menu-option.is-active {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--soft-accent);
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+  .line-view-actions .btn {
+    border-radius: 999px;
+  }
+
+  .line-view-reverse-btn {
+    width: 100%;
+    align-self: stretch;
+  }
+
+  #routeSelectPanel .station-hover,
+  #routeSelectPanel .route-select-popup {
+    position: static;
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+  }
+
+  #routeSelectPanel .route-select-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  #routeSelectPanel .route-select-btn {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--button-bg);
+    text-align: left;
+  }
+
+  #routeSelectPanel .route-select-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 900px) and (orientation: portrait) {
+  .line-view-card .line-view-reverse-btn {
+    flex: 0 0 26px !important;
+    width: 26px !important;
+    min-width: 26px !important;
+    height: 24px !important;
+    padding: 0 !important;
+    align-self: center !important;
+    border-radius: 999px !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Portrait mobile: compact route panel, page-sheet parity, map geometry
+--------------------------------------------------------------------------- */
+@media (max-width: 900px) and (orientation: portrait) {
+  /* A hidden picker must not render as an invisible full-width box. */
+  #routeSelectPanel[hidden] {
+    display: none !important;
+  }
+
+  /* Route header: title block left, X + Zoom pair right. */
+  .line-view-header {
+    padding: 0 0 2px;
+  }
+
+  .line-view-title {
+    column-gap: 6px;
+  }
+
+  .line-view-title .line-color-dot {
+    width: 10px;
+    height: 10px;
+    margin-top: 5px;
+  }
+
+  .line-view-name {
+    font-size: 16px;
+  }
+
+  .line-view-actions {
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .line-view-actions .btn {
+    height: 28px;
+    min-width: 0;
+    padding: 0 12px;
+    font-size: 12px;
+    border-radius: 999px;
+  }
+
+  /* X sits above Zoom; the generic close stays neutral while Zoom is the
+     accent action. */
+  .line-view-actions {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+
+  .line-view-actions .btn,
+  .line-view-actions #lineViewReturnBtn {
+    background: var(--control-bg);
+    border: 1px solid var(--line);
+    color: var(--ink);
+  }
+
+  .line-view-actions #lineViewReturnBtn {
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    padding: 0;
+  }
+
+  .line-view-actions #lineViewReturnBtn svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  /* Hidden until a long-press arms the two-step clear confirmation. */
+  .line-view-progress-actions {
+    display: none;
+  }
+
+  .line-view-progress-actions.is-revealed {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .line-view-progress-actions .clear-progress-confirm {
+    margin: 0;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* Ordering row stays one compact line; reverse becomes a round icon. */
+  .line-view-diagnostics {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .line-view-diagnostics .diagnostic-label,
+  .line-view-diagnostics .diagnostic-resolved {
+    display: none;
+  }
+
+  .line-view-ordering-group {
+    flex: 1 1 auto;
+    gap: 4px;
+  }
+
+  .line-view-ordering-btn {
+    flex: 1 1 0;
+    height: 24px;
+    padding: 0 6px;
+    font-size: 11px;
+  }
+
+  .line-view-reverse-btn {
+    flex: 0 0 26px;
+    width: 26px;
+    min-width: 26px;
+    height: 24px;
+    padding: 0;
+    border-radius: 999px;
+  }
+
+  .line-view-reverse-icon svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Peek with a focused route: name row, X/Zoom stack, and progress. */
+  body.route-selected .line-view-panel.sheet-peek {
+    height: 122px;
+  }
+
+  /* Keep the map controls just clear of the sheet. */
+  body.line-view-open .maplibregl-ctrl-bottom-right,
+  body.line-view-open .maplibregl-ctrl-bottom-left {
+    bottom: 84px;
+  }
+
+  body.route-selected .maplibregl-ctrl-bottom-right,
+  body.route-selected .maplibregl-ctrl-bottom-left {
+    bottom: 78px;
+  }
+
+  /* A focused route already offers a zoom button, so drop the map zoom stack. */
+  body.route-selected .maplibregl-ctrl-group {
+    display: none;
+  }
+
+  /* Page sheets cover the map; hide the map controls instead of clipping them. */
+  body.filters-panel-open .maplibregl-control-container,
+  body.progress-overlay-open .maplibregl-control-container,
+  body.cities-panel-open .maplibregl-control-container,
+  body.map-sheet-lifted .maplibregl-control-container {
+    display: none !important;
+  }
+
+  /* Overlapping-route picker: the host itself is the translucent card, so the
+     inner popup drops its own surface. */
+  #routeSelectPanel {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    padding: 10px 12px;
+    border-radius: 16px;
+    max-height: 46vh;
+  }
+
+  #routeSelectPanel .route-select-popup {
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+
+  #routeSelectPanel .route-select-header h4 {
+    font-size: 13px;
+  }
+
+  #routeSelectPanel .route-select-btn {
+    padding: 7px 8px;
+  }
+
+  #routeSelectPanel .route-select-name {
+    font-size: 13px;
+  }
+
+  #routeSelectPanel .route-select-meta {
+    font-size: 11px;
+  }
+
+  /* Mobile filters are self-contained: search on top, then one compact tab box
+     for the filter controls, then the (search) results / route list. */
+  #filtersPanel {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  #filtersPanel .filters-panel-header,
+  #progressOverlay .filters-panel-header {
+    margin-bottom: 0;
+  }
+
+  #filtersPanel .filters-panel-body {
+    gap: 10px;
+  }
+
+  #filtersPanel .filters-grid {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  #filtersPanel .filters-col {
+    gap: 10px;
+  }
+
+  #filtersPanel .filters-col:not(.filters-col-routes) {
+    order: 1;
+  }
+
+  #filtersPanel .filters-col-routes {
+    order: 2;
+  }
+
+  #filtersPanel #filterPanelSearch {
+    height: 36px;
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 999px;
+    font-size: 13px;
+  }
+
+  #filtersPanel .filter-section {
+    padding: 0;
+    margin: 0;
+  }
+
+  #filtersPanel .filter-section + .filter-section {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+  }
+
+  #filtersPanel .filter-section-title {
+    margin: 0 0 6px;
+    font-size: 10px;
+  }
+
+  /* One tab box replaces three stacked sections. */
+  #filtersPanel .filter-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--button-bg);
+  }
+
+  #filtersPanel .filter-tab-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #filtersPanel .filter-tab-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 30px;
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  #filtersPanel #filterTabModes:checked + .filter-tab-label,
+  #filtersPanel #filterTabFrequency:checked + .filter-tab-label,
+  #filtersPanel #filterTabMore:checked + .filter-tab-label {
+    background: var(--panel);
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  #filtersPanel #filterTabModes:focus-visible + .filter-tab-label,
+  #filtersPanel #filterTabFrequency:focus-visible + .filter-tab-label,
+  #filtersPanel #filterTabMore:focus-visible + .filter-tab-label {
+    box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.35);
+  }
+
+  #filtersPanel .filter-tab-panel {
+    display: none;
+    grid-column: 1 / -1;
+    padding-top: 8px;
+  }
+
+  #filtersPanel #filterTabModes:checked ~ .filter-tab-panel-modes,
+  #filtersPanel #filterTabFrequency:checked ~ .filter-tab-panel-frequency,
+  #filtersPanel #filterTabMore:checked ~ .filter-tab-panel-more {
+    display: block;
+  }
+
+  #filtersPanel .filter-tab-panel .filter-section {
+    border: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  #filtersPanel .filter-tab-panel .filter-section + .filter-section {
+    margin-top: 10px;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  #filtersPanel .filter-tab-panel-modes .filter-section-title,
+  #filtersPanel .filter-tab-panel-frequency .filter-section-title {
+    display: none;
+  }
+
+  /* Chips wrap inside their tab; no horizontal scrolling needed. */
+  #filtersPanel .mode-filter-bar {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  #filtersPanel .mode-chip {
+    flex: 0 0 auto;
+    height: 26px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  #filtersPanel .filter-advanced-list {
+    gap: 6px;
+  }
+
+  /* "More" tab controls: strip the desktop control sizing so the toggles and
+     action are compact rows instead of full-height padded blocks. */
+  #filtersPanel .filter-tab-panel-more .filter-advanced-list {
+    gap: 2px;
+    padding: 0;
+  }
+
+  #filtersPanel .filter-tab-panel-more .filter-advanced-list label {
+    min-height: 0;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  #filtersPanel .filter-tab-panel-more .filter-advanced-list input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    min-height: 16px;
+    margin: 0;
+    padding: 0;
+    accent-color: var(--accent);
+  }
+
+  #filtersPanel #showAllStopsBtn {
+    height: 28px;
+    min-height: 0;
+    padding: 0 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    text-transform: none;
+  }
+
+  /* Route rows: meta gets its own full-width wrapping line so the headway and
+     operator are never truncated, with the visibility controls kept on row 1. */
+  #filtersPanel .line-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "dot name controls"
+      "meta meta meta"
+      "stops stops stops";
+    row-gap: 3px;
+    padding: 9px 0;
+  }
+
+  #filtersPanel .line-item.is-manual-on,
+  #filtersPanel .line-item.is-manual-off {
+    padding-left: 0;
+  }
+
+  #filtersPanel .line-item > .line-meta {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  #filtersPanel .line-item > .line-side-top {
+    justify-self: start;
+  }
+
+  /* Progress tab: no dead space between the header and the big number. */
+  #progressOverlay .filters-panel {
+    gap: 6px;
+  }
+
+  #progressOverlayBody {
+    gap: 8px;
+    padding-top: 0;
+  }
+
+  /* Filters is a nav tab, so the in-panel adjust prompt is redundant. */
+  #overlayAdjustFiltersBtn {
+    display: none !important;
+  }
+}

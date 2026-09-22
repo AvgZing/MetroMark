@@ -73,13 +73,11 @@ function setMapNotice(title, meta = "", kind = "neutral", placement = "center", 
 function showMapLoadingBadge() {
   if (!dom.mapLoadingBadge) return;
   dom.mapLoadingBadge.hidden = false;
-  dom.mapLoadingBadge.textContent = "Loading...";
 }
 
 function hideMapLoadingBadge() {
   if (!dom.mapLoadingBadge) return;
   dom.mapLoadingBadge.hidden = true;
-  dom.mapLoadingBadge.textContent = "";
 }
 
 function renderApiCounter() {
@@ -236,6 +234,13 @@ function renderUserStatus() {
     dom.clearRouteProgressConfirmText.textContent = pending
       ? "Click Clear Route Progress again to confirm reset."
       : "";
+
+    // Mobile keeps the clear controls hidden until a long-press arms the
+    // confirmation, so tie their visibility to the pending state.
+    const progressActions = document.querySelector(".line-view-progress-actions");
+    if (progressActions) {
+      progressActions.classList.toggle("is-revealed", pending);
+    }
   }
 
   if (dom.lineViewBtn) {
@@ -268,7 +273,7 @@ function captureMapView() {
 }
 
 function restoreMapView(view) {
-  if (!appState.map || !view) {
+  if (!appState.map || !view || !Array.isArray(view.center)) {
     return;
   }
 
@@ -281,7 +286,7 @@ function restoreMapView(view) {
 }
 
 function mapViewChanged(view) {
-  if (!appState.map || !view) {
+  if (!appState.map || !view || !Array.isArray(view.center)) {
     return true;
   }
 
@@ -404,23 +409,14 @@ function setUserStatusFromLine(line) {
   const progress = lineProgressMetrics(line.lineKey, Number(line.stopCount || 0));
   const focusedLineActions = appState.focusedLineKey === line.lineKey ? line.lineKey : "";
 
+  // Show only what is not already visible: the route name and mode are the
+  // status title, and stop totals are the progress bar, so neither is repeated.
   const details = [
-    {
-      label: "Operator",
-      value: lineOperatorLabel(line)
-    },
     {
       label: "Frequency",
       value: lineHeadwayLabel(line)
     }
   ];
-
-  if (!isPortraitMobileLayout()) {
-    details.push({
-      label: "Stops",
-      value: progress.total > 0 ? `${progress.total} stations loaded` : "Stops not loaded yet"
-    });
-  }
 
   setUserStatus(lineDisplayName(line), `${lineMode(line)} Line`, {
     details,
@@ -463,24 +459,14 @@ function restoreUserStatusFromFocus() {
     const shownLines = getShownLines();
     if (shownLines.length === 0) {
       setUserStatus("Zoom in to see stops.", "Pan or zoom the map to load transit.", {
-        details: [
-          {
-            label: "Visible Routes",
-            value: "0 Matching Current Filters"
-          }
-        ],
+        details: [],
         feedback: ""
       });
       return;
     }
 
-    setUserStatus("No route selected.", "Select a route or station.", {
-      details: [
-        {
-          label: "Visible Routes",
-          value: `${shownLines.length} Matching Current Filters`
-        }
-      ],
+    setUserStatus("No route selected.", "Select a route on the map.", {
+      details: [],
       feedback: ""
     });
     return;

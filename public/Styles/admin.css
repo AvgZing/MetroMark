@@ -1,36 +1,38 @@
 :root {
-  --bg: #f3efe7;
-  --card: #fffdf8;
+  --bg: #f3f4f5;
+  --card: #ffffff;
   --text: #202020;
   --muted: #5a5a5a;
-  --line: #d8cfc0;
+  --line: #d4d6d9;
   --accent: #1e5f4e;
   --accent-strong: #15483b;
+  --accent-rgb: 30, 95, 78;
 }
 
 /* Dark theme for the admin console: the page defines its own color variables
    (light values above), so re-map them here when the toggle sets data-theme. */
 body[data-theme="dark"] {
-  --bg: #0f1a24;
-  --card: #15232f;
-  --text: #dfe9f1;
-  --muted: #94a8b8;
-  --line: #2c3f4f;
-  --accent: #2ea9d2;
-  --accent-strong: #1a90b8;
-  background: radial-gradient(circle at 0% 0%, #182a38 0%, #0f1a24 55%, #0a131b 100%);
+  --bg: #0b0b0c;
+  --card: #141416;
+  --text: #ededed;
+  --muted: #9b9b9b;
+  --line: #2a2a2d;
+  --accent: #4ea6c9;
+  --accent-strong: #3d8fb0;
+  --accent-rgb: 78, 166, 201;
+  background: var(--bg-top);
 }
 
 body[data-theme="dark"] .usage-bar-track {
-  background: #26394a;
+  background: #1c1c1f;
 }
 
 body[data-theme="dark"] .usage-history-track {
-  background: #1e2f3d;
+  background: #19191c;
 }
 
 body[data-theme="dark"] pre {
-  background: #0a141d;
+  background: #000000;
   color: #c7e8d8;
 }
 
@@ -40,9 +42,9 @@ body[data-theme="dark"] pre {
 
 body {
   margin: 0;
-  background: radial-gradient(circle at 0% 0%, #f6f2eb 0%, var(--bg) 55%, #ebe3d6 100%);
+  background: var(--bg-top);
   color: var(--text);
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 body.admin-locked .admin-shell > header,
@@ -133,7 +135,7 @@ body.admin-locked .admin-shell > section:not(.auth-card) {
 input,
 select,
 button {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 input,
@@ -193,7 +195,7 @@ button:hover {
 
 .kv dd {
   margin: 0;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 0.9rem;
   text-align: right;
   /* Long values (paths, timestamps, kind lists) must wrap or truncate instead
@@ -307,7 +309,7 @@ pre {
   margin: 6px 0 2px;
   font-size: 1.9rem;
   font-weight: 700;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   color: var(--text);
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -353,7 +355,7 @@ pre {
 .usage-bar-fill {
   height: 100%;
   border-radius: 6px;
-  background: #177ca2;
+  background: var(--accent);
   transition: width 0.4s ease;
 }
 
@@ -390,7 +392,7 @@ pre {
 
 .usage-history-day {
   width: 34px;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   color: var(--muted);
 }
 
@@ -408,7 +410,7 @@ pre {
 }
 
 .usage-history-bar.is-rest {
-  background: #177ca2;
+  background: var(--accent);
 }
 
 .usage-history-bar.is-vector {
@@ -418,7 +420,7 @@ pre {
 .usage-history-counts {
   width: 70px;
   text-align: right;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   color: var(--muted);
   font-size: 0.72rem;
 }

@@ -41,6 +41,7 @@ function currentFilterSnapshot() {
 }
 
 function applyFilterSnapshot(snapshot) {
+  const citySlug = String(snapshot.citySlug || "").trim();
   const modeKeys = Array.isArray(snapshot.activeModeKeys) ? snapshot.activeModeKeys : [MODE_FILTER_ALL];
   const frequencyKeys = Array.isArray(snapshot.activeFrequencyKeys)
     ? snapshot.activeFrequencyKeys
@@ -88,7 +89,6 @@ function applyFilterSnapshot(snapshot) {
   renderProgress();
   restoreUserStatusFromFocus();
 
-  const citySlug = String(snapshot.citySlug || "").trim();
   if (citySlug && citySlug !== appState.initialCitySlug) {
     appState.initialCitySlug = citySlug;
     if (typeof saveUserPreferences === "function") {

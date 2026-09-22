@@ -5,6 +5,7 @@ const USER_PREFERENCE_STORAGE_KEYS = {
   showAllStops: SHOW_ALL_STOPS_STORAGE_KEY,
   showPrivateOperators: "metromark_show_private_operators",
   showProblematicGeometries: "metromark_show_problematic_geometries",
+  colorblindMode: "metromark_colorblind_mode",
   activeModeKeys: "metromark_mode_filter_keys",
   activeFrequencyKeys: "metromark_frequency_filter_keys",
   manualLineVisibility: "metromark_route_visibility_overrides"
@@ -72,7 +73,7 @@ function readStoredPreference(key, fallback = null) {
     if (key === "manualLineVisibility") {
       return parseVisibilityOverridesFromStorage(storageKey);
     }
-    if (key === "showAllStops" || key === "showPrivateOperators" || key === "showProblematicGeometries" || key === "lineViewAutoOpenEnabled") {
+    if (key === "showAllStops" || key === "showPrivateOperators" || key === "showProblematicGeometries" || key === "colorblindMode" || key === "lineViewAutoOpenEnabled") {
       return parseBooleanFromStorage(storageKey, fallback);
     }
     return localStorage.getItem(storageKey) || fallback;
@@ -97,7 +98,7 @@ function writeStoredPreference(key, value) {
     return;
   }
 
-  if (key === "showAllStops" || key === "showPrivateOperators" || key === "showProblematicGeometries" || key === "lineViewAutoOpenEnabled") {
+  if (key === "showAllStops" || key === "showPrivateOperators" || key === "showProblematicGeometries" || key === "colorblindMode" || key === "lineViewAutoOpenEnabled") {
     persistBooleanToStorage(storageKey, Boolean(value));
     return;
   }
@@ -134,6 +135,9 @@ function normalizePreferencePatch(patch = {}) {
   if (Object.prototype.hasOwnProperty.call(source, "showProblematicGeometries")) {
     normalized.showProblematicGeometries = Boolean(source.showProblematicGeometries);
   }
+  if (Object.prototype.hasOwnProperty.call(source, "colorblindMode")) {
+    normalized.colorblindMode = Boolean(source.colorblindMode);
+  }
   if (Object.prototype.hasOwnProperty.call(source, "activeModeKeys")) {
     normalized.activeModeKeys = normalizePreferenceStringList(source.activeModeKeys);
   }
@@ -151,8 +155,13 @@ function applyUserPreferences(preferences = {}) {
   const normalized = normalizePreferencePatch(preferences);
 
   if (Object.prototype.hasOwnProperty.call(normalized, "theme")) {
-    appState.theme = normalized.theme;
-    document.body.setAttribute("data-theme", appState.theme);
+    // Route through setTheme so the basemap follows the UI, not just body[data-theme].
+    if (typeof setTheme === "function") {
+      setTheme(normalized.theme, { persist: false });
+    } else {
+      appState.theme = normalized.theme;
+      document.body.setAttribute("data-theme", appState.theme);
+    }
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "initialCitySlug")) {
     appState.initialCitySlug = normalized.initialCitySlug || appState.initialCitySlug;
@@ -168,6 +177,17 @@ function applyUserPreferences(preferences = {}) {
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "showProblematicGeometries")) {
     appState.showProblematicGeometries = Boolean(normalized.showProblematicGeometries);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "colorblindMode")) {
+    appState.colorblindMode = Boolean(normalized.colorblindMode);
+    document.body.classList.toggle("colorblind-mode", appState.colorblindMode);
+    const toggle = document.getElementById("colorblindModeToggle");
+    if (toggle) {
+      toggle.checked = appState.colorblindMode;
+    }
+    if (typeof applyStopStatusIcons === "function") {
+      applyStopStatusIcons();
+    }
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "activeModeKeys")) {
     appState.activeModeKeys = new Set(normalized.activeModeKeys);
@@ -214,12 +234,13 @@ async function saveUserPreferences(patch = {}) {
 
 function initializeUserPreferencesFromStorage() {
   applyUserPreferences({
-    theme: readStoredPreference("theme", "light"),
+    theme: readStoredPreference("theme", "dark"),
     initialCitySlug: readStoredPreference("initialCitySlug", "seattle"),
     lineViewAutoOpenEnabled: readStoredPreference("lineViewAutoOpenEnabled", true),
     showAllStops: readStoredPreference("showAllStops", false),
     showPrivateOperators: readStoredPreference("showPrivateOperators", false),
     showProblematicGeometries: readStoredPreference("showProblematicGeometries", false),
+    colorblindMode: readStoredPreference("colorblindMode", false),
     activeModeKeys: Array.from(parseSetFromStorage(USER_PREFERENCE_STORAGE_KEYS.activeModeKeys, DEFAULT_ACTIVE_MODE_KEYS)),
     activeFrequencyKeys: Array.from(
       parseSetFromStorage(USER_PREFERENCE_STORAGE_KEYS.activeFrequencyKeys, DEFAULT_ACTIVE_FREQUENCY_KEYS)

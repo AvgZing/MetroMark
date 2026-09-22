@@ -71,7 +71,7 @@ body.override-body {
 }
 
 body[data-theme="dark"] .admin-line-editor-card {
-  background: rgba(16, 28, 40, 1);
+  background: rgba(26, 26, 26, 1);
 }
 
 .admin-line-editor-header {
@@ -93,7 +93,7 @@ body[data-theme="dark"] .admin-line-editor-card {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #177ca2;
+  background: var(--accent);
   margin-top: 4px;
   flex-shrink: 0;
 }
@@ -229,7 +229,7 @@ body[data-theme="dark"] .admin-line-editor-card {
   margin-left: auto;
   font-size: 0.72rem;
   color: var(--muted);
-  font-family: "IBM Plex Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   white-space: nowrap;
 }
 
@@ -330,7 +330,7 @@ body[data-theme="dark"] .admin-line-editor-card {
   margin-top: 8px;
   padding: 8px;
   border-radius: 8px;
-  background: rgba(23, 124, 162, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   color: var(--accent);
   font-size: 12px;
   text-align: center;
@@ -371,7 +371,7 @@ body[data-theme="dark"] .admin-line-editor-card {
   display: flex;
   gap: 8px;
   padding: 8px;
-  border-bottom: 1px solid rgba(20, 53, 71, 0.1);
+  border-bottom: 1px solid rgba(45, 45, 45, 0.1);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -404,13 +404,13 @@ body[data-theme="dark"] .admin-line-editor-card {
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 11px;
-  background: rgba(23, 124, 162, 0.1);
-  border: 1px solid rgba(23, 124, 162, 0.25);
+  background: rgba(var(--accent-rgb), 0.1);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
   color: var(--accent);
 }
 
 .override-stop-order-btn:hover {
-  background: rgba(23, 124, 162, 0.18);
+  background: rgba(var(--accent-rgb), 0.18);
 }
 
 .override-stop-item {
@@ -419,7 +419,7 @@ body[data-theme="dark"] .admin-line-editor-card {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-bottom: 1px solid rgba(20, 53, 71, 0.1);
+  border-bottom: 1px solid rgba(45, 45, 45, 0.1);
   font-size: 12px;
 }
 
@@ -429,7 +429,7 @@ body[data-theme="dark"] .admin-line-editor-card {
 
 .override-stop-item.is-dragging {
   opacity: 0.6;
-  background: rgba(23, 124, 162, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .override-stop-drag-handle {
@@ -522,7 +522,7 @@ body[data-theme="dark"] .admin-line-editor-card {
 }
 
 .operator-review-item:not(:last-child) {
-  border-bottom: 1px solid rgba(20, 53, 71, 0.1);
+  border-bottom: 1px solid rgba(45, 45, 45, 0.1);
   padding-bottom: 6px;
   margin-bottom: 6px;
 }
@@ -551,7 +551,7 @@ body[data-theme="dark"] .admin-line-editor-card {
 }
 
 .operator-toggle-btn:hover {
-  background: rgba(23, 124, 162, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .operator-toggle-btn.allowed {
@@ -729,7 +729,7 @@ body[data-theme="dark"] .admin-line-editor-card {
 }
 
 .stop-order-pos {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   color: var(--muted, #5a5a5a);
   width: 22px;
 }

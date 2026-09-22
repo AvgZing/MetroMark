@@ -69,6 +69,7 @@ This document catalogs all major variables, objects, and data structures used th
 - **`appState.lineViewOrderingVoteClickSetsByLineKey`** - Map of lineKey → Set of stopKeys clicked (vote trigger)
 
 ### UI State
+- **`appState.colorblindMode`** - Boolean user preference; adds check/cross glyphs to stop markers (`metromark_colorblind_mode`)
 - **`appState.mobilePanelsOpen`** - Boolean; sidebar is visible on mobile
 - **`appState.activePopup`** - 'account' or '' (only one popup at a time)
 - **`appState.routeSelectPopup`** - Popup instance for route selection on map
@@ -225,7 +226,9 @@ Server-side `cache_key` prefixes written by the Transitland sources:
 
 ### Line Frequency Bucket
 **Function:** `lineFrequencyBucket(line)`
-- Returns 'frequent' (≤10 min), 'regular' (10-30 min), 'local' (>30 min), or 'unknown'
+- Returns the server-classified bucket: 'frequent' (≤10 min), 'regular' (10-30 min), 'local' (>30 min), or 'unknown'
+- Bucketing is server-owned (`server/sources/transitland/headway.js`, stored in `route_metadata.frequency_bucket`); the client only validates it
+- Fallback headway is flagged server-side as `headway_fallback` on route features
 
 ### Line Progress Metrics
 **Function:** `lineProgressMetrics(lineKey, fallbackTotal)`
@@ -358,6 +361,7 @@ MapLibre "routes-vector" source (pmtiles:// protocol, source-layer "routes") + f
 - `"metromark_show_private_operators"` - Boolean
 - `"metromark_show_problematic_geometries"` - Boolean
 - `"metromark_show_all_stops"` - Boolean
+- `"metromark_colorblind_mode"` - Boolean user preference (mirrors `profiles.preferences.colorblindMode`)
 - `"metromark_[presetName]"` - Serialized preset snapshot (auto-named)
 
 ### PostgreSQL Data Store Tables
@@ -409,7 +413,17 @@ Supabase (`operations/sql/supabase-baseline.sql`) holds the auth/user tables: `p
 
 ---
 
+## UI Shell & Design Tokens
+- Sheet states: `panel.dataset.sheetState` = `peek` / `half` / `full` (classes `sheet-peek` / `sheet-half` / `sheet-full`), applied by `UI/shell/sheet.js`.
+- Control fill tokens: `--control-bg` / `--control-hover` (one step stronger than `--button-bg`, used by line-view and filter controls).
+- Accent text tokens: `--on-accent` (text on an `--accent`/`--accent-strong` fill; white in light theme, near-black in dark) and `--accent-text` (accent-coloured text on normal surfaces). Top-bar-only colors are scoped under `.topbar` because the account/theme buttons are migrated into the mobile search row.
+- Stop marker colors: `STOP_STYLE` in `Map/stop-style.js` (`visitedFill` green, `unvisitedFill` light gray, `strokeWidth`), shared by the map paint and the line-view list.
+- Status glyph layers: `stops-status-icon-<status>` symbol layers added by `Map/stop-status.js`, one per entry in `stopStatusIconSpecs()` gated by a `feature-state` opacity expression.
+- Shared client/server constants: `public/scripts/shared/constants.js` (`ROUTE_STOP_TYPES`) mirrors `DEFAULT_STOP_TYPES` in `server/routes/helpers.js`.
+
 ## Deprecated / Legacy
+- Removed: `sheet-third` sheet state, legacy `.cities-menu` sheet styles, `Styles/styles.css`.
+- Client-side frequency bucket derivation removed; the server value is authoritative.
 
 The viewport bbox transit pipeline has been removed:
 - Client-side area/bbox fetching (`areaCache`, `inFlightAreaKeys`, `visibleAreaKeys`, `requestedAreaKeys`) no longer exists; the map renders from the PMTiles vector source.

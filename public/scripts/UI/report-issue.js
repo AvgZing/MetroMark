@@ -5,6 +5,8 @@
 
 (function () {
   let capture = null;
+  let capturePending = false;
+  let captureToken = 0;
 
   function openModal() {
     if (typeof appState === "undefined" || !appState.map || !appState.mapReady) {
@@ -12,7 +14,19 @@
       return;
     }
     capture = captureViewport();
+    const token = (captureToken += 1);
+    capturePending = true;
     renderPreview();
+    captureScreenshot().then((dataUrl) => {
+      if (token !== captureToken) {
+        return;
+      }
+      capturePending = false;
+      if (capture) {
+        capture.screenshot = dataUrl;
+      }
+      renderPreview();
+    });
     const description = document.getElementById("reportDescriptionInput");
     if (description) {
       description.value = "";
@@ -25,6 +39,8 @@
   }
 
   function closeModal() {
+    captureToken += 1;
+    capturePending = false;
     const modal = document.getElementById("reportModal");
     if (modal) {
       modal.hidden = true;
@@ -60,33 +76,83 @@
         lat: round(bounds.getCenter().lat)
       },
       zoom: map.getZoom ? Math.round(map.getZoom() * 10) / 10 : null,
-      screenshot: captureScreenshot()
+      screenshot: ""
     };
   }
 
+  // The map canvas is WebGL with preserveDrawingBuffer off, so it must be read
+  // during a render frame; reading it at rest returns a cleared (blank) buffer.
   function captureScreenshot() {
-    const canvas = appState?.map && typeof appState.map.getCanvas === "function" ? appState.map.getCanvas() : null;
-    if (!canvas) {
-      return "";
+    const map = appState?.map;
+    const canvas = map && typeof map.getCanvas === "function" ? map.getCanvas() : null;
+    if (!map || !canvas) {
+      return Promise.resolve("");
     }
-    try {
-      const maxWidth = 1000;
-      const scale = Math.min(1, maxWidth / canvas.width);
-      const width = Math.max(1, Math.round(canvas.width * scale));
-      const height = Math.max(1, Math.round(canvas.height * scale));
-      const offscreen = document.createElement("canvas");
-      offscreen.width = width;
-      offscreen.height = height;
-      const context = offscreen.getContext("2d");
-      if (!context) {
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        map.off("render", finish);
+        resolve(encodeScreenshot(canvas));
+      };
+
+      map.once("render", finish);
+      map.triggerRepaint();
+      window.setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        map.off("render", finish);
+        resolve("");
+      }, 700);
+    });
+  }
+
+  // JPEG keeps the payload well under the server's JSON body limit; the steps
+  // drop resolution/quality if a busy viewport still encodes too large.
+  function encodeScreenshot(canvas) {
+    const maxChars =
+      typeof REPORT_SCREENSHOT_MAX_CHARS === "number" ? REPORT_SCREENSHOT_MAX_CHARS : 600000;
+    const steps = [
+      { width: 900, quality: 0.72 },
+      { width: 720, quality: 0.65 },
+      { width: 560, quality: 0.6 }
+    ];
+
+    let smallest = "";
+    for (const step of steps) {
+      let dataUrl = "";
+      try {
+        const scale = Math.min(1, step.width / canvas.width);
+        const width = Math.max(1, Math.round(canvas.width * scale));
+        const height = Math.max(1, Math.round(canvas.height * scale));
+        const offscreen = document.createElement("canvas");
+        offscreen.width = width;
+        offscreen.height = height;
+        const context = offscreen.getContext("2d");
+        if (!context) {
+          return "";
+        }
+        context.drawImage(canvas, 0, 0, width, height);
+        dataUrl = offscreen.toDataURL("image/jpeg", step.quality);
+      } catch {
+        // A tainted canvas (external imagery without CORS) cannot be exported.
         return "";
       }
-      context.drawImage(canvas, 0, 0, width, height);
-      return offscreen.toDataURL("image/jpeg", 0.7);
-    } catch {
-      // A tainted canvas (external imagery without CORS) cannot be exported.
-      return "";
+      if (!smallest || dataUrl.length < smallest.length) {
+        smallest = dataUrl;
+      }
+      if (dataUrl.length <= maxChars) {
+        return dataUrl;
+      }
     }
+
+    return smallest.length <= maxChars ? smallest : "";
   }
 
   function renderPreview() {
@@ -104,6 +170,10 @@
     }
     const preview = document.getElementById("reportCapturePreview");
     if (!preview) {
+      return;
+    }
+    if (capturePending) {
+      preview.textContent = "Capturing screenshot…";
       return;
     }
     if (capture && capture.screenshot) {

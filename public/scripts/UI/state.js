@@ -1,7 +1,3 @@
-const ROUTE_STOP_TYPES = [0, 1];
-const ROUTE_STOP_TYPES_KEY = ROUTE_STOP_TYPES.join("-");
-const ROUTE_STOP_TYPES_QUERY = ROUTE_STOP_TYPES.join(",");
-
 const SHOW_ALL_STOPS_STORAGE_KEY = "metromark_show_all_stops";
 
 const DEFAULT_ACTIVE_MODE_KEYS = [MODE_FILTER_METRO, MODE_FILTER_TRAM, MODE_FILTER_RAIL, MODE_FILTER_OTHER];
@@ -42,9 +38,10 @@ const appState = {
   showAllStops: parseBooleanFromStorage(SHOW_ALL_STOPS_STORAGE_KEY, false),
   showPrivateOperators: parseBooleanFromStorage("metromark_show_private_operators", false),
   showProblematicGeometries: parseBooleanFromStorage("metromark_show_problematic_geometries", false),
+  colorblindMode: parseBooleanFromStorage("metromark_colorblind_mode", false),
   lineSearchQuery: "",
   initialCitySlug: localStorage.getItem("metromark_initial_city_slug") || "seattle",
-  theme: localStorage.getItem("metromark_theme") || "light",
+  theme: localStorage.getItem("metromark_theme") || "dark",
   activePopup: "",
   hoverPopup: null,
   routeHoverPopup: null,
