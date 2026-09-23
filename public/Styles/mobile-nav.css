@@ -5,6 +5,33 @@
   display: none;
 }
 
+/* Navigation icons are stroke-only paths. Keep this in the base layer: the
+   portrait block used to own it, which left every other layout rendering the
+   SVGs as solid black shapes. */
+.tabbar-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.quickfilter-icon-pill svg,
+.line-view-reverse-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.quickfilter-icon-pill svg {
+  stroke-width: 1.7;
+}
+
+.line-view-reverse-icon svg {
+  stroke-width: 1.8;
+}
+
 .map-search-reopen,
 .quickfilter-pills,
 .quickfilter-logo,
@@ -17,7 +44,7 @@
   display: none;
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
 
   body.quickfilter-hidden .sidebar-quickfilter {
     display: none;
@@ -87,11 +114,6 @@
   .quickfilter-icon-pill svg {
     width: 18px;
     height: 18px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.7;
-    stroke-linecap: round;
-    stroke-linejoin: round;
   }
 
   .quickfilter-pill {
@@ -292,11 +314,6 @@
   .tabbar-icon {
     width: 21px;
     height: 21px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.7;
-    stroke-linecap: round;
-    stroke-linejoin: round;
   }
 
   body.line-view-open .tabbar {
@@ -479,7 +496,7 @@
   z-index: 90;
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   body.route-selected .line-view-panel {
     bottom: env(safe-area-inset-bottom);
   }
@@ -646,7 +663,7 @@
 /* ---------------------------------------------------------------------------
    Round 9 mobile fixes
 --------------------------------------------------------------------------- */
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   .line-view-sheet-handle,
   .sheet-handle {
     margin: 0 auto 0;
@@ -763,7 +780,7 @@
   background: var(--soft-accent);
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   .line-view-actions .btn {
     border-radius: 999px;
   }
@@ -806,7 +823,7 @@
   }
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   .line-view-card .line-view-reverse-btn {
     flex: 0 0 26px !important;
     width: 26px !important;
@@ -821,7 +838,7 @@
 /* ---------------------------------------------------------------------------
    Portrait mobile: compact route panel, page-sheet parity, map geometry
 --------------------------------------------------------------------------- */
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   /* A hidden picker must not render as an invisible full-width box. */
   #routeSelectPanel[hidden] {
     display: none !important;
@@ -940,11 +957,6 @@
   .line-view-reverse-icon svg {
     width: 14px;
     height: 14px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.8;
-    stroke-linecap: round;
-    stroke-linejoin: round;
   }
 
   /* Peek with a focused route: name row, X/Zoom stack, and progress. */
@@ -1236,5 +1248,206 @@
   /* Filters is a nav tab, so the in-panel adjust prompt is redundant. */
   #overlayAdjustFiltersBtn {
     display: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Wide-short layouts (iPhone-Duo-style outer display, phones in landscape):
+   the top bar is dropped and the primary destinations float as round icon
+   buttons over a full-bleed map, mirroring the side controls the system puts
+   on the camera edge. Panels open over the map from the trailing edge.
+--------------------------------------------------------------------------- */
+@media (max-width: 960px) and (orientation: landscape) {
+  :root {
+    --topbar-h: 0px;
+    --tabbar-h: 0px;
+    --rail-inset: calc(env(safe-area-inset-right) + 10px);
+    --rail-size: 48px;
+  }
+
+  body {
+    overflow: hidden;
+  }
+
+  .topbar {
+    display: none;
+  }
+
+  .app-shell {
+    grid-template-columns: minmax(220px, 34vw) 1fr;
+    grid-template-rows: 1fr;
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  .sidebar {
+    max-height: none;
+    border-bottom: none;
+    border-right: 1px solid var(--panel-border);
+  }
+
+  /* Map stays full-bleed; the controls float on top of it. */
+  .map-stage {
+    margin-right: 0;
+  }
+
+  .tabbar {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 50%;
+    bottom: auto;
+    left: auto;
+    right: var(--rail-inset);
+    transform: translateY(-50%);
+    width: auto;
+    max-height: calc(100dvh - 24px);
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    overflow-y: auto;
+    scrollbar-width: none;
+    z-index: 80;
+  }
+
+  .tabbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tabbar-btn {
+    flex: 0 0 auto;
+    width: var(--rail-size);
+    height: var(--rail-size);
+    padding: 0;
+    border: 1px solid var(--panel-border);
+    border-radius: 999px;
+    background: var(--panel);
+    color: var(--ink);
+    box-shadow: var(--elev-1);
+  }
+
+  .tabbar-btn[aria-current="page"] {
+    background: var(--accent);
+    border-color: transparent;
+    color: var(--on-accent);
+  }
+
+  /* Icon-only on the side; text labels stay in horizontal bars. */
+  .tabbar-btn span {
+    display: none;
+  }
+
+  .tabbar-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* Profile and theme travel with the floating stack. */
+  .tabbar #themeToggleBtn,
+  .tabbar .account-btn {
+    flex: 0 0 auto;
+    width: var(--rail-size);
+    height: var(--rail-size);
+    min-width: 0;
+    margin-top: 12px;
+    padding: 0;
+    border: 1px solid var(--panel-border);
+    border-radius: 999px;
+    background: var(--panel);
+    box-shadow: var(--elev-1);
+    justify-content: center;
+  }
+
+  .tabbar #themeToggleBtn:hover,
+  .tabbar .account-btn:hover {
+    background: var(--control-bg);
+  }
+
+  .tabbar .account-btn .topbar-user-label {
+    display: none;
+  }
+
+  #overlayAdjustFiltersBtn {
+    display: none;
+  }
+
+  /* Keep the map mode stack top-left of the map (attribution owns bottom-left). */
+  .map-overlay-controls {
+    top: 10px;
+    bottom: auto;
+    left: 10px;
+    right: auto;
+    flex-direction: column;
+  }
+
+  /* Map attribution and zoom move left so the control stack stays clear. */
+  .maplibregl-ctrl-bottom-right {
+    right: auto;
+    left: 8px;
+  }
+
+  .maplibregl-ctrl-top-right {
+    right: calc(var(--rail-inset) + var(--rail-size) + 8px);
+  }
+}
+
+@media (max-width: 960px) and (orientation: landscape) and (max-height: 430px) {
+  :root {
+    --rail-size: 42px;
+  }
+}
+
+/* Panels in wide-short poses: anchored to the leading edge so the floating
+   controls and the map stay usable, single column content. */
+@media (max-width: 960px) and (orientation: landscape) {
+  .filters-panel-backdrop {
+    position: fixed;
+    inset: 0;
+    padding: 0;
+    background: rgba(0, 0, 0, 0.24);
+    z-index: 60;
+  }
+
+  .filters-panel-backdrop[hidden] {
+    display: none;
+  }
+
+  /* #filtersPanel and #citiesPanel */
+  .filters-panel {
+    position: fixed;
+    top: 8px;
+    bottom: 8px;
+    left: 8px;
+    right: auto;
+    width: min(460px, calc(100vw - var(--rail-size) - 36px));
+    max-height: none;
+    height: auto;
+    margin: 0;
+    padding: 12px;
+    overflow-y: auto;
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    background: var(--panel);
+    box-shadow: var(--shadow);
+  }
+
+  /* Progress overlay hosts its own panel */
+  #progressOverlay .filters-panel {
+    position: fixed;
+    top: 8px;
+    bottom: 8px;
+    left: 8px;
+    right: auto;
+    width: min(460px, calc(100vw - var(--rail-size) - 36px));
+    max-height: none;
+    height: auto;
+  }
+
+  /* Column count is handled by the filters-panel container query. */
+  .filters-panel .filters-panel-header {
+    margin-bottom: 6px;
   }
 }

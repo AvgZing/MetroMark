@@ -524,6 +524,8 @@ body.basemap-switching #map {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
+  container-type: inline-size;
+  container-name: filters-panel;
 }
 
 .filters-grid {
@@ -531,6 +533,15 @@ body.basemap-switching #map {
   grid-template-columns: minmax(240px, 300px) 1fr;
   gap: var(--sp-5);
   align-items: start;
+}
+
+@container filters-panel (max-width: 640px) {
+  .filters-grid {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-4);
+  }
 }
 
 .filters-col {

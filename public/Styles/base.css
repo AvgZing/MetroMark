@@ -491,7 +491,7 @@ body[data-theme="dark"] .user-status-card {
   line-height: 1.32;
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   .user-status-card {
     padding: 5px 8px;
   }
@@ -1248,7 +1248,7 @@ body.app-ready .sidebar .panel:nth-of-type(3) {
   }
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   body {
     overflow: hidden;
   }

@@ -154,7 +154,7 @@
   }
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   /* The top bar is hidden in portrait, so the shell/map fill the viewport down
      to the tab bar only. */
   .app-shell {

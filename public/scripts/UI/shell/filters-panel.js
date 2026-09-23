@@ -33,7 +33,8 @@
     const panelEl = document.getElementById("filtersPanel");
     if (panelEl) {
       const portrait = isPortrait();
-      const state = portrait && next ? "full" : "peek";
+      const compactNav = portrait || (typeof isWideShortLayout === "function" && isWideShortLayout());
+      const state = compactNav && next ? "full" : "peek";
       if (typeof window.setPageSheetState === "function") {
         window.setPageSheetState(panelEl, state);
       } else {

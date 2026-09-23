@@ -157,3 +157,45 @@
   font-size: 11px;
   color: var(--muted);
 }
+
+/* Hinged / dual-segment viewports (foldables with a crease, dual-screen
+   devices): keep task UI inside a single segment instead of spanning the fold,
+   and never centre it on the crease. These blocks only apply where the browser
+   reports viewport segments, so every other viewport is unaffected. */
+@media (horizontal-viewport-segments: 2) {
+  /* Transient notices centre in the primary (first) segment, not on the fold. */
+  .map-notice {
+    left: calc(env(viewport-segment-width 0 0, 50vw) / 2);
+  }
+
+  /* Map mode stack sits just inside the fold on the leading segment. */
+  .map-overlay-controls,
+  body.line-view-open .map-overlay-controls {
+    right: auto;
+    left: env(viewport-segment-width 0 0, 50vw);
+    transform: translateX(calc(-100% - 14px));
+  }
+
+  /* Filters / cities / progress panels stay within the leading segment. */
+  .filters-panel,
+  #progressOverlay .filters-panel {
+    width: min(460px, calc(env(viewport-segment-width 0 0, 50vw) - 20px));
+  }
+}
+
+/* Wide-short compact layout on a hinged viewport: the control stack moves to
+   the inner edge of the leading segment. */
+@media (horizontal-viewport-segments: 2) and (max-width: 960px) and (orientation: landscape) {
+  .tabbar {
+    right: auto;
+    left: env(viewport-segment-width 0 0, 50vw);
+    transform: translate(-100%, -50%);
+  }
+}
+
+/* Book-style fold (segments stacked): keep the notice in the top segment. */
+@media (vertical-viewport-segments: 2) {
+  .map-notice {
+    top: calc(env(viewport-segment-height 0 0, 50vh) / 2);
+  }
+}

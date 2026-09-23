@@ -420,7 +420,13 @@ function hoverInteractionsEnabled() {
 }
 
 function isPortraitMobileLayout() {
-  return window.matchMedia("(max-width: 900px) and (orientation: portrait)").matches;
+  return window.matchMedia("(max-width: 960px) and (orientation: portrait)").matches;
+}
+
+// Wide-short layouts (iPhone-Duo-style outer display, phones and small tablets
+// in landscape): the top bar is dropped and navigation floats over the map.
+function isWideShortLayout() {
+  return window.matchMedia("(max-width: 960px) and (orientation: landscape)").matches;
 }
 
 function setMobilePanelsOpen(open) {
@@ -438,8 +444,16 @@ function setMobilePanelsOpen(open) {
 }
 
 function syncMobilePanelLayout() {
-  if (!isPortraitMobileLayout()) {
+  const compactNav =
+    isPortraitMobileLayout() || (typeof isWideShortLayout === "function" && isWideShortLayout());
+
+  if (!compactNav) {
     setMobilePanelsOpen(false);
+    // Leaving the compact layouts: drop map-sheet-only state so desktop chrome
+    // (such as the map overlay controls) settles back into its corner.
+    if (!String(appState.lineViewLineKey || "").trim()) {
+      document.body.classList.remove("line-view-open");
+    }
     return;
   }
 

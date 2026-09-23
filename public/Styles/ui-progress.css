@@ -42,6 +42,21 @@
   align-items: start;
 }
 
+/* Narrow panel (side panel, small window, split screen): stack the summary above
+   the list instead of squeezing the list into a third of the width. */
+@container filters-panel (max-width: 640px) {
+  .progress-overlay-grid {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp-4);
+  }
+
+  #overlayProgressList {
+    max-height: none;
+  }
+}
+
 .progress-overlay-stats {
   display: flex;
   flex-direction: column;

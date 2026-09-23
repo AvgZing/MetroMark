@@ -20,7 +20,8 @@
     const panelEl = overlay.querySelector(".filters-panel");
     if (panelEl) {
       const portrait = typeof isPortraitMobileLayout === "function" && isPortraitMobileLayout();
-      const state = portrait && open ? "full" : "peek";
+      const compactNav = portrait || (typeof isWideShortLayout === "function" && isWideShortLayout());
+      const state = compactNav && open ? "full" : "peek";
       if (typeof window.setPageSheetState === "function") {
         window.setPageSheetState(panelEl, state);
       } else {

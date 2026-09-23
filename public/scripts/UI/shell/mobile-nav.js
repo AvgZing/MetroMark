@@ -6,6 +6,15 @@
     return typeof isPortraitMobileLayout === "function" ? isPortraitMobileLayout() : false;
   }
 
+  // Wide-short poses use the same compact navigation, presented as a side rail.
+  function isWideShort() {
+    return typeof isWideShortLayout === "function" && isWideShortLayout();
+  }
+
+  function hasCompactNav() {
+    return isPortrait() || isWideShort();
+  }
+
   function currentScreen() {
     const body = document.body;
     const cities = document.getElementById("citiesBackdrop");
@@ -65,7 +74,7 @@
   }
 
   function setScreen(screen) {
-    if (!isPortrait()) {
+    if (!hasCompactNav()) {
       return;
     }
 
@@ -133,9 +142,17 @@
     updateTabs(screen);
   }
 
+  function anyPagePanelOpen() {
+    return ["filtersPanelBackdrop", "citiesBackdrop", "progressOverlay"].some((id) => {
+      const el = document.getElementById(id);
+      return Boolean(el && !el.hidden);
+    });
+  }
+
   function resetScreens() {
     document.body.classList.remove("mobile-progress-open", "mobile-profile-open");
-    if (typeof window.setFiltersPanelOpen === "function") {
+    // Keep an open page panel so a resize or unfold never drops the task.
+    if (!anyPagePanelOpen() && typeof window.setFiltersPanelOpen === "function") {
       window.setFiltersPanelOpen(false);
     }
     if (appState.activePopup === "account") {
@@ -176,12 +193,12 @@
     });
 
     window.addEventListener("resize", () => {
-      if (!isPortrait()) {
+      if (!hasCompactNav()) {
         resetScreens();
       }
     });
     window.addEventListener("orientationchange", () => {
-      if (!isPortrait()) {
+      if (!hasCompactNav()) {
         resetScreens();
       }
     });

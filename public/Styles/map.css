@@ -386,7 +386,9 @@ body.app-ready .map-overlay-controls {
   .map-overlay-controls {
     left: 10px;
     right: auto;
-    top: 10px;
+    bottom: 12px;
+    top: auto;
+    flex-direction: row;
   }
 
   .map-mode-btn {
@@ -395,7 +397,7 @@ body.app-ready .map-overlay-controls {
   }
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   .map-stage {
     width: 100%;
   }

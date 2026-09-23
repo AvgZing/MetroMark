@@ -447,9 +447,20 @@
     const actions = document.querySelector(".topbar-actions");
     const searchRow = document.querySelector(".quickfilter-search");
     const pillsRow = document.querySelector(".quickfilter-pills");
+    const rail = document.getElementById("mobileTabbar");
     const account = document.getElementById("accountPopupBtn");
     const theme = document.getElementById("themeToggleBtn");
     if (!actions || !searchRow || !pillsRow || !account || !theme) {
+      return;
+    }
+    if (rail && typeof isWideShortLayout === "function" && isWideShortLayout()) {
+      // Wide-short poses keep controls on the side rail (top bar is hidden).
+      if (theme.parentElement !== rail) {
+        rail.appendChild(theme);
+      }
+      if (account.parentElement !== rail) {
+        rail.appendChild(account);
+      }
       return;
     }
     if (isPortrait()) {

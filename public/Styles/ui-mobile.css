@@ -1,7 +1,7 @@
 /* Mobile (portrait) overrides for the UI system. Loaded directly before mobile-nav.css,
    which owns the bottom nav and the final mobile overrides. */
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   :root {
     --control-h: 42px;
   }
@@ -47,7 +47,7 @@
   }
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   body.map-chrome-hidden .sidebar-quickfilter,
   body.map-chrome-hidden .map-corner-brand,
   body.map-chrome-hidden .map-overlay-controls,
@@ -118,7 +118,7 @@
   }
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   .topbar-nav {
     display: none;
   }
@@ -249,7 +249,7 @@
   }
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   .user-status-card {
     background: var(--panel);
     border: 1px solid var(--panel-border);
@@ -272,7 +272,7 @@
   }
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   .line-view-panel.is-empty .line-view-stop-list {
     display: grid;
     grid-template-columns: 1fr;
@@ -288,7 +288,7 @@
   }
 }
 
-@media (max-width: 900px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait) {
   .progress-overlay-grid {
     display: flex;
     flex-direction: column;
