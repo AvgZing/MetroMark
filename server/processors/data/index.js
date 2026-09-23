@@ -8,6 +8,7 @@ const visits = require("./visits");
 const presets = require("./presets");
 const usage = require("./usage");
 const overrides = require("./overrides");
+const cityPresets = require("./city-presets");
 const reharvestFlags = require("./reharvest-flags");
 const issueReports = require("./issue-reports");
 
@@ -60,6 +61,17 @@ module.exports = {
   getAgencyReview: overrides.getAgencyReview,
   listAgencyReviews: overrides.listAgencyReviews,
   upsertAgencyReview: overrides.upsertAgencyReview,
+  listCityPresets: cityPresets.listCityPresets,
+  getCityPreset: cityPresets.getCityPreset,
+  upsertCityPreset: cityPresets.upsertCityPreset,
+  deleteCityPreset: cityPresets.deleteCityPreset,
+  setCityPresetRoutes: cityPresets.setCityPresetRoutes,
+  patchCityPresetRoutes: cityPresets.patchCityPresetRoutes,
+  removeCityPresetRoutes: cityPresets.removeCityPresetRoutes,
+  setCityPresetOperators: cityPresets.setCityPresetOperators,
+  patchCityPresetOperators: cityPresets.patchCityPresetOperators,
+  listCityRouteKeySets: cityPresets.listCityRouteKeySets,
+  listOperators: cityPresets.listOperators,
   setVisitedState: visits.setVisitedState,
   getVisitedStations: visits.getVisitedStations,
   clearVisitedStationsForLine: visits.clearVisitedStationsForLine,

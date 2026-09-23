@@ -228,7 +228,16 @@ async function requestBackfill(bbox, options = {}) {
 
     const changed = (Number(payload?.addedRoutes || 0) + Number(payload?.updatedRoutes || 0)) > 0;
     if (changed) {
-      reloadVectorSource();
+      // The server rebuilt the archive, so its build stamp changed: adopting it
+      // both gives the new URL and reloads the source.
+      if (typeof syncArchiveVersion === "function") {
+        const adopted = await syncArchiveVersion();
+        if (!adopted) {
+          reloadVectorSource();
+        }
+      } else {
+        reloadVectorSource();
+      }
     }
 
     stopBackfillProgressPolling();
@@ -279,11 +288,11 @@ function reloadVectorSource() {
     return;
   }
 
-  appState.vectorSourceVersion = (Number(appState.vectorSourceVersion || 0) + 1);
-
   const source = appState.map.getSource("routes-vector");
-  const url = `pmtiles:///api/tiles/routes.pmtiles?v=${appState.vectorSourceVersion}`;
   if (source && typeof source.setUrl === "function") {
+    const url = typeof vectorSourceUrl === "function"
+      ? vectorSourceUrl()
+      : `pmtiles:///api/tiles/routes.pmtiles?v=${Date.now()}`;
     try {
       source.setUrl(url);
     } catch {

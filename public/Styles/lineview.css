@@ -177,6 +177,86 @@ body[data-theme="dark"] .line-view-card {
   gap: 4px;
 }
 
+/* Manual admin stop order: hide the algorithm picker (Auto/Main/U-Shape/Loop)
+   but keep Reverse, and explain why the order is fixed. */
+.line-view-diagnostics.is-admin-order .diagnostic-label,
+.line-view-diagnostics.is-admin-order #lineViewOrderingResolved,
+.line-view-diagnostics.is-admin-order .line-view-ordering-group {
+  display: none;
+}
+
+.line-view-admin-order-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.line-view-diagnostics.is-admin-order #lineViewAdminOrderNote {
+  display: block;
+}
+
+/* Branch selection: split points where the user swaps alternative stop runs. */
+.line-view-branch-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* `display:flex` above would otherwise beat the `hidden` attribute, leaving an
+   empty 4px box in every line view (override or not). */
+.line-view-branch-selector[hidden] {
+  display: none;
+}
+
+.branch-selector-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.branch-selector-label {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.branch-selector-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.branch-selector-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: var(--button-bg);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.branch-selector-btn:hover {
+  background: var(--button-hover);
+}
+
+.branch-selector-btn.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.line-view-stop-branch {
+  margin: 0 0 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
 .line-view-ordering-btn,
 .line-view-reverse-btn {
   display: inline-flex;

@@ -14,6 +14,18 @@ const els = {
   loginStatusMessage: document.getElementById("loginStatusMessage"),
   logoutBtn: document.getElementById("logoutBtn"),
   refreshMapBtn: document.getElementById("refreshMapBtn"),
+  areaRefreshBtn: document.getElementById("areaRefreshBtn"),
+  areaRefreshPanel: document.getElementById("areaRefreshPanel"),
+  areaRefreshCloseBtn: document.getElementById("areaRefreshCloseBtn"),
+  areaRefreshWest: document.getElementById("areaRefreshWest"),
+  areaRefreshSouth: document.getElementById("areaRefreshSouth"),
+  areaRefreshEast: document.getElementById("areaRefreshEast"),
+  areaRefreshNorth: document.getElementById("areaRefreshNorth"),
+  areaRefreshSpan: document.getElementById("areaRefreshSpan"),
+  areaRefreshStopsCb: document.getElementById("areaRefreshStopsCb"),
+  areaRefreshHeadwayCb: document.getElementById("areaRefreshHeadwayCb"),
+  areaRefreshRunBtn: document.getElementById("areaRefreshRunBtn"),
+  areaRefreshStatus: document.getElementById("areaRefreshStatus"),
   routeEditPanel: document.getElementById("routeEditPanel"),
   stationEditPanel: document.getElementById("stationEditPanel"),
   routeIdentity: document.getElementById("routeIdentity"),
@@ -26,8 +38,29 @@ const els = {
   routeMode: document.getElementById("routeMode"),
   routeColor: document.getElementById("routeColor"),
   routeOrdering: document.getElementById("routeOrdering"),
+  routeFrequency: document.getElementById("routeFrequency"),
   routeProblematic: document.getElementById("routeProblematic"),
   routeStopsList: document.getElementById("routeStopsList"),
+  newStopName: document.getElementById("newStopName"),
+  newStopLat: document.getElementById("newStopLat"),
+  newStopLon: document.getElementById("newStopLon"),
+  addStopBtn: document.getElementById("addStopBtn"),
+  branchGroupsList: document.getElementById("branchGroupsList"),
+  addBranchGroupBtn: document.getElementById("addBranchGroupBtn"),
+  resetRouteBtn: document.getElementById("resetRouteBtn"),
+  deleteRouteOverrideBtn: document.getElementById("deleteRouteOverrideBtn"),
+  cityPanelSelect: document.getElementById("cityPanelSelect"),
+  cityPanelBody: document.getElementById("cityPanelBody"),
+  cityPanelSummary: document.getElementById("cityPanelSummary"),
+  citySelectedRoute: document.getElementById("citySelectedRoute"),
+  cityOperatorsList: document.getElementById("cityOperatorsList"),
+  cityOperatorSearchInput: document.getElementById("cityOperatorSearchInput"),
+  cityOperatorSearchBtn: document.getElementById("cityOperatorSearchBtn"),
+  cityOperatorResults: document.getElementById("cityOperatorResults"),
+  cityAddSelectedRouteBtn: document.getElementById("cityAddSelectedRouteBtn"),
+  cityExcludeSelectedRouteBtn: document.getElementById("cityExcludeSelectedRouteBtn"),
+  cityRoutesList: document.getElementById("cityRoutesList"),
+  cityPanelStatus: document.getElementById("cityPanelStatus"),
   saveStopOrderBtn: document.getElementById("saveStopOrderBtn"),
   clearStopOrderBtn: document.getElementById("clearStopOrderBtn"),
   saveRouteBtn: document.getElementById("saveRouteBtn"),
@@ -36,6 +69,16 @@ const els = {
   routeSearchInput: document.getElementById("routeSearchInput"),
   routeModeFilterSelect: document.getElementById("routeModeFilterSelect"),
   routeSearchInfo: document.getElementById("routeSearchInfo"),
+  routeSearchResults: document.getElementById("routeSearchResults"),
+  refreshSelectedRoutesBtn: document.getElementById("refreshSelectedRoutesBtn"),
+  routeBatchStatus: document.getElementById("routeBatchStatus"),
+  transitlandSearchInput: document.getElementById("transitlandSearchInput"),
+  transitlandSearchBtn: document.getElementById("transitlandSearchBtn"),
+  transitlandSearchResults: document.getElementById("transitlandSearchResults"),
+  transitlandSearchStatus: document.getElementById("transitlandSearchStatus"),
+  refreshRouteBtn: document.getElementById("refreshRouteBtn"),
+  removeRouteBtn: document.getElementById("removeRouteBtn"),
+  routeDataStatus: document.getElementById("routeDataStatus"),
   hideAllOperatorsBtn: document.getElementById("hideAllOperatorsBtn"),
   showAllOperatorsBtn: document.getElementById("showAllOperatorsBtn"),
   batchModeSelect: document.getElementById("batchModeSelect"),
@@ -65,13 +108,24 @@ const state = {
   underlayFeatures: [],
   selectedLineKey: "",
   selectedStationKey: "",
+  selectedRouteFeature: null,
   selectedRouteOverride: null,
   selectedRouteReview: null,
   routeOverlapPopup: null,
   operatorsByCity: new Map(),
   currentRouteStops: [],
-  manualEdits: []
+  manualEdits: [],
+  areaRefreshOpen: false,
+  areaRefreshBbox: null,
+  routeBatchSelection: new Set(),
+  selectedBranchGroups: [],
+  cityPanelList: [],
+  cityPanelCity: null
 };
+
+// Server-side MAX_SPAN_DEGREES in server/admin/reharvest.js; mirrored so the UI
+// can warn before sending an oversized viewport.
+const MAX_REFRESH_SPAN_DEGREES = 1.8;
 
 const EMPTY_FC = { type: "FeatureCollection", features: [] };
 
@@ -117,8 +171,13 @@ async function apiRequest(path, options = {}) {
 }
 
 function setEditStatus(el, message, isError = false) {
+  if (!el) {
+    return;
+  }
   el.textContent = message;
-  el.style.color = isError ? "#a22828" : "#2e7d32";
+  el.classList.toggle("is-error", isError);
+  el.classList.toggle("is-ok", !isError);
+  el.style.color = "";
 }
 
 function recordManualEdit(kind, label, detail) {
@@ -272,13 +331,569 @@ async function initMap() {
     updateCurrentCity();
     bindMapEvents();
     updateUnderlay();
+    applyDeepLinkView();
   });
 
   state.map.on("moveend", () => {
     updateUnderlay();
     updateCurrentCity();
     loadOperatorsForViewport();
+    if (state.areaRefreshOpen) {
+      updateAreaRefreshBbox();
+    }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Area refresh (viewport reharvest) — the action now lives on the map
+// ---------------------------------------------------------------------------
+
+function currentMapBbox() {
+  if (!state.map) {
+    return null;
+  }
+  const bounds = state.map.getBounds();
+  return [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+}
+
+function formatAreaCoord(value) {
+  return Number(value).toFixed(6);
+}
+
+function updateAreaRefreshBbox() {
+  if (!state.areaRefreshOpen || !state.map) {
+    return null;
+  }
+  const bbox = currentMapBbox();
+  if (!bbox) {
+    return null;
+  }
+  state.areaRefreshBbox = bbox;
+  if (els.areaRefreshWest) els.areaRefreshWest.textContent = formatAreaCoord(bbox[0]);
+  if (els.areaRefreshSouth) els.areaRefreshSouth.textContent = formatAreaCoord(bbox[1]);
+  if (els.areaRefreshEast) els.areaRefreshEast.textContent = formatAreaCoord(bbox[2]);
+  if (els.areaRefreshNorth) els.areaRefreshNorth.textContent = formatAreaCoord(bbox[3]);
+
+  const lonSpan = bbox[2] - bbox[0];
+  const latSpan = bbox[3] - bbox[1];
+  const tooLarge = lonSpan > MAX_REFRESH_SPAN_DEGREES || latSpan > MAX_REFRESH_SPAN_DEGREES;
+  if (els.areaRefreshSpan) {
+    els.areaRefreshSpan.textContent = tooLarge
+      ? `View span ${lonSpan.toFixed(2)}° × ${latSpan.toFixed(2)}° is larger than the ${MAX_REFRESH_SPAN_DEGREES}° limit — zoom in first.`
+      : `Span ${lonSpan.toFixed(2)}° × ${latSpan.toFixed(2)}° (limit ${MAX_REFRESH_SPAN_DEGREES}°).`;
+    els.areaRefreshSpan.classList.toggle("is-error", tooLarge);
+  }
+  if (els.areaRefreshRunBtn) {
+    els.areaRefreshRunBtn.disabled = tooLarge;
+  }
+  return bbox;
+}
+
+function openAreaRefresh() {
+  if (!els.areaRefreshPanel) {
+    return;
+  }
+  state.areaRefreshOpen = true;
+  els.areaRefreshPanel.hidden = false;
+  setEditStatus(els.areaRefreshStatus, "");
+  updateAreaRefreshBbox();
+}
+
+function closeAreaRefresh() {
+  state.areaRefreshOpen = false;
+  if (els.areaRefreshPanel) {
+    els.areaRefreshPanel.hidden = true;
+  }
+}
+
+// Re-create the vector source (with a cache-busting build stamp) so a freshly
+// rebuilt archive is picked up without a page reload. Dependent layers are
+// re-added before `routes-edited` to preserve the original stacking order.
+function reloadVectorSource() {
+  const map = state.map;
+  if (!map || !map.getStyle) {
+    return;
+  }
+  const style = map.getStyle();
+  const sourceDef = style.sources && style.sources["routes-vector"];
+  if (!sourceDef) {
+    return;
+  }
+  const layerDefs = style.layers.filter((layer) => layer.source === "routes-vector");
+  const beforeId = map.getLayer("routes-edited") ? "routes-edited" : undefined;
+  for (const layer of layerDefs) {
+    if (map.getLayer(layer.id)) {
+      map.removeLayer(layer.id);
+    }
+  }
+  if (map.getSource("routes-vector")) {
+    map.removeSource("routes-vector");
+  }
+  map.addSource("routes-vector", {
+    ...sourceDef,
+    url: `pmtiles:///api/tiles/routes.pmtiles?v=${Date.now()}`
+  });
+  for (const layer of layerDefs) {
+    map.addLayer(layer, beforeId);
+  }
+}
+
+async function runAreaRefresh() {
+  const bbox = updateAreaRefreshBbox();
+  if (!bbox || !els.areaRefreshRunBtn) {
+    return;
+  }
+  if (!state.token) {
+    setEditStatus(els.areaRefreshStatus, "Log in first.", true);
+    return;
+  }
+  els.areaRefreshRunBtn.disabled = true;
+  setEditStatus(els.areaRefreshStatus, "Starting area refresh…");
+
+  const statusTimer = setInterval(async () => {
+    try {
+      const status = await apiRequest("/api/admin/tiles/reharvest/status", { method: "GET" });
+      if (status?.current) {
+        setEditStatus(els.areaRefreshStatus, `${status.current.stage}: ${status.current.message}`);
+      }
+    } catch {
+      // Polling is best-effort; the main request reports failures.
+    }
+  }, 2000);
+
+  try {
+    const payload = await apiRequest("/api/admin/tiles/reharvest", {
+      method: "POST",
+      body: {
+        bbox,
+        zoom: state.map ? state.map.getZoom() : undefined,
+        refreshStops: els.areaRefreshStopsCb ? els.areaRefreshStopsCb.checked : true,
+        refreshHeadway: els.areaRefreshHeadwayCb ? els.areaRefreshHeadwayCb.checked : true
+      }
+    });
+    clearInterval(statusTimer);
+
+    const parts = [
+      `Done in ${Math.round(payload.elapsedMs / 1000)}s`,
+      `${payload.addedRoutes} added`,
+      `${payload.updatedRoutes} updated`,
+      `${payload.removedRoutes} removed`,
+      `${payload.confirmedStillPresent} kept`
+    ];
+    if (payload.flagsOpened?.length) {
+      parts.push(`${payload.flagsOpened.length} flag(s) opened`);
+    }
+    if (payload.refreshFailures?.length) {
+      parts.push(`${payload.refreshFailures.length} refresh failure(s)`);
+    }
+    if (payload.tileCount !== null && payload.tileCount !== undefined) {
+      parts.push(`tiles rebuilt (${payload.tileCount})`);
+    }
+    setEditStatus(els.areaRefreshStatus, parts.join(" · "), Boolean(payload.refreshFailures?.length));
+    recordManualEdit("area", "Area refresh", parts.join(", "));
+    reloadVectorSource();
+    updateUnderlay();
+    loadOperatorsForViewport();
+  } catch (error) {
+    clearInterval(statusTimer);
+    setEditStatus(els.areaRefreshStatus, `Failed: ${error.message}`, true);
+  } finally {
+    if (els.areaRefreshRunBtn) {
+      els.areaRefreshRunBtn.disabled = false;
+    }
+    updateAreaRefreshBbox();
+  }
+}
+
+// Deep link from the console's issue reports: /admin/override?bbox=w,s,e,n&zoom=z
+function applyDeepLinkView() {
+  const params = new URLSearchParams(window.location.search);
+  const raw = String(params.get("bbox") || "").trim();
+  if (!raw) {
+    return;
+  }
+  const parts = raw.split(",").map((value) => Number(value.trim()));
+  if (parts.length !== 4 || !parts.every((value) => Number.isFinite(value))) {
+    return;
+  }
+  const [west, south, east, north] = parts;
+  const zoom = Number(params.get("zoom"));
+  if (state.map) {
+    state.map.fitBounds(
+      [[west, south], [east, north]],
+      { padding: 40, maxZoom: Number.isFinite(zoom) ? zoom : 15, duration: 0 }
+    );
+  }
+  openAreaRefresh();
+}
+
+// ---------------------------------------------------------------------------
+// Route browser: search/focus, per-route refresh/remove, add from Transitland
+// ---------------------------------------------------------------------------
+
+function routeFeatureBounds(feature) {
+  const geometry = feature?.geometry;
+  if (!geometry || !Array.isArray(geometry.coordinates)) {
+    return null;
+  }
+  const parts =
+    geometry.type === "LineString"
+      ? [geometry.coordinates]
+      : geometry.type === "MultiLineString"
+        ? geometry.coordinates
+        : [];
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  for (const part of parts) {
+    if (!Array.isArray(part)) {
+      continue;
+    }
+    for (const coord of part) {
+      if (!Array.isArray(coord) || coord.length < 2) {
+        continue;
+      }
+      const lon = Number(coord[0]);
+      const lat = Number(coord[1]);
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+        continue;
+      }
+      if (lon < minLon) minLon = lon;
+      if (lat < minLat) minLat = lat;
+      if (lon > maxLon) maxLon = lon;
+      if (lat > maxLat) maxLat = lat;
+    }
+  }
+  if (!Number.isFinite(minLon)) {
+    return null;
+  }
+  return [[minLon, minLat], [maxLon, maxLat]];
+}
+
+function focusRouteFeature(feature) {
+  const bounds = routeFeatureBounds(feature);
+  if (bounds && state.map) {
+    state.map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 300 });
+  }
+  selectRouteFromFeature(feature);
+}
+
+function renderRouteSearchResults(features, context = {}) {
+  const container = els.routeSearchResults;
+  if (!container) {
+    return;
+  }
+  const list = Array.isArray(features) ? features : [];
+  const hasFilter = Boolean(context.query || context.modeFilter);
+  container.innerHTML = "";
+  // Keep the panel quiet until the admin actually searches or filters; a full
+  // viewport route list repainting on every pan is noise.
+  if (!hasFilter) {
+    updateRouteBatchControl();
+    return;
+  }
+  if (!list.length) {
+    const p = document.createElement("p");
+    p.className = "microcopy";
+    p.textContent = "No matching routes in the current view. Pan/zoom the map to load more.";
+    container.append(p);
+    updateRouteBatchControl();
+    return;
+  }
+
+  const seen = new Set();
+  let rendered = 0;
+  for (const feature of list) {
+    const props = featureLineProps(feature);
+    if (!props.lineKey || seen.has(props.lineKey)) {
+      continue;
+    }
+    seen.add(props.lineKey);
+    if (rendered >= 60) {
+      break;
+    }
+    rendered += 1;
+
+    const row = document.createElement("div");
+    row.className = "admin-route-result-row";
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.title = "Select for batch refresh";
+    cb.checked = state.routeBatchSelection.has(props.lineKey);
+    cb.addEventListener("change", () => {
+      if (cb.checked) {
+        state.routeBatchSelection.add(props.lineKey);
+      } else {
+        state.routeBatchSelection.delete(props.lineKey);
+      }
+      updateRouteBatchControl();
+    });
+
+    const focusBtn = document.createElement("button");
+    focusBtn.type = "button";
+    focusBtn.className = "admin-route-result-focus";
+    const dot = document.createElement("span");
+    dot.className = "admin-route-select-dot";
+    dot.style.background = props.color || "#177ca2";
+    const name = document.createElement("span");
+    name.className = "admin-route-select-name";
+    name.textContent = adminLineDisplayName(props) || props.lineKey;
+    const meta = document.createElement("span");
+    meta.className = "admin-route-select-meta";
+    meta.textContent = props.lineKey;
+    focusBtn.append(dot, name, meta);
+    focusBtn.addEventListener("click", () => focusRouteFeature(feature));
+
+    row.append(cb, focusBtn);
+    container.append(row);
+  }
+  updateRouteBatchControl();
+}
+
+function updateRouteBatchControl() {
+  const count = state.routeBatchSelection.size;
+  if (els.refreshSelectedRoutesBtn) {
+    els.refreshSelectedRoutesBtn.textContent = `Refresh selected (${count})`;
+    els.refreshSelectedRoutesBtn.disabled = count === 0;
+  }
+}
+
+function summarizeRouteReport(payload, keys) {
+  const parts = [`Done in ${Math.round(Number(payload.elapsedMs || 0) / 1000)}s`];
+  if (payload.refreshed?.length) parts.push(`${payload.refreshed.length} refreshed`);
+  if (payload.merged?.added) parts.push(`${payload.merged.added} added`);
+  if (payload.merged?.updated) parts.push(`${payload.merged.updated} updated`);
+  if (payload.removed?.length) parts.push(`${payload.removed.length} removed`);
+  if (payload.flagsOpened?.length) parts.push(`${payload.flagsOpened.length} flag(s) opened`);
+  if (payload.failures?.length) parts.push(`${payload.failures.length} failure(s)`);
+  if (payload.tileCount !== null && payload.tileCount !== undefined) {
+    parts.push(`tiles rebuilt (${payload.tileCount})`);
+  }
+  const removedKeys = new Set((payload.removed || []).map((entry) => entry.lineKey));
+  return { text: parts.join(" · "), isError: Boolean(payload.failures?.length), removedKeys };
+}
+
+async function refreshRoutesByKeys(keys, statusEl) {
+  if (!keys.length) {
+    return null;
+  }
+  if (!state.token) {
+    setEditStatus(statusEl, "Log in first.", true);
+    return null;
+  }
+  setEditStatus(statusEl, `Refreshing ${keys.length} route(s)…`);
+  try {
+    const payload = await apiRequest("/api/admin/routes/refresh", {
+      method: "POST",
+      body: {
+        lineKeys: keys,
+        zoom: state.map ? state.map.getZoom() : undefined
+      }
+    });
+    const summary = summarizeRouteReport(payload, keys);
+    setEditStatus(statusEl, summary.text, summary.isError);
+    recordManualEdit("route-data", `${keys.length} route(s) refreshed`, summary.text);
+    return summary;
+  } catch (error) {
+    setEditStatus(statusEl, `Failed: ${error.message}`, true);
+    return null;
+  }
+}
+
+async function refreshSelectedRoutes() {
+  const keys = Array.from(state.routeBatchSelection);
+  if (els.refreshSelectedRoutesBtn) {
+    els.refreshSelectedRoutesBtn.disabled = true;
+  }
+  try {
+    const summary = await refreshRoutesByKeys(keys, els.routeBatchStatus);
+    if (!summary) {
+      return;
+    }
+    state.routeBatchSelection.clear();
+    reloadVectorSource();
+    updateUnderlay();
+    loadOperatorsForViewport();
+    if (summary.removedKeys.has(state.selectedLineKey)) {
+      clearSelection();
+    }
+  } finally {
+    updateRouteBatchControl();
+  }
+}
+
+async function refreshSingleRoute() {
+  if (!state.selectedLineKey) {
+    return;
+  }
+  const lineKey = state.selectedLineKey;
+  if (els.refreshRouteBtn) {
+    els.refreshRouteBtn.disabled = true;
+  }
+  try {
+    const summary = await refreshRoutesByKeys([lineKey], els.routeDataStatus);
+    if (!summary) {
+      return;
+    }
+    reloadVectorSource();
+    updateUnderlay();
+    if (summary.removedKeys.has(lineKey)) {
+      clearSelection();
+    }
+  } finally {
+    if (els.refreshRouteBtn) {
+      els.refreshRouteBtn.disabled = false;
+    }
+  }
+}
+
+async function removeSingleRoute() {
+  if (!state.selectedLineKey) {
+    return;
+  }
+  const lineKey = state.selectedLineKey;
+  const confirmed = window.confirm(
+    `Remove ${lineKey} from the archive? Admin overrides, reviews, and votes are preserved and flagged for review.`
+  );
+  if (!confirmed) {
+    return;
+  }
+  if (!state.token) {
+    setEditStatus(els.routeDataStatus, "Log in first.", true);
+    return;
+  }
+  if (els.removeRouteBtn) {
+    els.removeRouteBtn.disabled = true;
+  }
+  try {
+    setEditStatus(els.routeDataStatus, "Removing route…");
+    const payload = await apiRequest("/api/admin/routes/remove", {
+      method: "POST",
+      body: { lineKeys: [lineKey] }
+    });
+    const summary = summarizeRouteReport(payload, [lineKey]);
+    setEditStatus(els.routeDataStatus, summary.text, summary.isError);
+    recordManualEdit("route-data", `${lineKey} removed`, "removed from archive");
+    reloadVectorSource();
+    updateUnderlay();
+    clearSelection();
+  } catch (error) {
+    setEditStatus(els.routeDataStatus, `Failed: ${error.message}`, true);
+  } finally {
+    if (els.removeRouteBtn) {
+      els.removeRouteBtn.disabled = false;
+    }
+  }
+}
+
+async function searchTransitland() {
+  const query = String(els.transitlandSearchInput?.value || "").trim();
+  if (!query) {
+    return;
+  }
+  if (!state.token) {
+    setEditStatus(els.transitlandSearchStatus, "Log in first.", true);
+    return;
+  }
+  setEditStatus(els.transitlandSearchStatus, "Searching Transitland…");
+  if (els.transitlandSearchResults) {
+    els.transitlandSearchResults.innerHTML = "";
+  }
+  try {
+    const payload = await apiRequest(
+      `/api/admin/routes/search?q=${encodeURIComponent(query)}`,
+      { method: "GET" }
+    );
+    renderTransitlandResults(Array.isArray(payload?.routes) ? payload.routes : []);
+  } catch (error) {
+    setEditStatus(els.transitlandSearchStatus, `Search failed: ${error.message}`, true);
+  }
+}
+
+function renderTransitlandResults(routes) {
+  const container = els.transitlandSearchResults;
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  if (!routes.length) {
+    setEditStatus(els.transitlandSearchStatus, "No Transitland routes matched.");
+    return;
+  }
+  setEditStatus(els.transitlandSearchStatus, `${routes.length} match(es).`);
+  for (const candidate of routes) {
+    const row = document.createElement("div");
+    row.className = "admin-route-result-row";
+
+    const dot = document.createElement("span");
+    dot.className = "admin-route-select-dot";
+    dot.style.background = candidate.color || "#177ca2";
+
+    const name = document.createElement("span");
+    name.className = "admin-route-select-name";
+    name.textContent =
+      adminLineDisplayName({
+        lineShortName: candidate.lineShortName,
+        lineLongName: candidate.lineLongName,
+        lineName: candidate.lineName,
+        lineKey: candidate.lineKey
+      }) || candidate.lineKey;
+
+    const meta = document.createElement("span");
+    meta.className = "admin-route-select-meta";
+    meta.textContent = candidate.lineKey;
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "btn";
+    addBtn.textContent = "Add";
+    addBtn.addEventListener("click", () => addTransitlandRoute(candidate, addBtn));
+
+    row.append(dot, name, meta, addBtn);
+    container.append(row);
+  }
+}
+
+async function addTransitlandRoute(candidate, button) {
+  if (!candidate?.lineKey) {
+    return;
+  }
+  if (!state.token) {
+    setEditStatus(els.transitlandSearchStatus, "Log in first.", true);
+    return;
+  }
+  button.disabled = true;
+  setEditStatus(els.transitlandSearchStatus, `Adding ${candidate.lineKey}…`);
+  try {
+    const payload = await apiRequest("/api/admin/routes/add", {
+      method: "POST",
+      body: {
+        lineKeys: [candidate.lineKey],
+        zoom: state.map ? state.map.getZoom() : undefined
+      }
+    });
+    const summary = summarizeRouteReport(payload, [candidate.lineKey]);
+    setEditStatus(
+      els.transitlandSearchStatus,
+      `Added ${candidate.lineKey}. ${summary.text}`,
+      summary.isError
+    );
+    recordManualEdit("route-data", `${candidate.lineKey} added`, "added from Transitland search");
+    reloadVectorSource();
+    updateUnderlay();
+    const match = (state.underlayFeatures || []).find(
+      (feature) => String(featureLineProps(feature).lineKey) === candidate.lineKey
+    );
+    if (match) {
+      focusRouteFeature(match);
+    }
+  } catch (error) {
+    setEditStatus(els.transitlandSearchStatus, `Add failed: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function updateCurrentCity() {
@@ -367,6 +982,8 @@ function applyUnderlaySearchFilter() {
     els.routeSearchInfo.textContent =
       query || modeFilter ? `${features.length} of ${total} routes shown` : "";
   }
+
+  renderRouteSearchResults(features, { query, modeFilter });
 }
 
 async function loadCities() {
@@ -532,7 +1149,27 @@ function dedupeAdminStopFeatures(features) {
   });
 }
 
-function orderAdminStopsByCustomOrder(features, customStops) {
+function adminCustomStopFeature(stop, lineKey) {
+  const key = String(stop?.key || "").trim();
+  const lat = Number(stop?.lat);
+  const lon = Number(stop?.lon);
+  if (!key || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return null;
+  }
+  return {
+    type: "Feature",
+    id: `${lineKey}|${key}`,
+    geometry: { type: "Point", coordinates: [lon, lat] },
+    properties: {
+      station_key: key,
+      station_name: String(stop?.name || key),
+      line_key: lineKey,
+      custom_stop: 1
+    }
+  };
+}
+
+function orderAdminStopsByCustomOrder(features, customStops, lineKey = "") {
   const byKey = new Map();
   for (const feature of features || []) {
     const key = String(feature?.properties?.station_key || "").trim();
@@ -548,10 +1185,16 @@ function orderAdminStopsByCustomOrder(features, customStops) {
     if (!key || seen.has(key)) {
       continue;
     }
+    seen.add(key);
     const feature = byKey.get(key);
     if (feature) {
       ordered.push(feature);
-      seen.add(key);
+      continue;
+    }
+    // A stop added manually by an admin — synthesize it from override coords.
+    const synthetic = adminCustomStopFeature(stop, lineKey);
+    if (synthetic) {
+      ordered.push(synthetic);
     }
   }
 
@@ -574,20 +1217,151 @@ async function loadStopsForRoute(lineKey) {
     const params = new URLSearchParams({ lineKey, stopTypes: ROUTE_STOP_TYPES_QUERY });
     const payload = await fetch(`/api/transit/route-stops?${params.toString()}`).then((r) => r.json());
     if (Array.isArray(payload?.stopsGeoJson?.features)) {
-      source.setData(payload.stopsGeoJson);
-
-      // Deduplicate by station key, then apply a saved custom order if the
-      // admin has set one, so the editor matches line view exactly.
+      // Deduplicate by station key, then apply a saved custom order (including
+      // any stops the admin added) so the editor matches line view exactly.
       let stops = dedupeAdminStopFeatures(payload.stopsGeoJson.features);
       if (state.selectedRouteOverride && Array.isArray(state.selectedRouteOverride.payload?.stops)) {
-        stops = orderAdminStopsByCustomOrder(stops, state.selectedRouteOverride.payload.stops);
+        stops = orderAdminStopsByCustomOrder(
+          stops,
+          state.selectedRouteOverride.payload.stops,
+          lineKey
+        );
       }
+      source.setData({ type: "FeatureCollection", features: stops });
       state.currentRouteStops = stops.slice();
       renderStopsOrderList();
     }
   } catch {
     // non-critical — stations still editable via other flows
   }
+}
+
+function appendStopsToMapSource(newFeatures) {
+  const source = state.map && state.map.getSource("stops");
+  if (!source || !newFeatures?.length) {
+    return;
+  }
+  const current = Array.isArray(source._data?.features) ? source._data.features : [];
+  source.setData({ type: "FeatureCollection", features: [...current, ...newFeatures] });
+}
+
+function slugifyBranchId(text, fallback) {
+  const slug = String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return slug || fallback;
+}
+
+function branchOptionChoices() {
+  const choices = [];
+  for (const group of state.selectedBranchGroups || []) {
+    for (const option of group.options || []) {
+      choices.push({ group, option });
+    }
+  }
+  return choices;
+}
+
+function renderBranchGroupsEditor() {
+  const container = els.branchGroupsList;
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  const groups = state.selectedBranchGroups || [];
+  if (!groups.length) {
+    const p = document.createElement("p");
+    p.className = "microcopy";
+    p.textContent = "No branch groups. Add one to tag alternative stop runs.";
+    container.append(p);
+    return;
+  }
+
+  groups.forEach((group, groupIndex) => {
+    const card = document.createElement("div");
+    card.className = "branch-group-card";
+
+    const head = document.createElement("div");
+    head.className = "branch-group-head";
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.className = "branch-group-label";
+    labelInput.value = String(group.label || "");
+    labelInput.placeholder = "Branch label (e.g. Via Bank)";
+    labelInput.addEventListener("input", () => {
+      group.label = labelInput.value;
+    });
+    const removeGroup = document.createElement("button");
+    removeGroup.type = "button";
+    removeGroup.className = "stop-order-remove";
+    removeGroup.textContent = "×";
+    removeGroup.title = "Remove branch group";
+    removeGroup.addEventListener("click", () => {
+      state.selectedBranchGroups.splice(groupIndex, 1);
+      renderBranchGroupsEditor();
+      renderStopsOrderList();
+    });
+    head.append(labelInput, removeGroup);
+
+    const optionsWrap = document.createElement("div");
+    optionsWrap.className = "branch-options-list";
+    (group.options || []).forEach((option, optionIndex) => {
+      const row = document.createElement("div");
+      row.className = "branch-option-row";
+      const optionInput = document.createElement("input");
+      optionInput.type = "text";
+      optionInput.className = "branch-option-label";
+      optionInput.value = String(option.label || "");
+      optionInput.placeholder = "Option label";
+      optionInput.addEventListener("input", () => {
+        option.label = optionInput.value;
+      });
+      const removeOption = document.createElement("button");
+      removeOption.type = "button";
+      removeOption.className = "stop-order-remove";
+      removeOption.textContent = "×";
+      removeOption.title = "Remove option";
+      removeOption.addEventListener("click", () => {
+        group.options.splice(optionIndex, 1);
+        renderBranchGroupsEditor();
+        renderStopsOrderList();
+      });
+      row.append(optionInput, removeOption);
+      optionsWrap.append(row);
+    });
+
+    const addOption = document.createElement("button");
+    addOption.type = "button";
+    addOption.className = "btn btn-subtle branch-add-option";
+    addOption.textContent = "+ option";
+    addOption.addEventListener("click", () => {
+      const stamp = Date.now().toString(36);
+      group.options = Array.isArray(group.options) ? group.options : [];
+      group.options.push({
+        id: `opt-${groupIndex + 1}-${stamp}`,
+        label: `Option ${group.options.length + 1}`
+      });
+      renderBranchGroupsEditor();
+      renderStopsOrderList();
+    });
+
+    card.append(head, optionsWrap, addOption);
+    container.append(card);
+  });
+}
+
+function addBranchGroup() {
+  const stamp = Date.now().toString(36);
+  state.selectedBranchGroups = state.selectedBranchGroups || [];
+  state.selectedBranchGroups.push({
+    id: `group-${state.selectedBranchGroups.length + 1}-${stamp}`,
+    label: `Branch ${state.selectedBranchGroups.length + 1}`,
+    options: [{ id: `opt-1-${stamp}`, label: "Option 1" }]
+  });
+  renderBranchGroupsEditor();
+  renderStopsOrderList();
 }
 
 function renderStopsOrderList() {
@@ -603,15 +1377,52 @@ function renderStopsOrderList() {
   stops.forEach((feature, index) => {
     const p = feature.properties || {};
     const row = document.createElement("div");
-    row.className = "stop-order-row";
+    row.className = "stop-order-row" + (p.custom_stop ? " is-custom" : "");
 
     const pos = document.createElement("span");
     pos.className = "stop-order-pos";
     pos.textContent = String(index + 1).padStart(2, "0");
 
-    const name = document.createElement("span");
-    name.className = "stop-order-name";
-    name.textContent = String(p.station_name || p.stop_name || p.station_key || "Stop");
+    const coords = Array.isArray(feature.geometry?.coordinates) ? feature.geometry.coordinates : [];
+
+    const fields = document.createElement("div");
+    fields.className = "stop-order-fields";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.value = String(p.station_name || p.stop_name || p.station_key || "");
+    nameInput.placeholder = "Stop name";
+    nameInput.addEventListener("input", () => {
+      p.station_name = nameInput.value;
+    });
+
+    const latInput = document.createElement("input");
+    latInput.type = "number";
+    latInput.step = "any";
+    latInput.placeholder = "Lat";
+    latInput.value = Number.isFinite(Number(coords[1])) ? String(Number(coords[1]).toFixed(6)) : "";
+    latInput.addEventListener("input", () => {
+      const lat = Number(latInput.value);
+      const lon = Number(lonInput.value);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        feature.geometry = { type: "Point", coordinates: [lon, lat] };
+      }
+    });
+
+    const lonInput = document.createElement("input");
+    lonInput.type = "number";
+    lonInput.step = "any";
+    lonInput.placeholder = "Lon";
+    lonInput.value = Number.isFinite(Number(coords[0])) ? String(Number(coords[0]).toFixed(6)) : "";
+    lonInput.addEventListener("input", () => {
+      const lat = Number(latInput.value);
+      const lon = Number(lonInput.value);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+        feature.geometry = { type: "Point", coordinates: [lon, lat] };
+      }
+    });
+
+    fields.append(nameInput, latInput, lonInput);
 
     const up = document.createElement("button");
     up.type = "button";
@@ -635,9 +1446,70 @@ function renderStopsOrderList() {
       renderStopsOrderList();
     });
 
-    row.append(pos, name, up, down);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "stop-order-remove";
+    remove.textContent = "×";
+    remove.title = "Remove stop";
+    remove.addEventListener("click", () => {
+      state.currentRouteStops.splice(index, 1);
+      renderStopsOrderList();
+    });
+
+    row.append(pos, fields, up, down, remove);
+
+    if ((state.selectedBranchGroups || []).length) {
+      const branchRow = document.createElement("div");
+      branchRow.className = "stop-branch-row";
+      const branchSelect = document.createElement("select");
+      branchSelect.className = "stop-branch-select";
+      branchSelect.title = "Which branch option this stop belongs to";
+      const trunkOption = document.createElement("option");
+      trunkOption.value = "";
+      trunkOption.textContent = "Trunk (always shown)";
+      branchSelect.append(trunkOption);
+      for (const choice of branchOptionChoices()) {
+        const optionEl = document.createElement("option");
+        optionEl.value = String(choice.option.id);
+        optionEl.textContent = `${choice.group.label || "Branch"}: ${choice.option.label || choice.option.id}`;
+        branchSelect.append(optionEl);
+      }
+      branchSelect.value = String(p.branch || "");
+      branchSelect.addEventListener("change", () => {
+        p.branch = branchSelect.value;
+      });
+      branchRow.append(branchSelect);
+      row.append(branchRow);
+    }
+
     els.routeStopsList.append(row);
   });
+}
+
+function addCustomStop() {
+  if (!state.selectedLineKey) {
+    return;
+  }
+  const name = String(els.newStopName?.value || "").trim();
+  const lat = Number(els.newStopLat?.value);
+  const lon = Number(els.newStopLon?.value);
+  if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+    setEditStatus(els.routeEditStatus, "A stop name and numeric lat/lon are required.", true);
+    return;
+  }
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "stop";
+  const key = `custom:${slug}:${Date.now().toString(36)}`;
+  const feature = adminCustomStopFeature({ key, name, lat, lon }, state.selectedLineKey);
+  if (!feature) {
+    return;
+  }
+  state.currentRouteStops.push(feature);
+  renderStopsOrderList();
+  appendStopsToMapSource([feature]);
+  if (els.newStopName) els.newStopName.value = "";
+  if (els.newStopLat) els.newStopLat.value = "";
+  if (els.newStopLon) els.newStopLon.value = "";
+  setEditStatus(els.routeEditStatus, `Added "${name}" to the working order. Save Stop Order to persist.`);
 }
 
 async function saveStopOrder() {
@@ -649,12 +1521,17 @@ async function saveStopOrder() {
     .map((feature) => {
       const p = feature.properties || {};
       const coords = feature.geometry?.coordinates || [];
-      return {
+      const entry = {
         key: String(p.station_key || ""),
         name: String(p.station_name || p.stop_name || p.station_key || ""),
         lat: Number.isFinite(Number(coords[1])) ? Number(coords[1]) : null,
         lon: Number.isFinite(Number(coords[0])) ? Number(coords[0]) : null
       };
+      const branch = String(p.branch || "").trim();
+      if (branch) {
+        entry.branch = branch;
+      }
+      return entry;
     })
     .filter((entry) => entry.key);
 
@@ -666,6 +1543,14 @@ async function saveStopOrder() {
     // new override
   }
   payload = { ...payload, stops };
+  const branchGroups = (state.selectedBranchGroups || []).filter(
+    (group) => (group.options || []).length > 0
+  );
+  if (branchGroups.length) {
+    payload.branchGroups = branchGroups;
+  } else {
+    delete payload.branchGroups;
+  }
 
   try {
     await apiRequest("/api/admin/overrides/route", {
@@ -673,7 +1558,11 @@ async function saveStopOrder() {
       body: { lineKey, citySlug: state.currentCitySlug, payload }
     });
     setEditStatus(els.routeEditStatus, `Stop order saved (${stops.length} stops).`);
-    recordManualEdit("route", `${lineKey} · stop order`, `${stops.length} stops in custom order`);
+    recordManualEdit(
+      "route",
+      `${lineKey} · stop order`,
+      `${stops.length} stops${branchGroups.length ? `, ${branchGroups.length} branch group(s)` : ""}`
+    );
   } catch (error) {
     setEditStatus(els.routeEditStatus, error.message, true);
   }
@@ -708,6 +1597,7 @@ async function clearStopOrder() {
 async function selectRouteFromFeature(feature) {
   const props = featureLineProps(feature);
   closeRouteOverlapPopup();
+  state.selectedRouteFeature = feature;
   state.selectedLineKey = props.lineKey;
   state.selectedStationKey = "";
   state.selectedRouteOverride = null;
@@ -730,9 +1620,24 @@ async function selectRouteFromFeature(feature) {
   els.routeMode.value = props.routeType !== null ? String(props.routeType) : "";
   els.routeColor.value = props.color;
   els.routeOrdering.value = "";
+  if (els.routeFrequency) els.routeFrequency.value = "";
+  state.selectedBranchGroups = [];
+  renderBranchGroupsEditor();
   els.routeProblematic.checked = false;
   state.problematicTouched = false;
+  if (els.newStopName) els.newStopName.value = "";
+  if (els.newStopLat) els.newStopLat.value = "";
+  if (els.newStopLon) els.newStopLon.value = "";
   setEditStatus(els.routeEditStatus, "Loaded from tile properties.");
+  if (els.routeDataStatus) {
+    setEditStatus(els.routeDataStatus, "");
+  }
+  if (els.refreshRouteBtn) {
+    els.refreshRouteBtn.disabled = false;
+  }
+  if (els.removeRouteBtn) {
+    els.removeRouteBtn.disabled = false;
+  }
 
   try {
     const [overridePayload, reviewsPayload, headwayPayload] = await Promise.all([
@@ -754,6 +1659,13 @@ async function selectRouteFromFeature(feature) {
       if (payload.mode !== undefined && payload.mode !== null && payload.mode !== "") els.routeMode.value = String(payload.mode);
       if (payload.color) els.routeColor.value = payload.color;
       if (payload.orderingMode) els.routeOrdering.value = payload.orderingMode;
+      if (payload.frequencyBucket && els.routeFrequency) {
+        els.routeFrequency.value = String(payload.frequencyBucket);
+      }
+      state.selectedBranchGroups = Array.isArray(payload.branchGroups)
+        ? JSON.parse(JSON.stringify(payload.branchGroups))
+        : [];
+      renderBranchGroupsEditor();
       setEditStatus(els.routeEditStatus, "Loaded existing override + tile properties.");
     }
 
@@ -768,6 +1680,7 @@ async function selectRouteFromFeature(feature) {
     els.routeProblematic.checked = Boolean(effectiveProblematic);
 
     loadStopsForRoute(state.selectedLineKey);
+    renderCitySelectedRoute();
   } catch (error) {
     setEditStatus(els.routeEditStatus, error.message, true);
   }
@@ -806,6 +1719,7 @@ function clearSelection() {
   if (els.stationEditPanel) {
     els.stationEditPanel.hidden = true;
   }
+  renderCitySelectedRoute();
 }
 
 // ---------------------------------------------------------------------------
@@ -818,7 +1732,16 @@ async function saveRouteEdits() {
   }
   const lineKey = state.selectedLineKey;
 
-  const payload = {};
+  // Merge into the existing payload so saving identity/display fields does not
+  // drop fields this form doesn't own (custom stop order, etc.).
+  let payload = {};
+  try {
+    const existing = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "GET" });
+    payload = existing?.override?.payload || {};
+  } catch {
+    payload = {};
+  }
+
   const name = String(els.routeName.value || "").trim();
   const short = String(els.routeShortName.value || "").trim();
   const long = String(els.routeLongName.value || "").trim();
@@ -826,20 +1749,38 @@ async function saveRouteEdits() {
   const modeRaw = String(els.routeMode.value || "").trim();
   const color = String(els.routeColor.value || "").trim();
   const ordering = String(els.routeOrdering.value || "").trim();
+  const frequency = String(els.routeFrequency?.value || "").trim();
 
   if (name) payload.lineName = name;
+  else delete payload.lineName;
   if (short) payload.lineShortName = short;
+  else delete payload.lineShortName;
   if (long) payload.lineLongName = long;
+  else delete payload.lineLongName;
   if (operator) payload.operatorName = operator;
+  else delete payload.operatorName;
   if (modeRaw) payload.mode = Number(modeRaw);
+  else delete payload.mode;
   if (color) payload.color = color;
+  else delete payload.color;
   if (ordering) payload.orderingMode = ordering;
+  else delete payload.orderingMode;
+  if (frequency === "__default__") {
+    delete payload.frequencyBucket;
+  } else if (frequency) {
+    payload.frequencyBucket = frequency;
+  }
 
   try {
-    const result = await apiRequest("/api/admin/overrides/route", {
-      method: "POST",
-      body: { lineKey, citySlug: state.currentCitySlug, payload }
-    });
+    // Clearing every field removes the override entirely rather than leaving an
+    // empty row, so the route returns to harvested values.
+    const result =
+      Object.keys(payload).length === 0
+        ? await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "DELETE" }).then(() => ({ override: null }))
+        : await apiRequest("/api/admin/overrides/route", {
+            method: "POST",
+            body: { lineKey, citySlug: state.currentCitySlug, payload }
+          });
 
     // Persist only when the admin actually changed the toggle.
     const problematicTouched = Boolean(state.problematicTouched);
@@ -854,12 +1795,25 @@ async function saveRouteEdits() {
     });
 
     setEditStatus(els.routeEditStatus, "Route edits saved.");
+    const problematicActive = Boolean(els.routeProblematic?.checked);
     recordManualEdit(
       "route",
       `${lineKey}${name ? " · " + name : ""}`,
-      [color ? `color ${color}` : "", ordering ? `ordering ${ordering}` : "", modeRaw ? `mode ${MODE_LABELS[Number(modeRaw)] || modeRaw}` : "", problematic ? "disabled-by-default" : ""].filter(Boolean).join(", ")
+      [
+        color ? `color ${color}` : "",
+        ordering ? `ordering ${ordering}` : "",
+        frequency === "__default__" ? "frequency cleared" : frequency ? `frequency ${frequency}` : "",
+        modeRaw ? `mode ${MODE_LABELS[Number(modeRaw)] || modeRaw}` : "",
+        problematicActive ? "disabled-by-default" : ""
+      ]
+        .filter(Boolean)
+        .join(", ")
     );
-    addRouteHighlight(lineKey, result.override?.payload || payload);
+    if (result.override) {
+      addRouteHighlight(lineKey, result.override.payload || payload);
+    } else {
+      loadExistingEdits();
+    }
     await loadOperatorsForViewport();
   } catch (error) {
     setEditStatus(els.routeEditStatus, error.message, true);
@@ -895,6 +1849,34 @@ async function saveStationEdits() {
     addStationHighlight(stationKey, body.manualName, Number.isFinite(lon) ? lon : null, Number.isFinite(lat) ? lat : null);
   } catch (error) {
     setEditStatus(els.stationEditStatus, error.message, true);
+  }
+}
+
+async function deleteRouteOverride() {
+  const lineKey = state.selectedLineKey;
+  if (!lineKey) {
+    return;
+  }
+  if (!window.confirm(`Delete the override for ${lineKey}? The route returns to harvested values.`)) {
+    return;
+  }
+  if (els.deleteRouteOverrideBtn) {
+    els.deleteRouteOverrideBtn.disabled = true;
+  }
+  try {
+    await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "DELETE" });
+    recordManualEdit("route", `${lineKey} override`, "deleted");
+    loadExistingEdits();
+    if (state.selectedRouteFeature) {
+      await selectRouteFromFeature(state.selectedRouteFeature);
+    }
+    setEditStatus(els.routeEditStatus, "Override deleted; showing harvested values.");
+  } catch (error) {
+    setEditStatus(els.routeEditStatus, `Failed to delete override: ${error.message}`, true);
+  } finally {
+    if (els.deleteRouteOverrideBtn) {
+      els.deleteRouteOverrideBtn.disabled = false;
+    }
   }
 }
 
@@ -1237,6 +2219,26 @@ function bindEvents() {
     }
   });
 
+  if (els.areaRefreshBtn) {
+    els.areaRefreshBtn.addEventListener("click", () => {
+      if (state.areaRefreshOpen) {
+        closeAreaRefresh();
+      } else {
+        openAreaRefresh();
+      }
+    });
+  }
+  if (els.areaRefreshCloseBtn) {
+    els.areaRefreshCloseBtn.addEventListener("click", closeAreaRefresh);
+  }
+  if (els.areaRefreshRunBtn) {
+    els.areaRefreshRunBtn.addEventListener("click", () => {
+      runAreaRefresh().catch((error) => {
+        setEditStatus(els.areaRefreshStatus, `Failed: ${error.message}`, true);
+      });
+    });
+  }
+
   if (els.routeSearchInput) {
     els.routeSearchInput.addEventListener("input", () => {
       state.routeSearchQuery = String(els.routeSearchInput.value || "").trim();
@@ -1247,6 +2249,62 @@ function bindEvents() {
     els.routeModeFilterSelect.addEventListener("change", () => {
       state.routeModeFilter = String(els.routeModeFilterSelect.value || "").trim();
       applyUnderlaySearchFilter();
+    });
+  }
+
+  if (els.refreshSelectedRoutesBtn) {
+    els.refreshSelectedRoutesBtn.addEventListener("click", () => {
+      refreshSelectedRoutes().catch((error) => {
+        setEditStatus(els.routeBatchStatus, `Failed: ${error.message}`, true);
+      });
+    });
+  }
+  if (els.transitlandSearchBtn) {
+    els.transitlandSearchBtn.addEventListener("click", () => {
+      searchTransitland().catch(() => {});
+    });
+  }
+  if (els.transitlandSearchInput) {
+    els.transitlandSearchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        searchTransitland().catch(() => {});
+      }
+    });
+  }
+
+  if (els.cityPanelSelect) {
+    els.cityPanelSelect.addEventListener("change", () => {
+      selectCityForPanel(els.cityPanelSelect.value).catch(() => {});
+    });
+  }
+  if (els.cityOperatorSearchBtn) {
+    els.cityOperatorSearchBtn.addEventListener("click", () => {
+      searchCityOperators().catch(() => {});
+    });
+  }
+  if (els.cityOperatorSearchInput) {
+    els.cityOperatorSearchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        searchCityOperators().catch(() => {});
+      }
+    });
+  }
+  if (els.cityAddSelectedRouteBtn) {
+    els.cityAddSelectedRouteBtn.addEventListener("click", includeSelectedRouteInCity);
+  }
+  if (els.cityExcludeSelectedRouteBtn) {
+    els.cityExcludeSelectedRouteBtn.addEventListener("click", excludeSelectedRouteInCity);
+  }
+  if (els.refreshRouteBtn) {
+    els.refreshRouteBtn.addEventListener("click", () => {
+      refreshSingleRoute().catch(() => {});
+    });
+  }
+  if (els.removeRouteBtn) {
+    els.removeRouteBtn.addEventListener("click", () => {
+      removeSingleRoute().catch(() => {});
     });
   }
 
@@ -1268,6 +2326,24 @@ function bindEvents() {
 
   els.saveStopOrderBtn.addEventListener("click", saveStopOrder);
   els.clearStopOrderBtn.addEventListener("click", clearStopOrder);
+  if (els.addStopBtn) {
+    els.addStopBtn.addEventListener("click", addCustomStop);
+  }
+  if (els.addBranchGroupBtn) {
+    els.addBranchGroupBtn.addEventListener("click", addBranchGroup);
+  }
+  if (els.resetRouteBtn) {
+    els.resetRouteBtn.addEventListener("click", () => {
+      if (state.selectedRouteFeature) {
+        selectRouteFromFeature(state.selectedRouteFeature).catch(() => {});
+      }
+    });
+  }
+  if (els.deleteRouteOverrideBtn) {
+    els.deleteRouteOverrideBtn.addEventListener("click", () => {
+      deleteRouteOverride().catch(() => {});
+    });
+  }
 
   els.batchHideBtn.addEventListener("click", () => batchByMode(true));
   els.batchShowBtn.addEventListener("click", () => batchByMode(false));
@@ -1275,8 +2351,424 @@ function bindEvents() {
   els.showAllOperatorsBtn.addEventListener("click", () => batchAllOperators(false));
 }
 
+// ---------------------------------------------------------------------------
+// City presets panel: operator rules + explicit route rules + per-route vetting
+// ---------------------------------------------------------------------------
+
+async function loadCityPanelList() {
+  if (!els.cityPanelSelect) {
+    return;
+  }
+  try {
+    const payload = await apiRequest("/api/admin/cities", { method: "GET" });
+    state.cityPanelList = Array.isArray(payload?.cities) ? payload.cities : [];
+    const current = els.cityPanelSelect.value;
+    els.cityPanelSelect.innerHTML = '<option value="">Select a city…</option>';
+    for (const city of state.cityPanelList) {
+      const option = document.createElement("option");
+      option.value = city.slug;
+      option.textContent = `${city.name || city.slug}${city.published ? "" : " (draft)"}`;
+      els.cityPanelSelect.append(option);
+    }
+    if (current && state.cityPanelList.some((city) => city.slug === current)) {
+      els.cityPanelSelect.value = current;
+      await selectCityForPanel(current);
+    }
+  } catch (error) {
+    setEditStatus(els.cityPanelStatus, `Failed to load cities: ${error.message}`, true);
+  }
+}
+
+async function selectCityForPanel(slug) {
+  const key = String(slug || "").trim();
+  if (!key) {
+    state.cityPanelCity = null;
+    if (els.cityPanelBody) {
+      els.cityPanelBody.hidden = true;
+    }
+    return;
+  }
+  setEditStatus(els.cityPanelStatus, "Loading city…");
+  try {
+    const payload = await apiRequest(`/api/admin/cities/${encodeURIComponent(key)}`, { method: "GET" });
+    state.cityPanelCity = payload?.city || null;
+    if (els.cityPanelBody) {
+      els.cityPanelBody.hidden = !state.cityPanelCity;
+    }
+    renderCityPanel();
+    setEditStatus(els.cityPanelStatus, "");
+  } catch (error) {
+    setEditStatus(els.cityPanelStatus, `Failed to load city: ${error.message}`, true);
+  }
+}
+
+function cityRouteDisplayName(lineKey) {
+  const feature = (state.underlayFeatures || []).find(
+    (entry) => String(featureLineProps(entry).lineKey) === lineKey
+  );
+  if (feature) {
+    return adminLineDisplayName(featureLineProps(feature)) || lineKey;
+  }
+  return lineKey;
+}
+
+function renderCityPanel() {
+  const city = state.cityPanelCity;
+  if (!city) {
+    return;
+  }
+  if (els.cityPanelSummary) {
+    const explicit = city.routes || [];
+    const fullyVetted = explicit.filter(
+      (route) => route.included && route.vettedAccuracy && route.vettedUpToDate && route.vettedStopOrder
+    ).length;
+    const includedExplicit = explicit.filter((route) => route.included).length;
+    const unvetted = includedExplicit - fullyVetted;
+    els.cityPanelSummary.textContent =
+      `${city.name || city.slug} · ${city.published ? "Published" : "Draft"} · ` +
+      `${city.routeCount || 0} route(s) resolved · ${(city.operators || []).length} operator rule(s) · ` +
+      `${includedExplicit} explicit · ${unvetted > 0 ? `${unvetted} need vetting` : "all vetted"}`;
+  }
+  renderCityOperators();
+  renderCityRoutes();
+  renderCitySelectedRoute();
+}
+
+function renderCitySelectedRoute() {
+  const container = els.citySelectedRoute;
+  if (!container) {
+    return;
+  }
+  const city = state.cityPanelCity;
+  const lineKey = String(state.selectedLineKey || "").trim();
+  if (!city || !lineKey) {
+    container.hidden = true;
+    container.innerHTML = "";
+    return;
+  }
+
+  const explicit = (city.routes || []).find((route) => route.lineKey === lineKey) || null;
+  const resolved = (city.routeKeys || []).includes(lineKey);
+
+  container.hidden = false;
+  container.innerHTML = "";
+
+  const main = document.createElement("div");
+  main.className = "city-member-main";
+  const name = document.createElement("span");
+  name.className = "city-member-name";
+  name.textContent = cityRouteDisplayName(lineKey);
+  const meta = document.createElement("span");
+  meta.className = "city-member-meta";
+  const sourceLabel = explicit
+    ? explicit.included
+      ? "Explicitly included"
+      : "Excluded from this city"
+    : resolved
+      ? "Included via operator rule"
+      : "Not part of this city";
+  meta.textContent = `${lineKey} · ${sourceLabel}`;
+  main.append(name, meta);
+
+  const actions = document.createElement("div");
+  actions.className = "city-vet-row";
+
+  if (resolved) {
+    const flags = [
+      ["vettedAccuracy", "Accuracy"],
+      ["vettedUpToDate", "Up to date"],
+      ["vettedStopOrder", "Stop order"]
+    ];
+    for (const [flag, label] of flags) {
+      const labelEl = document.createElement("label");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = Boolean(explicit?.[flag]);
+      checkbox.title = `Mark ${label.toLowerCase()} as vetted for this city`;
+      checkbox.addEventListener("change", () => {
+        patchCityRoutes([
+          {
+            lineKey,
+            included: true,
+            vettedAccuracy: flag === "vettedAccuracy" ? checkbox.checked : Boolean(explicit?.vettedAccuracy),
+            vettedUpToDate: flag === "vettedUpToDate" ? checkbox.checked : Boolean(explicit?.vettedUpToDate),
+            vettedStopOrder: flag === "vettedStopOrder" ? checkbox.checked : Boolean(explicit?.vettedStopOrder)
+          }
+        ]);
+      });
+      labelEl.append(checkbox, document.createTextNode(label));
+      actions.append(labelEl);
+    }
+  }
+
+  container.append(main, actions);
+}
+
+function renderCityOperators() {
+  const container = els.cityOperatorsList;
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  const operators = state.cityPanelCity?.operators || [];
+  if (!operators.length) {
+    const p = document.createElement("p");
+    p.className = "microcopy";
+    p.textContent = "No operator rules yet. Search below to add one.";
+    container.append(p);
+    return;
+  }
+  operators.forEach((operator) => {
+    const row = document.createElement("div");
+    row.className = "city-member-row" + (operator.included ? "" : " is-excluded");
+
+    const main = document.createElement("div");
+    main.className = "city-member-main";
+    const name = document.createElement("span");
+    name.className = "city-member-name";
+    name.textContent = operator.operatorName;
+    const meta = document.createElement("span");
+    meta.className = "city-member-meta";
+    meta.textContent = operator.included ? "All current routes included" : "Excluded";
+    main.append(name, meta);
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "btn btn-subtle";
+    toggle.textContent = operator.included ? "Exclude" : "Include";
+    toggle.addEventListener("click", () =>
+      patchCityOperators([{ operatorName: operator.operatorName, included: !operator.included }])
+    );
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "stop-order-remove";
+    remove.textContent = "×";
+    remove.title = "Remove operator rule";
+    remove.addEventListener("click", () => {
+      const remaining = operators
+        .filter((entry) => entry.operatorName !== operator.operatorName)
+        .map((entry) => ({ operatorName: entry.operatorName, included: entry.included }));
+      setCityOperators(remaining);
+    });
+
+    row.append(main, toggle, remove);
+    container.append(row);
+  });
+}
+
+function renderCityRoutes() {
+  const container = els.cityRoutesList;
+  if (!container) {
+    return;
+  }
+  container.innerHTML = "";
+  const routes = state.cityPanelCity?.routes || [];
+  if (!routes.length) {
+    const p = document.createElement("p");
+    p.className = "microcopy";
+    p.textContent = "No explicit route rules. Use “Include selected” to add a single route.";
+    container.append(p);
+    return;
+  }
+  const sorted = [...routes].sort((a, b) => {
+    if (a.included !== b.included) return a.included ? -1 : 1;
+    return a.lineKey.localeCompare(b.lineKey);
+  });
+
+  sorted.forEach((route) => {
+    const row = document.createElement("div");
+    row.className = "city-member-row" + (route.included ? "" : " is-excluded");
+
+    const main = document.createElement("div");
+    main.className = "city-member-main";
+    const name = document.createElement("span");
+    name.className = "city-member-name";
+    name.textContent = cityRouteDisplayName(route.lineKey);
+    const meta = document.createElement("span");
+    meta.className = "city-member-meta";
+    meta.textContent = `${route.lineKey} · ${route.included ? "Included" : "Excluded"}`;
+    main.append(name, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "city-vet-row";
+
+    if (route.included) {
+      const flags = [
+        ["vettedAccuracy", "Accuracy"],
+        ["vettedUpToDate", "Up to date"],
+        ["vettedStopOrder", "Stop order"]
+      ];
+      for (const [flag, label] of flags) {
+        const labelEl = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = Boolean(route[flag]);
+        checkbox.title = `Mark ${label.toLowerCase()} as vetted`;
+        checkbox.addEventListener("change", () => {
+          patchCityRoutes([
+            {
+              lineKey: route.lineKey,
+              included: true,
+              vettedAccuracy: flag === "vettedAccuracy" ? checkbox.checked : route.vettedAccuracy,
+              vettedUpToDate: flag === "vettedUpToDate" ? checkbox.checked : route.vettedUpToDate,
+              vettedStopOrder: flag === "vettedStopOrder" ? checkbox.checked : route.vettedStopOrder
+            }
+          ]);
+        });
+        labelEl.append(checkbox, document.createTextNode(label));
+        actions.append(labelEl);
+      }
+    }
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "btn btn-subtle";
+    toggle.textContent = route.included ? "Exclude" : "Include";
+    toggle.addEventListener("click", () =>
+      patchCityRoutes([{ lineKey: route.lineKey, included: !route.included }])
+    );
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "stop-order-remove";
+    remove.textContent = "×";
+    remove.title = "Remove route rule";
+    remove.addEventListener("click", () => removeCityRoute(route.lineKey));
+
+    actions.append(toggle, remove);
+    row.append(main, actions);
+    container.append(row);
+  });
+}
+
+function applyCityResponse(payload) {
+  if (payload?.city) {
+    state.cityPanelCity = payload.city;
+    renderCityPanel();
+  }
+}
+
+async function patchCityRoutes(routes) {
+  if (!state.cityPanelCity) return;
+  try {
+    const payload = await apiRequest(
+      `/api/admin/cities/${encodeURIComponent(state.cityPanelCity.slug)}/routes`,
+      { method: "PATCH", body: { routes } }
+    );
+    applyCityResponse(payload);
+    setEditStatus(els.cityPanelStatus, "Route rules updated.");
+  } catch (error) {
+    setEditStatus(els.cityPanelStatus, `Failed: ${error.message}`, true);
+  }
+}
+
+async function removeCityRoute(lineKey) {
+  if (!state.cityPanelCity) return;
+  try {
+    const payload = await apiRequest(
+      `/api/admin/cities/${encodeURIComponent(state.cityPanelCity.slug)}/routes/remove`,
+      { method: "POST", body: { lineKeys: [lineKey] } }
+    );
+    applyCityResponse(payload);
+    setEditStatus(els.cityPanelStatus, `Removed ${lineKey}.`);
+  } catch (error) {
+    setEditStatus(els.cityPanelStatus, `Failed: ${error.message}`, true);
+  }
+}
+
+async function patchCityOperators(operators) {
+  if (!state.cityPanelCity) return;
+  try {
+    const payload = await apiRequest(
+      `/api/admin/cities/${encodeURIComponent(state.cityPanelCity.slug)}/operators`,
+      { method: "PATCH", body: { operators } }
+    );
+    applyCityResponse(payload);
+    setEditStatus(els.cityPanelStatus, "Operator rules updated.");
+  } catch (error) {
+    setEditStatus(els.cityPanelStatus, `Failed: ${error.message}`, true);
+  }
+}
+
+async function setCityOperators(operators) {
+  if (!state.cityPanelCity) return;
+  try {
+    const payload = await apiRequest(
+      `/api/admin/cities/${encodeURIComponent(state.cityPanelCity.slug)}/operators`,
+      { method: "POST", body: { operators, replace: true } }
+    );
+    applyCityResponse(payload);
+    setEditStatus(els.cityPanelStatus, "Operator rules updated.");
+  } catch (error) {
+    setEditStatus(els.cityPanelStatus, `Failed: ${error.message}`, true);
+  }
+}
+
+async function searchCityOperators() {
+  const query = String(els.cityOperatorSearchInput?.value || "").trim();
+  if (!query || !els.cityOperatorResults) {
+    return;
+  }
+  setEditStatus(els.cityPanelStatus, "Searching operators…");
+  try {
+    const payload = await apiRequest(`/api/admin/operators?q=${encodeURIComponent(query)}`, { method: "GET" });
+    const operators = Array.isArray(payload?.operators) ? payload.operators : [];
+    els.cityOperatorResults.innerHTML = "";
+    if (!operators.length) {
+      const p = document.createElement("p");
+      p.className = "microcopy";
+      p.textContent = "No operators matched.";
+      els.cityOperatorResults.append(p);
+      return;
+    }
+    const existing = new Set((state.cityPanelCity?.operators || []).map((entry) => entry.operatorName));
+    for (const operator of operators.slice(0, 40)) {
+      const row = document.createElement("div");
+      row.className = "admin-route-result-row";
+      const name = document.createElement("span");
+      name.className = "admin-route-select-name";
+      name.textContent = operator.operatorName;
+      const meta = document.createElement("span");
+      meta.className = "admin-route-select-meta";
+      meta.textContent = `${operator.routeCount} routes`;
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "btn";
+      add.textContent = existing.has(operator.operatorName) ? "Added" : "Add";
+      add.disabled = existing.has(operator.operatorName);
+      add.addEventListener("click", () => {
+        add.disabled = true;
+        patchCityOperators([{ operatorName: operator.operatorName, included: true }]);
+      });
+      row.append(name, meta, add);
+      els.cityOperatorResults.append(row);
+    }
+    setEditStatus(els.cityPanelStatus, `${operators.length} operator(s) matched.`);
+  } catch (error) {
+    setEditStatus(els.cityPanelStatus, `Search failed: ${error.message}`, true);
+  }
+}
+
+function includeSelectedRouteInCity() {
+  if (!state.selectedLineKey) {
+    setEditStatus(els.cityPanelStatus, "Select a route on the map first.", true);
+    return;
+  }
+  patchCityRoutes([{ lineKey: state.selectedLineKey, included: true }]);
+}
+
+function excludeSelectedRouteInCity() {
+  if (!state.selectedLineKey) {
+    setEditStatus(els.cityPanelStatus, "Select a route on the map first.", true);
+    return;
+  }
+  patchCityRoutes([{ lineKey: state.selectedLineKey, included: false }]);
+}
+
 async function bootApp() {
   await loadCities();
+  await loadCityPanelList();
   await initMap();
   state.map.once("load", () => {
     setTimeout(() => {

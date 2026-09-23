@@ -1,5 +1,5 @@
 /** Render the ordered stop list for a line inside the line view panel. */
-function orderByCustomStopKeys(stopFeatures, customStops) {
+function orderByCustomStopKeys(stopFeatures, customStops, lineKey = "") {
   const byKey = new Map();
   for (const feature of stopFeatures || []) {
     const key = String(feature?.properties?.station_key || "").trim();
@@ -15,11 +15,30 @@ function orderByCustomStopKeys(stopFeatures, customStops) {
     if (!key || seen.has(key)) {
       continue;
     }
+    seen.add(key);
     const feature = byKey.get(key);
     if (feature) {
       ordered.push(feature);
-      seen.add(key);
+      continue;
     }
+    // A stop the admin added manually (no live Transitland feature) — render it
+    // from the override coordinates so the custom order is complete.
+    const lat = Number(stop?.lat);
+    const lon = Number(stop?.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+      continue;
+    }
+    ordered.push({
+      type: "Feature",
+      id: `${lineKey}|${key}`,
+      geometry: { type: "Point", coordinates: [lon, lat] },
+      properties: {
+        station_key: key,
+        station_name: String(stop?.name || key),
+        line_key: lineKey,
+        custom_stop: 1
+      }
+    });
   }
 
   for (const feature of stopFeatures || []) {
@@ -32,11 +51,167 @@ function orderByCustomStopKeys(stopFeatures, customStops) {
   return ordered;
 }
 
+// ---------------------------------------------------------------------------
+// Branch-tagged override stop orders
+//
+// payload.stops entries may carry `branch: <option id>`; payload.branchGroups
+// is [{ id, label, options: [{ id, label }] }]. A group is a split point where
+// the user swaps between alternative stop runs. Stops with no branch tag are
+// trunk and always shown; a selected option's stops appear at their position in
+// the flat order. The line view stays a single diagram with split markers.
+// ---------------------------------------------------------------------------
+
+var LINE_VIEW_BRANCH_SELECTION_STORAGE_KEY = "metromark_line_view_branch_selections";
+
+function loadBranchSelectionsFromStorage() {
+  const map = new Map();
+  try {
+    const raw = localStorage.getItem(LINE_VIEW_BRANCH_SELECTION_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    for (const [lineKey, selection] of Object.entries(parsed || {})) {
+      if (selection && typeof selection === "object") {
+        map.set(lineKey, { ...selection });
+      }
+    }
+  } catch {
+    // storage unavailable — start empty
+  }
+  return map;
+}
+
+function persistBranchSelections(map) {
+  try {
+    const obj = {};
+    for (const [lineKey, selection] of map) {
+      obj[lineKey] = selection;
+    }
+    localStorage.setItem(LINE_VIEW_BRANCH_SELECTION_STORAGE_KEY, JSON.stringify(obj));
+  } catch {
+    // best-effort
+  }
+}
+
+function branchSelectionsMap() {
+  if (!(appState.lineViewBranchSelectionsByLineKey instanceof Map)) {
+    appState.lineViewBranchSelectionsByLineKey = loadBranchSelectionsFromStorage();
+  }
+  return appState.lineViewBranchSelectionsByLineKey;
+}
+
+function branchSelectionForLine(lineKey) {
+  return branchSelectionsMap().get(String(lineKey || "").trim()) || {};
+}
+
+function setBranchOptionForLine(lineKey, groupId, optionId) {
+  const normalizedLineKey = String(lineKey || "").trim();
+  const map = branchSelectionsMap();
+  const next = { ...(map.get(normalizedLineKey) || {}), [String(groupId)]: String(optionId) };
+  map.set(normalizedLineKey, next);
+  persistBranchSelections(map);
+  return next;
+}
+
+/** Resolve the branch selection and return the filtered stop order + split labels. */
+function resolveBranchStops(customStops, branchGroups, selection) {
+  const groups = Array.isArray(branchGroups) ? branchGroups : [];
+  const stops = Array.isArray(customStops) ? customStops : [];
+  if (!groups.length) {
+    return { stops, splitLabels: new Map(), hasBranches: false };
+  }
+
+  const optionById = new Map();
+  for (const group of groups) {
+    for (const option of group.options || []) {
+      if (option?.id) {
+        optionById.set(String(option.id), { group, option });
+      }
+    }
+  }
+
+  const chosen = {};
+  for (const group of groups) {
+    const first = String(group.options?.[0]?.id || "");
+    const selected = String(selection?.[group.id] || "");
+    chosen[group.id] = optionById.has(selected) ? selected : first;
+  }
+
+  const filtered = [];
+  const splitLabels = new Map();
+  const seenSplit = new Set();
+  for (const stop of stops) {
+    const branchId = String(stop?.branch || "").trim();
+    if (branchId) {
+      const meta = optionById.get(branchId);
+      if (!meta || chosen[meta.group.id] !== branchId) {
+        continue;
+      }
+      const key = String(stop?.key || "").trim();
+      if (key && !seenSplit.has(meta.group.id)) {
+        seenSplit.add(meta.group.id);
+        splitLabels.set(key, String(meta.option.label || meta.group.label || "Branch"));
+      }
+    }
+    filtered.push(stop);
+  }
+
+  return { stops: filtered, splitLabels, hasBranches: true };
+}
+
+function renderLineViewBranchSelector(lineKey, branchGroups) {
+  const el = document.getElementById("lineViewBranchSelector");
+  if (!el) {
+    return;
+  }
+  const groups = Array.isArray(branchGroups) ? branchGroups : [];
+  el.innerHTML = "";
+  if (!groups.length) {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  const selection = branchSelectionForLine(lineKey);
+  for (const group of groups) {
+    const wrap = document.createElement("div");
+    wrap.className = "branch-selector-group";
+    const label = document.createElement("span");
+    label.className = "branch-selector-label";
+    label.textContent = String(group.label || "Branch");
+    wrap.append(label);
+
+    const optionsWrap = document.createElement("div");
+    optionsWrap.className = "branch-selector-options";
+    const activeOption = String(selection?.[group.id] || group.options?.[0]?.id || "");
+    for (const option of group.options || []) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "branch-selector-btn";
+      const isActive = String(option.id) === activeOption;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+      button.textContent = String(option.label || option.id);
+      button.addEventListener("click", () => {
+        setBranchOptionForLine(lineKey, group.id, option.id);
+        if (typeof renderLineView === "function") {
+          renderLineView({ forceStopRefresh: true });
+        }
+      });
+      optionsWrap.append(button);
+    }
+    wrap.append(optionsWrap);
+    el.append(wrap);
+  }
+}
+
+// Orders/renders are async, and openLineView can fire several for the same
+// line while stops load. Without a token, two overlapping renders each clear
+// (before the await) then append, stacking duplicate rows. Only the newest
+// render is allowed to write.
+let lineViewStopsRenderToken = 0;
+
 async function renderLineViewStops(lineKey, lineColor, options = {}) {
   if (!dom.lineViewStops) {
     return;
   }
-
   dom.lineViewStops.style.setProperty("--line-color", lineColor || "#177ca2");
 
   const cacheKey = routeStopCacheKey(lineKey);
@@ -73,6 +248,10 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     return;
   }
 
+  // Committed to rendering this call; claim the newest token. Any older
+  // in-flight render will see a stale token after its await and bail.
+  const renderToken = ++lineViewStopsRenderToken;
+
   const visitedSet = getVisitedSetForLine(lineKey);
 
   // Get direction sequences from cache payload if available
@@ -94,12 +273,22 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
   const routeOverride = appState.routeOverridesByCity instanceof Map
     ? appState.routeOverridesByCity.get(lineKey)
     : null;
-  const customStops = Array.isArray(routeOverride?.payload?.stops) && routeOverride.payload.stops.length
+  const rawCustomStops = Array.isArray(routeOverride?.payload?.stops) && routeOverride.payload.stops.length
     ? routeOverride.payload.stops
     : null;
+  const branchGroups = Array.isArray(routeOverride?.payload?.branchGroups)
+    ? routeOverride.payload.branchGroups
+    : [];
+  let customStops = rawCustomStops;
+  let splitLabels = new Map();
+  if (rawCustomStops) {
+    const resolved = resolveBranchStops(rawCustomStops, branchGroups, branchSelectionForLine(lineKey));
+    customStops = resolved.stops;
+    splitLabels = resolved.splitLabels;
+  }
 
   const featuresToRender = customStops
-    ? orderByCustomStopKeys(stopFeatures, customStops)
+    ? orderByCustomStopKeys(stopFeatures, customStops, lineKey)
     : await orderStopsForLineView(
         stopFeatures,
         lineKey,
@@ -110,9 +299,34 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
         directionPatterns
       );
 
+  if (splitLabels.size) {
+    for (const feature of featuresToRender) {
+      const key = String(feature?.properties?.station_key || "").trim();
+      if (splitLabels.has(key)) {
+        feature.properties.branch_split_label = splitLabels.get(key);
+      }
+    }
+  }
+
+  // When a maintainer has set the order manually, hide the algorithm picker but
+  // keep Reverse; show the explainer instead.
+  const diagnosticsEl = document.getElementById("lineViewDiagnostics");
+  if (diagnosticsEl) {
+    diagnosticsEl.classList.toggle("is-admin-order", Boolean(customStops));
+  }
+  renderLineViewBranchSelector(lineKey, customStops ? branchGroups : []);
+
   if (appState.lineViewOrderingReversed) {
     featuresToRender.reverse();
   }
+
+  // Only the latest render writes, and it clears right before appending so an
+  // interleaved older render can never stack rows.
+  if (renderToken !== lineViewStopsRenderToken) {
+    return;
+  }
+  dom.lineViewStops.innerHTML = "";
+  dom.lineViewStops.dataset.lineKey = String(lineKey || "");
 
   syncLineViewOrderingControls();
 
@@ -126,6 +340,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     const row = document.createElement("button");
     row.type = "button";
     row.className = "line-view-stop-row";
+    row.dataset.stationKey = stationKey || "";
     if (index === 0) {
       row.classList.add("is-first");
     }
@@ -167,6 +382,13 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
       : "Sign in to track";
 
     content.append(name, status);
+    if (String(props.branch_split_label || "").trim()) {
+      row.classList.add("is-branch-split");
+      const branchLabel = document.createElement("p");
+      branchLabel.className = "line-view-stop-branch";
+      branchLabel.textContent = `Branches to ${String(props.branch_split_label).trim()}`;
+      content.prepend(branchLabel);
+    }
     row.append(marker, content);
 
     if (appState.user) {

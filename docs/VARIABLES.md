@@ -18,7 +18,7 @@ This document catalogs all major variables, objects, and data structures used th
 - **`appState.mapReady`** - Boolean flag when map DOM is loaded
 - **`appState.mapMode`** - Current map style ('streets' or 'satellite')
 - **`appState.currentViewportBbox`** - Current map viewport bbox [minLon, minLat, maxLon, maxLat]
-- **`appState.vectorSourceVersion`** - Integer bumped to reload the PMTiles vector source (`?v=` cache-buster)
+- **`appState.vectorArchiveVersion`** - Build stamp of `routes.pmtiles` (`<mtimeMs>-<size>` from `GET /api/tiles/archive-version`); part of the vector source URL so a rebuilt archive is a new URL
 - **`appState.lastTileMetadataSignature`** - Signature used to skip redundant vector-metadata rebuilds
 
 ### Route Filtering & Visibility
@@ -55,7 +55,9 @@ This document catalogs all major variables, objects, and data structures used th
 - **`appState.tileBackfillCooldownUntil`** - Epoch ms; skip new backfills until this time
 - **`appState.tileBackfillBboxes`** - Set of coarse-bbox keys already backfilled this session
 - **`appState.tileBackfillLastError`** - Last backfill error message
-- **`appState.tilesStats`** - Latest `/api/tiles/stats` payload (archive size, tile count)
+- **`appState.vectorArchiveVersion`** - Build stamp of `routes.pmtiles` (`<mtimeMs>-<size>` from `GET /api/tiles/archive-version`); part of the vector source URL so a rebuilt archive is a new URL
+- **`appState.backfillStage`** - Last reported backfill stage (`fetching` / `rebuilding`), used for the loading card's progress width
+- **`appState.tilesStats`** - Latest `/api/tiles/stats` payload (archive size, tile count, archiveVersion)
 
 ### User Progress & Visits
 - **`appState.visitedByLine`** - Map of lineKey → Set of stationKeys user has visited

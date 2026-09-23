@@ -36,11 +36,31 @@ const els = {
   accountsBody: document.getElementById("accountsBody"),
   accountsStatus: document.getElementById("accountsStatus"),
   actionLog: document.getElementById("actionLog"),
+  citySlugInput: document.getElementById("citySlugInput"),
+  cityNameInput: document.getElementById("cityNameInput"),
+  cityCountryInput: document.getElementById("cityCountryInput"),
+  cityCenterInput: document.getElementById("cityCenterInput"),
+  cityBboxInput: document.getElementById("cityBboxInput"),
+  cityZoomInput: document.getElementById("cityZoomInput"),
+  cityPublishedCb: document.getElementById("cityPublishedCb"),
+  saveCityBtn: document.getElementById("saveCityBtn"),
+  clearCityBtn: document.getElementById("clearCityBtn"),
+  adminCitiesList: document.getElementById("adminCitiesList"),
+  adminCitiesStatus: document.getElementById("adminCitiesStatus"),
+  reviewQueueCard: document.getElementById("reviewQueueCard"),
+  reviewQueueSummary: document.getElementById("reviewQueueSummary"),
+  refreshReviewQueueBtn: document.getElementById("refreshReviewQueueBtn"),
+  reviewFlagsJumpBtn: document.getElementById("reviewFlagsJumpBtn"),
+  reviewIssuesJumpBtn: document.getElementById("reviewIssuesJumpBtn"),
+  reharvestFlagsAnchor: document.getElementById("reharvestFlagsAnchor"),
+  issueReportsAnchor: document.getElementById("issueReportsAnchor"),
 };
 
 const state = {
   token: sessionStorage.getItem(SESSION_KEY) || "",
   refreshTimer: null,
+  editingCitySlug: "",
+  adminCities: [],
 };
 
 function setAdminSession(token) {
@@ -76,7 +96,21 @@ function appendLog(message, payload = null) {
 
 function setStatus(text, isError = false) {
   els.statusMessage.textContent = text;
-  els.statusMessage.style.color = isError ? "#a22828" : "#5a5a5a";
+  els.statusMessage.classList.toggle("is-error", isError);
+  els.statusMessage.style.color = "";
+}
+
+const STATUS_KIND_CLASSES = ["is-ok", "is-warn", "is-error"];
+
+// Apply a status message plus a semantic color class (theme-aware) to any
+// status element, instead of hardcoded inline colors that fail in dark mode.
+function setTextStatus(el, text, kind = "") {
+  if (!el) {
+    return;
+  }
+  el.textContent = text;
+  STATUS_KIND_CLASSES.forEach((name) => el.classList.toggle(name, name === kind));
+  el.style.color = "";
 }
 
 async function apiRequest(path, options = {}) {
@@ -391,6 +425,7 @@ function startPolling() {
   }
   state.refreshTimer = window.setInterval(() => {
     refreshAll().catch(() => {});
+    refreshReviewQueue().catch(() => {});
   }, 20000);
 }
 
@@ -431,6 +466,8 @@ function bindEvents() {
       setAdminLocked(false);
       els.loginStatusMessage.textContent = "Logged in.";
       await refreshAll();
+      await loadAdminCities();
+      await refreshReviewQueue();
     } catch (error) {
       clearAdminSession();
       els.loginStatusMessage.textContent = error.message;
@@ -448,7 +485,29 @@ function bindEvents() {
 
   els.refreshAllBtn.addEventListener("click", () => {
     refreshAll().catch(() => {});
+    loadAdminCities().catch(() => {});
   });
+
+  if (els.saveCityBtn) {
+    els.saveCityBtn.addEventListener("click", () => {
+      saveCity().catch(() => {});
+    });
+  }
+  if (els.clearCityBtn) {
+    els.clearCityBtn.addEventListener("click", clearCityForm);
+  }
+
+  if (els.refreshReviewQueueBtn) {
+    els.refreshReviewQueueBtn.addEventListener("click", () => {
+      refreshReviewQueue().catch(() => {});
+    });
+  }
+  if (els.reviewFlagsJumpBtn) {
+    els.reviewFlagsJumpBtn.addEventListener("click", () => jumpToElement(els.reharvestFlagsAnchor));
+  }
+  if (els.reviewIssuesJumpBtn) {
+    els.reviewIssuesJumpBtn.addEventListener("click", () => jumpToElement(els.issueReportsAnchor));
+  }
 
   els.runBackupBtn.addEventListener("click", () => {
     runAction("backup", () => apiRequest("/api/admin/actions/backup-nonrecoverable", { method: "POST" }));
@@ -457,84 +516,6 @@ function bindEvents() {
   if (els.rebuildTilesBtn) {
     els.rebuildTilesBtn.addEventListener("click", () => {
       runAction("rebuild-tiles", () => apiRequest("/api/admin/actions/rebuild-tiles", { method: "POST" }));
-    });
-  }
-
-  const reharvestBboxInput = document.getElementById("reharvestBboxInput");
-  const reharvestStopsCb = document.getElementById("reharvestStopsCb");
-  const reharvestHeadwayCb = document.getElementById("reharvestHeadwayCb");
-  const reharvestBtn = document.getElementById("reharvestBtn");
-  const reharvestStatus = document.getElementById("reharvestStatus");
-  if (reharvestBboxInput && reharvestBtn && reharvestStatus) {
-    reharvestBtn.addEventListener("click", async () => {
-      const raw = String(reharvestBboxInput.value || "").trim();
-      const parts = raw.split(",").map((value) => Number(value.trim()));
-      const bbox = parts.length === 4 && parts.every((value) => Number.isFinite(value)) ? parts : null;
-      if (!bbox || bbox[0] >= bbox[2] || bbox[1] >= bbox[3]) {
-        reharvestStatus.textContent = "Enter a valid bbox: west,south,east,north.";
-        reharvestStatus.style.color = "#a22828";
-        return;
-      }
-      if (!state.token) {
-        reharvestStatus.textContent = "Log in first.";
-        reharvestStatus.style.color = "#a22828";
-        return;
-      }
-      reharvestBtn.disabled = true;
-      reharvestStatus.textContent = "Starting full viewport reharvest…";
-      reharvestStatus.style.color = "#5a5a5a";
-
-      const statusTimer = setInterval(async () => {
-        try {
-          const status = await apiRequest("/api/admin/tiles/reharvest/status", { method: "GET" });
-          if (status?.current) {
-            reharvestStatus.textContent = `${status.current.stage}: ${status.current.message}`;
-            reharvestStatus.style.color = "#5a5a5a";
-          }
-        } catch {
-          // Polling is best-effort; the main request reports failures.
-        }
-      }, 2000);
-
-      try {
-        const payload = await apiRequest("/api/admin/tiles/reharvest", {
-          method: "POST",
-          body: {
-            bbox,
-            refreshStops: reharvestStopsCb ? reharvestStopsCb.checked : true,
-            refreshHeadway: reharvestHeadwayCb ? reharvestHeadwayCb.checked : true
-          }
-        });
-        clearInterval(statusTimer);
-        const lines = [
-          `Done in ${Math.round(payload.elapsedMs / 1000)}s. ` +
-            `${payload.addedRoutes} added, ${payload.updatedRoutes} updated, ${payload.removedRoutes} removed, ` +
-            `${payload.confirmedStillPresent} kept (still on Transitland).`
-        ];
-        if (payload.flagsOpened?.length > 0) {
-          lines.push(`${payload.flagsOpened.length} review flag(s) opened for routes with admin/user data.`);
-        }
-        if (payload.refreshFailures?.length > 0) {
-          lines.push(`${payload.refreshFailures.length} route refresh(es) failed.`);
-        }
-        if (payload.tileCount !== null && payload.tileCount !== undefined) {
-          lines.push(`${payload.totalRoutesInArchive} routes in archive; tiles rebuilt (${payload.tileCount} tiles).`);
-        }
-        reharvestStatus.innerHTML = "";
-        for (const line of lines) {
-          const div = document.createElement("div");
-          div.textContent = line;
-          reharvestStatus.appendChild(div);
-        }
-        reharvestStatus.style.color = payload.refreshFailures?.length ? "#b26a00" : "#2e7d32";
-        loadReharvestFlags();
-      } catch (error) {
-        clearInterval(statusTimer);
-        reharvestStatus.textContent = `Failed: ${error.message}`;
-        reharvestStatus.style.color = "#a22828";
-      } finally {
-        reharvestBtn.disabled = false;
-      }
     });
   }
 
@@ -565,18 +546,20 @@ async function loadReharvestFlags() {
   if (!body) {
     return;
   }
-  statusEl.textContent = "Loading flags…";
+  setTextStatus(statusEl, "Loading flags…");
   try {
     const payload = await apiRequest("/api/admin/reharvest/flags?status=open", { method: "GET" });
     const flags = Array.isArray(payload?.flags) ? payload.flags : [];
     body.innerHTML = "";
     if (!flags.length) {
-      statusEl.textContent = "No open reharvest flags.";
-      statusEl.style.color = "#2e7d32";
+      setTextStatus(statusEl, "No open reharvest flags.", "is-ok");
       return;
     }
-    statusEl.textContent = `${flags.length} open flag(s). Resolve a flag after you have reviewed the affected route data.`;
-    statusEl.style.color = "#b26a00";
+    setTextStatus(
+      statusEl,
+      `${flags.length} open flag(s). Resolve a flag after you have reviewed the affected route data.`,
+      "is-warn"
+    );
     for (const flag of flags) {
       const row = document.createElement("tr");
       const cellId = document.createElement("td");
@@ -598,8 +581,7 @@ async function loadReharvestFlags() {
           await apiRequest(`/api/admin/reharvest/flags/${flag.id}/resolve`, { method: "POST" });
           loadReharvestFlags();
         } catch (error) {
-          statusEl.textContent = `Failed to resolve flag: ${error.message}`;
-          statusEl.style.color = "#a22828";
+          setTextStatus(statusEl, `Failed to resolve flag: ${error.message}`, "is-error");
         }
       });
       cellAction.appendChild(resolveBtn);
@@ -607,8 +589,7 @@ async function loadReharvestFlags() {
       body.appendChild(row);
     }
   } catch (error) {
-    statusEl.textContent = `Failed to load flags: ${error.message}`;
-    statusEl.style.color = "#a22828";
+    setTextStatus(statusEl, `Failed to load flags: ${error.message}`, "is-error");
   }
 }
 
@@ -623,16 +604,20 @@ function formatReportTime(value) {
   return date.toLocaleString();
 }
 
-function useBboxForReharvest(bboxArray) {
-  const input = document.getElementById("reharvestBboxInput");
-  if (!input || !Array.isArray(bboxArray)) {
+// Open an issue report's saved view in the Map Editor, where the area refresh
+// now lives (the console no longer takes a hand-typed bbox).
+function openIssueInMapEditor(issue) {
+  if (!Array.isArray(issue?.bbox) || issue.bbox.length !== 4) {
     return;
   }
-  input.value = bboxArray.map((value) => Number(value).toFixed(6)).join(",");
-  const reharvestHeading = document.getElementById("reharvestBboxInput") && input.closest(".card");
-  if (reharvestHeading) {
-    reharvestHeading.scrollIntoView({ behavior: "smooth", block: "start" });
+  const params = new URLSearchParams({
+    bbox: issue.bbox.map((value) => Number(value).toFixed(6)).join(",")
+  });
+  const zoom = Number(issue.zoom);
+  if (Number.isFinite(zoom)) {
+    params.set("zoom", String(zoom));
   }
+  window.open(`/admin/override?${params.toString()}`, "_blank", "noopener");
 }
 
 async function loadIssueReports(options = {}) {
@@ -641,19 +626,21 @@ async function loadIssueReports(options = {}) {
   if (!body) {
     return;
   }
-  statusEl.textContent = "Loading issue reports…";
+  setTextStatus(statusEl, "Loading issue reports…");
   try {
     const status = options.showResolved ? "resolved" : "open";
     const payload = await apiRequest(`/api/admin/issues?status=${status}`, { method: "GET" });
     const issues = Array.isArray(payload?.issues) ? payload.issues : [];
     body.innerHTML = "";
     if (!issues.length) {
-      statusEl.textContent = `No ${options.showResolved ? "resolved" : "open"} issue reports.`;
-      statusEl.style.color = "#2e7d32";
+      setTextStatus(
+        statusEl,
+        `No ${options.showResolved ? "resolved" : "open"} issue reports.`,
+        "is-ok"
+      );
       return;
     }
-    statusEl.textContent = `${issues.length} ${options.showResolved ? "resolved" : "open"} report(s).`;
-    statusEl.style.color = "#5a5a5a";
+    setTextStatus(statusEl, `${issues.length} ${options.showResolved ? "resolved" : "open"} report(s).`);
 
     for (const issue of issues) {
       const row = document.createElement("tr");
@@ -696,13 +683,14 @@ async function loadIssueReports(options = {}) {
 
       const cellActions = document.createElement("td");
       if (issue.status !== "resolved") {
-        const reharvestBtn = document.createElement("button");
-        reharvestBtn.type = "button";
-        reharvestBtn.textContent = "Reharvest";
-        reharvestBtn.addEventListener("click", () => {
-          useBboxForReharvest(issue.bbox);
+        const mapBtn = document.createElement("button");
+        mapBtn.type = "button";
+        mapBtn.textContent = "Open in map";
+        mapBtn.title = "Open this view in the Map Editor and refresh the area";
+        mapBtn.addEventListener("click", () => {
+          openIssueInMapEditor(issue);
         });
-        cellActions.appendChild(reharvestBtn);
+        cellActions.appendChild(mapBtn);
 
         const resolveBtn = document.createElement("button");
         resolveBtn.type = "button";
@@ -712,8 +700,7 @@ async function loadIssueReports(options = {}) {
             await apiRequest(`/api/admin/issues/${issue.id}/resolve`, { method: "POST" });
             loadIssueReports({ showResolved: Boolean(options.showResolved) });
           } catch (error) {
-            statusEl.textContent = `Failed to resolve report: ${error.message}`;
-            statusEl.style.color = "#a22828";
+            setTextStatus(statusEl, `Failed to resolve report: ${error.message}`, "is-error");
           }
         });
         cellActions.appendChild(resolveBtn);
@@ -726,8 +713,7 @@ async function loadIssueReports(options = {}) {
             await apiRequest(`/api/admin/issues/${issue.id}/reopen`, { method: "POST" });
             loadIssueReports({ showResolved: true });
           } catch (error) {
-            statusEl.textContent = `Failed to reopen report: ${error.message}`;
-            statusEl.style.color = "#a22828";
+            setTextStatus(statusEl, `Failed to reopen report: ${error.message}`, "is-error");
           }
         });
         cellActions.appendChild(reopenBtn);
@@ -737,8 +723,235 @@ async function loadIssueReports(options = {}) {
       body.appendChild(row);
     }
   } catch (error) {
-    statusEl.textContent = `Failed to load issue reports: ${error.message}`;
-    statusEl.style.color = "#a22828";
+    setTextStatus(statusEl, `Failed to load issue reports: ${error.message}`, "is-error");
+  }
+}
+
+function parseNumberList(value) {
+  return String(value || "")
+    .split(",")
+    .map((entry) => Number(entry.trim()))
+    .filter((entry) => Number.isFinite(entry));
+}
+
+function cityFormPayload() {
+  const center = parseNumberList(els.cityCenterInput?.value);
+  const bbox = parseNumberList(els.cityBboxInput?.value);
+  const zoom = Number(els.cityZoomInput?.value);
+  return {
+    slug: String(els.citySlugInput?.value || "").trim(),
+    name: String(els.cityNameInput?.value || "").trim(),
+    country: String(els.cityCountryInput?.value || "").trim(),
+    center: center.length === 2 ? center : null,
+    bbox: bbox.length === 4 ? bbox : null,
+    defaultZoom: Number.isFinite(zoom) ? zoom : null,
+    published: Boolean(els.cityPublishedCb?.checked)
+  };
+}
+
+function clearCityForm() {
+  state.editingCitySlug = "";
+  if (els.citySlugInput) {
+    els.citySlugInput.value = "";
+    els.citySlugInput.disabled = false;
+  }
+  if (els.cityNameInput) els.cityNameInput.value = "";
+  if (els.cityCountryInput) els.cityCountryInput.value = "";
+  if (els.cityCenterInput) els.cityCenterInput.value = "";
+  if (els.cityBboxInput) els.cityBboxInput.value = "";
+  if (els.cityZoomInput) els.cityZoomInput.value = "";
+  if (els.cityPublishedCb) els.cityPublishedCb.checked = false;
+  if (els.clearCityBtn) els.clearCityBtn.disabled = true;
+  renderAdminCities(state.adminCities);
+}
+
+function fillCityForm(city) {
+  state.editingCitySlug = city.slug;
+  els.citySlugInput.value = city.slug;
+  els.citySlugInput.disabled = true;
+  els.cityNameInput.value = city.name || "";
+  els.cityCountryInput.value = city.country || "";
+  els.cityCenterInput.value = Array.isArray(city.center) ? city.center.join(",") : "";
+  els.cityBboxInput.value = Array.isArray(city.bbox) ? city.bbox.join(",") : "";
+  els.cityZoomInput.value =
+    city.defaultZoom === null || city.defaultZoom === undefined ? "" : String(city.defaultZoom);
+  els.cityPublishedCb.checked = Boolean(city.published);
+  els.clearCityBtn.disabled = false;
+  renderAdminCities(state.adminCities);
+}
+
+function renderAdminCities(cities) {
+  const list = els.adminCitiesList;
+  if (!list) {
+    return;
+  }
+  list.innerHTML = "";
+  if (!cities.length) {
+    const p = document.createElement("p");
+    p.className = "microcopy";
+    p.textContent = "No cities yet. Create one above, then add and vet its routes in the Map Editor.";
+    list.append(p);
+    return;
+  }
+  for (const city of cities) {
+    const row = document.createElement("div");
+    row.className = "city-row";
+
+    const main = document.createElement("div");
+    main.className = "city-row-main";
+    const name = document.createElement("p");
+    name.className = "city-row-name";
+    name.textContent = city.name || city.slug;
+    const meta = document.createElement("p");
+    meta.className = "city-row-meta";
+    meta.textContent = `${city.slug}${city.country ? " · " + city.country : ""} · ${city.routeCount || 0} route(s)${
+      city.operatorCount ? ` · ${city.operatorCount} operator(s)` : ""
+    }`;
+    main.append(name, meta);
+
+    const badge = document.createElement("span");
+    badge.className = "city-badge" + (city.published ? " is-published" : "");
+    badge.textContent = city.published ? "Published" : "Draft";
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.textContent = "Edit";
+    editBtn.addEventListener("click", () => fillCityForm(city));
+
+    const publishBtn = document.createElement("button");
+    publishBtn.type = "button";
+    publishBtn.textContent = city.published ? "Unpublish" : "Publish";
+    publishBtn.addEventListener("click", async () => {
+      if (!city.published && !Number(city.routeCount || 0)) {
+        if (!window.confirm(`"${city.name || city.slug}" has no routes yet. Publishing it will show nothing to users. Publish anyway?`)) {
+          return;
+        }
+      }
+      try {
+        await apiRequest(`/api/admin/cities/${encodeURIComponent(city.slug)}/publish`, {
+          method: "POST",
+          body: { published: !city.published }
+        });
+        loadAdminCities();
+      } catch (error) {
+        setTextStatus(els.adminCitiesStatus, `Publish failed: ${error.message}`, "is-error");
+      }
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", async () => {
+      if (!window.confirm(`Delete city ${city.slug}? Its route vetting will be removed.`)) {
+        return;
+      }
+      try {
+        await apiRequest(`/api/admin/cities/${encodeURIComponent(city.slug)}`, { method: "DELETE" });
+        if (state.editingCitySlug === city.slug) {
+          clearCityForm();
+        }
+        loadAdminCities();
+      } catch (error) {
+        setTextStatus(els.adminCitiesStatus, `Delete failed: ${error.message}`, "is-error");
+      }
+    });
+
+    row.append(main, badge, editBtn, publishBtn, deleteBtn);
+    list.append(row);
+  }
+}
+
+async function loadAdminCities() {
+  if (!els.adminCitiesList) {
+    return;
+  }
+  setTextStatus(els.adminCitiesStatus, "Loading cities…");
+  try {
+    const payload = await apiRequest("/api/admin/cities", { method: "GET" });
+    state.adminCities = Array.isArray(payload?.cities) ? payload.cities : [];
+    renderAdminCities(state.adminCities);
+    setTextStatus(
+      els.adminCitiesStatus,
+      state.adminCities.length ? `${state.adminCities.length} city(ies).` : "No cities yet."
+    );
+  } catch (error) {
+    setTextStatus(els.adminCitiesStatus, `Failed to load cities: ${error.message}`, "is-error");
+  }
+}
+
+async function saveCity() {
+  const payload = cityFormPayload();
+  if (!payload.slug) {
+    setTextStatus(els.adminCitiesStatus, "Slug is required.", "is-error");
+    return;
+  }
+  setTextStatus(els.adminCitiesStatus, "Saving…");
+  try {
+    await apiRequest("/api/admin/cities", { method: "POST", body: payload });
+    setTextStatus(els.adminCitiesStatus, `Saved ${payload.slug}.`);
+    clearCityForm();
+    loadAdminCities();
+  } catch (error) {
+    setTextStatus(els.adminCitiesStatus, `Save failed: ${error.message}`, "is-error");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Review queue: surface anything that needs a maintainer decision. Importance:
+// a removed route that carried an override / review / vote / city membership is
+// high; plain issue reports are normal.
+// ---------------------------------------------------------------------------
+
+function jumpToElement(el) {
+  if (el && typeof el.scrollIntoView === "function") {
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function renderReviewQueue(flags, issues) {
+  const high = flags.filter((flag) => String(flag.kind || "").includes("removed")).length;
+  if (els.reviewQueueCard) {
+    els.reviewQueueCard.classList.toggle("is-attention", high > 0);
+  }
+  if (els.reviewFlagsJumpBtn) {
+    els.reviewFlagsJumpBtn.hidden = flags.length === 0;
+  }
+  if (els.reviewIssuesJumpBtn) {
+    els.reviewIssuesJumpBtn.hidden = issues.length === 0;
+  }
+  if (!els.reviewQueueSummary) {
+    return;
+  }
+  const total = flags.length + issues.length;
+  if (!total) {
+    els.reviewQueueSummary.textContent = "Nothing needs review.";
+    return;
+  }
+  const parts = [];
+  if (flags.length) {
+    parts.push(`${flags.length} reharvest flag(s)${high ? ` (${high} route removal${high > 1 ? "s" : ""})` : ""}`);
+  }
+  if (issues.length) {
+    parts.push(`${issues.length} issue report(s)`);
+  }
+  els.reviewQueueSummary.textContent = `${total} open review item(s): ${parts.join(" · ")}.`;
+}
+
+async function refreshReviewQueue() {
+  if (!els.reviewQueueSummary) {
+    return;
+  }
+  try {
+    const [flagsPayload, issuesPayload] = await Promise.all([
+      apiRequest("/api/admin/reharvest/flags?status=open", { method: "GET" }),
+      apiRequest("/api/admin/issues?status=open", { method: "GET" })
+    ]);
+    renderReviewQueue(
+      Array.isArray(flagsPayload?.flags) ? flagsPayload.flags : [],
+      Array.isArray(issuesPayload?.issues) ? issuesPayload.issues : []
+    );
+  } catch (error) {
+    els.reviewQueueSummary.textContent = `Could not check the review queue: ${error.message}`;
   }
 }
 
@@ -758,6 +971,8 @@ async function init() {
       setAdminLocked(false);
       setStatus("Logged in.");
       await refreshAll();
+      await loadAdminCities();
+      await refreshReviewQueue();
       await loadReharvestFlags();
       await loadIssueReports({ showResolved: false });
       startPolling();

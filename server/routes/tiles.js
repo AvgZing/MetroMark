@@ -13,6 +13,24 @@ const tilesStats = {
 
 const router = express.Router();
 
+// Archive identity: changes whenever the harvester (or a backfill) rebuilds
+// routes.pmtiles. Clients include it in the PMTiles URL so a rebuilt archive is
+// a new URL rather than new bytes behind a cached one.
+function getArchiveVersion() {
+  try {
+    const stat = fs.statSync(TILES_FILE);
+    const mtimeMs = Math.round(stat.mtimeMs);
+    return { version: `${mtimeMs}-${stat.size}`, size: stat.size, mtimeMs };
+  } catch {
+    return { version: "", size: 0, mtimeMs: 0 };
+  }
+}
+
+router.get("/tiles/archive-version", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json(getArchiveVersion());
+});
+
 router.get("/tiles/routes.pmtiles", (req, res) => {
   if (!fs.existsSync(TILES_FILE)) {
     return res.status(404).json({ error: "Tile archive not found. Run npm run build:tiles first." });
@@ -43,9 +61,11 @@ router.get("/tiles/routes.pmtiles", (req, res) => {
 function getTilesStats() {
   return {
     ...tilesStats,
+    archiveVersion: getArchiveVersion().version,
     averageMs: tilesStats.requests > 0 ? Math.round(tilesStats.totalMs / tilesStats.requests) : 0
   };
 }
 
 module.exports = router;
 module.exports.getTilesStats = getTilesStats;
+module.exports.getArchiveVersion = getArchiveVersion;

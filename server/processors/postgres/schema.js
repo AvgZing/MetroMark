@@ -165,6 +165,52 @@ const schemaStatements = [
 )`,
   "create index if not exists idx_issue_report_status on public.issue_report (status)",
   "create index if not exists idx_issue_report_created on public.issue_report (created_at desc)",
+  // Curated city collections (pre-1.0 flagship): a city is an admin-vetted set
+  // of routes, not just a bbox. Metadata lives in city_preset; per-route
+  // include/exclude + vetting state lives in city_preset_route. Distinct from
+  // the harvest baseline list in server/processors/city-presets.js and from the
+  // per-user Supabase user_filter_presets.
+  `create table if not exists public.city_preset (
+  slug text primary key,
+  name text not null default '',
+  country text not null default '',
+  center_lon double precision,
+  center_lat double precision,
+  bbox jsonb,
+  default_zoom double precision,
+  published boolean not null default false,
+  notes text not null default '',
+  sort_order integer not null default 0,
+  updated_at timestamptz not null default now()
+)`,
+  "create index if not exists idx_city_preset_published on public.city_preset (published)",
+  `create table if not exists public.city_preset_route (
+  city_slug text not null references public.city_preset(slug) on delete cascade,
+  line_key text not null,
+  included boolean not null default true,
+  vetted_accuracy boolean not null default false,
+  vetted_up_to_date boolean not null default false,
+  vetted_stop_order boolean not null default false,
+  vetted_at timestamptz,
+  vetted_by text,
+  sort_order integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (city_slug, line_key)
+)`,
+  "create index if not exists idx_city_preset_route_city on public.city_preset_route (city_slug)",
+  // Operator rules: an included operator contributes all of its current routes
+  // to the city (resolved at read time so service changes flow in). Routes can
+  // still be excluded individually via city_preset_route.included = false.
+  `create table if not exists public.city_preset_operator (
+  city_slug text not null references public.city_preset(slug) on delete cascade,
+  operator_name text not null,
+  included boolean not null default true,
+  sort_order integer not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (city_slug, operator_name)
+)`,
+  "create index if not exists idx_city_preset_operator_city on public.city_preset_operator (city_slug)",
+  "create index if not exists idx_city_preset_operator_name on public.city_preset_operator (operator_name)",
 ];
 
 module.exports = { schemaStatements };

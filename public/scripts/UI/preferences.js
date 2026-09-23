@@ -1,6 +1,7 @@
 const USER_PREFERENCE_STORAGE_KEYS = {
   theme: "metromark_theme",
   initialCitySlug: "metromark_initial_city_slug",
+  activeCitySlug: "metromark_active_city_slug",
   lineViewAutoOpenEnabled: "metromark_line_view_auto_open",
   showAllStops: SHOW_ALL_STOPS_STORAGE_KEY,
   showPrivateOperators: "metromark_show_private_operators",
@@ -123,6 +124,9 @@ function normalizePreferencePatch(patch = {}) {
   if (Object.prototype.hasOwnProperty.call(source, "initialCitySlug")) {
     normalized.initialCitySlug = normalizePreferenceString(source.initialCitySlug);
   }
+  if (Object.prototype.hasOwnProperty.call(source, "activeCitySlug")) {
+    normalized.activeCitySlug = normalizePreferenceString(source.activeCitySlug);
+  }
   if (Object.prototype.hasOwnProperty.call(source, "lineViewAutoOpenEnabled")) {
     normalized.lineViewAutoOpenEnabled = Boolean(source.lineViewAutoOpenEnabled);
   }
@@ -165,6 +169,13 @@ function applyUserPreferences(preferences = {}) {
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "initialCitySlug")) {
     appState.initialCitySlug = normalized.initialCitySlug || appState.initialCitySlug;
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "activeCitySlug")) {
+    // "" is Globe View, so this intentionally permits clearing.
+    appState.activeCitySlug = normalizePreferenceString(normalized.activeCitySlug);
+    if (typeof updateCityRecenterButton === "function") {
+      updateCityRecenterButton();
+    }
   }
   if (Object.prototype.hasOwnProperty.call(normalized, "lineViewAutoOpenEnabled")) {
     appState.lineViewAutoOpenEnabled = Boolean(normalized.lineViewAutoOpenEnabled);
@@ -236,6 +247,7 @@ function initializeUserPreferencesFromStorage() {
   applyUserPreferences({
     theme: readStoredPreference("theme", "dark"),
     initialCitySlug: readStoredPreference("initialCitySlug", "seattle"),
+    activeCitySlug: readStoredPreference("activeCitySlug", ""),
     lineViewAutoOpenEnabled: readStoredPreference("lineViewAutoOpenEnabled", true),
     showAllStops: readStoredPreference("showAllStops", false),
     showPrivateOperators: readStoredPreference("showPrivateOperators", false),

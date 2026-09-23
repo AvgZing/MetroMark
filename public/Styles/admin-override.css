@@ -10,7 +10,7 @@ body.override-body {
   display: grid;
   grid-template-columns: minmax(330px, 420px) 1fr;
   width: 100%;
-  height: 100%;
+  height: calc(100% - var(--topbar-h));
 }
 
 /* The map needs an explicit height, otherwise the shell's `height: 100%`
@@ -231,6 +231,159 @@ body[data-theme="dark"] .admin-line-editor-card {
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   white-space: nowrap;
+}
+
+/* Route browser results (sidebar search + Transitland add). */
+.admin-route-search-results {
+  margin-top: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-route-search-results:empty {
+  display: none;
+}
+
+.admin-route-result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-route-result-focus {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 6px 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--button-bg);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.admin-route-result-focus:hover {
+  background: var(--button-hover);
+}
+
+.admin-route-result-focus .admin-route-select-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-route-result-row .btn {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* City presets panel: operators + explicit routes + per-route vetting. */
+.city-subhead {
+  margin: 10px 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.city-members-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.city-member-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--button-bg);
+  font-size: 12px;
+  min-width: 0;
+}
+
+.city-member-row.is-excluded {
+  opacity: 0.65;
+}
+
+.city-member-row.is-selected {
+  border-color: var(--accent);
+  flex-wrap: wrap;
+}
+
+/* Keep the hidden attribute authoritative over the flex display above. */
+.city-member-row[hidden] {
+  display: none;
+}
+
+.city-member-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.city-member-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.city-member-meta {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.city-vet-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.city-vet-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.city-member-row .btn {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.city-add-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.city-add-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.city-add-row .btn {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 /* Mobile: the editor overlays full width. */
@@ -604,7 +757,7 @@ body[data-theme="dark"] .admin-line-editor-card {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
+  min-height: calc(100vh - var(--topbar-h));
 }
 
 .auth-shell .auth-card {
@@ -713,6 +866,72 @@ body[data-theme="dark"] .admin-line-editor-card {
   gap: 8px;
 }
 
+/* Area refresh: the viewport reharvest action now lives on the map, next to the
+   view it applies to. The panel shows the exact bbox being sent. */
+.area-refresh-panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: min(340px, calc(100% - 24px));
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.area-refresh-panel[hidden] {
+  display: none;
+}
+
+.area-refresh-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.area-refresh-header h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.area-refresh-panel .microcopy {
+  margin: 0;
+}
+
+.area-refresh-bbox {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+}
+
+.area-refresh-bbox div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.area-refresh-bbox dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.area-refresh-bbox dd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .route-stops-list {
   max-height: 220px;
   overflow: auto;
@@ -722,10 +941,137 @@ body[data-theme="dark"] .admin-line-editor-card {
 .stop-order-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 4px 0;
   border-bottom: 1px solid var(--line, #e5e0d5);
   font-size: 0.82rem;
+}
+
+/* Branch group editor (alternative stop runs the user can swap in line view). */
+.branch-groups-editor {
+  margin: 6px 0;
+}
+
+.branch-groups-heading {
+  margin: 8px 0 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.branch-groups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.branch-group-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--button-bg);
+}
+
+.branch-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.branch-group-label,
+.branch-option-label {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 7px;
+  font-size: 12px;
+}
+
+.branch-options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 10px;
+}
+
+.branch-option-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.branch-add-option {
+  align-self: flex-start;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.stop-branch-row {
+  flex-basis: 100%;
+  padding-left: 30px;
+}
+
+.stop-branch-select {
+  max-width: 240px;
+  width: 100%;
+  padding: 5px 7px;
+  font-size: 12px;
+}
+
+.stop-order-fields {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) 82px 82px;
+  gap: 6px;
+}
+
+.stop-order-fields input {
+  min-width: 0;
+  padding: 5px 7px;
+  font-size: 12px;
+}
+
+.stop-order-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.stop-order-row.is-custom .stop-order-fields input:first-child {
+  border-color: var(--accent);
+}
+
+.stop-order-remove {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  font-size: 0.8rem;
+}
+
+.stop-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 72px auto;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.stop-add-row input {
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.stop-add-row .btn {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 .stop-order-pos {

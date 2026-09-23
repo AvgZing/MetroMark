@@ -11,8 +11,9 @@
       rel="stylesheet"
     />
     <link href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/Styles/base.css?v=2026-09-22" />
-    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/base.css?v=2026-09-23" />
+    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-09-23" />
+    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-09-23" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -22,6 +23,38 @@
     <meta name="theme-color" content="#333333" />
   </head>
   <body class="override-body">
+    <header class="topbar admin-topbar">
+      <div class="topbar-left">
+        <a class="topbar-brand" href="/admin">
+          <img class="topbar-logo" src="/Assets/icons/favicon.svg" alt="" aria-hidden="true" />
+          <span class="topbar-brand-text">
+            <span class="topbar-name">MetroMark</span>
+            <span class="topbar-tagline">Map Editor</span>
+          </span>
+        </a>
+        <nav class="topbar-nav" aria-label="Admin">
+          <a class="topbar-nav-btn" href="/admin">Console</a>
+          <a class="topbar-nav-btn is-active" href="/admin/override" aria-current="page">Map Editor</a>
+          <a class="topbar-nav-btn" href="/">Open app</a>
+        </nav>
+      </div>
+      <div class="topbar-actions">
+        <button
+          id="themeToggleBtn"
+          class="btn btn-icon theme-toggle-btn"
+          type="button"
+          aria-label="Toggle theme"
+          title="Toggle theme"
+        >
+          <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3.5v2.2m0 12.6v2.2M5.6 5.6l1.6 1.6m9.6 9.6 1.6 1.6M3.5 12h2.2m12.6 0h2.2M5.6 18.4l1.6-1.6m9.6-9.6 1.6-1.6" />
+            <circle cx="12" cy="12" r="4.4" />
+          </svg>
+        </button>
+        <button id="logoutBtn" class="btn admin-topbar-session" type="button">Logout</button>
+      </div>
+    </header>
+
     <main class="admin-shell auth-shell" id="adminLoginShell" hidden>
       <section class="card auth-card">
         <h2>Admin Login</h2>
@@ -37,26 +70,6 @@
 
     <div class="admin-override-shell" id="adminApp" hidden>
       <aside class="override-sidebar">
-        <div class="sidebar-head panel">
-          <div>
-            <p class="brand-kicker">Override Editor</p>
-            <h1>MetroMark Admin</h1>
-            <p class="subtle"><a href="/admin">Back to console</a></p>
-          </div>
-          <button
-            id="themeToggleBtn"
-            class="btn btn-icon theme-toggle-btn"
-            type="button"
-            aria-label="Toggle theme"
-            title="Toggle theme"
-          >
-            <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M12 3.5v2.2m0 12.6v2.2M5.6 5.6l1.6 1.6m9.6 9.6 1.6 1.6M3.5 12h2.2m12.6 0h2.2M5.6 18.4l1.6-1.6m9.6-9.6 1.6-1.6" />
-              <circle cx="12" cy="12" r="4.4" />
-            </svg>
-          </button>
-        </div>
-
         <div class="panel override-hint-panel">
           <p class="microcopy">
             Click a <strong>route</strong> or <strong>station</strong> on the map to edit its
@@ -87,6 +100,69 @@
             <option value="12">Monorail</option>
           </select>
           <p class="microcopy" id="routeSearchInfo"></p>
+          <div id="routeSearchResults" class="admin-route-search-results"></div>
+          <div class="override-actions">
+            <button id="refreshSelectedRoutesBtn" class="btn" type="button" disabled>
+              Refresh selected (0)
+            </button>
+          </div>
+          <p class="status" id="routeBatchStatus"></p>
+        </div>
+
+        <div class="panel">
+          <h2>Add route from Transitland</h2>
+          <p class="microcopy">
+            Search routes that are not in the archive yet by name or number, then add the match.
+          </p>
+          <input
+            id="transitlandSearchInput"
+            type="search"
+            placeholder="e.g. 44, Rainier, or a route key"
+          />
+          <div class="override-actions">
+            <button id="transitlandSearchBtn" class="btn btn-subtle" type="button">
+              Search Transitland
+            </button>
+          </div>
+          <div id="transitlandSearchResults" class="admin-route-search-results"></div>
+          <p class="status" id="transitlandSearchStatus"></p>
+        </div>
+
+        <div class="panel override-city-panel">
+          <h2>City presets</h2>
+          <p class="microcopy">
+            Curate a city's routes here, then publish it from the Admin Console. Operator rules add
+            every current route an operator runs; individual routes can be included, excluded, and
+            vetted for accuracy.
+          </p>
+          <label for="cityPanelSelect">City</label>
+          <select id="cityPanelSelect">
+            <option value="">Select a city…</option>
+          </select>
+          <div id="cityPanelBody" hidden>
+            <p class="microcopy" id="cityPanelSummary"></p>
+            <div id="citySelectedRoute" class="city-member-row is-selected" hidden></div>
+
+            <h3 class="city-subhead">Operators</h3>
+            <div id="cityOperatorsList" class="city-members-list"></div>
+            <div class="city-add-row">
+              <input id="cityOperatorSearchInput" type="text" placeholder="Find operator (e.g. King County Metro)" />
+              <button id="cityOperatorSearchBtn" class="btn btn-subtle" type="button">Search</button>
+            </div>
+            <div id="cityOperatorResults" class="admin-route-search-results"></div>
+
+            <h3 class="city-subhead">Routes</h3>
+            <p class="microcopy">
+              Include a single route (e.g. an Amtrak line) or exclude one that an operator rule would
+              otherwise add. Vetting flags are for accuracy review.
+            </p>
+            <div class="override-actions">
+              <button id="cityAddSelectedRouteBtn" class="btn btn-subtle" type="button">Include selected</button>
+              <button id="cityExcludeSelectedRouteBtn" class="btn btn-subtle" type="button">Exclude selected</button>
+            </div>
+            <div id="cityRoutesList" class="city-members-list"></div>
+            <p class="status" id="cityPanelStatus"></p>
+          </div>
         </div>
 
         <div class="panel override-edit-panel" id="stationEditPanel" hidden>
@@ -155,10 +231,34 @@
 
       <main class="override-map-stage">
         <div class="map-overlay-controls" role="group" aria-label="Map controls">
-          <button id="refreshMapBtn" class="btn" type="button">Refresh Map</button>
-          <button id="logoutBtn" class="btn btn-subtle" type="button">Logout</button>
+          <button id="areaRefreshBtn" class="btn" type="button">Refresh this area</button>
+          <button id="refreshMapBtn" class="btn btn-subtle" type="button">Reload layers</button>
         </div>
         <div id="overrideMap"></div>
+
+        <div class="area-refresh-panel" id="areaRefreshPanel" hidden>
+          <header class="area-refresh-header">
+            <h2>Refresh area from Transitland</h2>
+            <button id="areaRefreshCloseBtn" class="btn btn-subtle" type="button">Close</button>
+          </header>
+          <p class="microcopy">
+            Pulls a fresh route catalog, geometry, headway, and stops for the visible area, confirms
+            routes that disappeared, and rebuilds the tile archive once. Runs uncapped (manual).
+          </p>
+          <dl class="area-refresh-bbox">
+            <div><dt>West</dt><dd id="areaRefreshWest">—</dd></div>
+            <div><dt>South</dt><dd id="areaRefreshSouth">—</dd></div>
+            <div><dt>East</dt><dd id="areaRefreshEast">—</dd></div>
+            <div><dt>North</dt><dd id="areaRefreshNorth">—</dd></div>
+          </dl>
+          <p class="microcopy" id="areaRefreshSpan"></p>
+          <label class="check-label"><input id="areaRefreshStopsCb" type="checkbox" checked /> Refresh stops + route metadata</label>
+          <label class="check-label"><input id="areaRefreshHeadwayCb" type="checkbox" checked /> Refresh headway</label>
+          <div class="override-actions">
+            <button id="areaRefreshRunBtn" class="btn" type="button">Refresh this area</button>
+          </div>
+          <p id="areaRefreshStatus" class="status"></p>
+        </div>
 
         <div class="admin-line-editor-panel" id="routeEditPanel" hidden>
           <div class="admin-line-editor-card">
@@ -213,6 +313,15 @@
                   <option value="legacy-geometry">U-Shape</option>
                   <option value="fractions">Loop</option>
                 </select>
+                <label for="routeFrequency">Frequency</label>
+                <select id="routeFrequency">
+                  <option value="">Keep current</option>
+                  <option value="__default__">Default (clear override)</option>
+                  <option value="frequent">Frequent (Up to 10m)</option>
+                  <option value="regular">Regular (11-29m)</option>
+                  <option value="local">Local (30m+)</option>
+                  <option value="unknown">Frequency Unknown</option>
+                </select>
                 <div class="review-setting">
                   <label>
                     <input id="routeProblematic" type="checkbox" />
@@ -224,7 +333,27 @@
 
               <div class="admin-line-editor-section">
                 <h3>Stops / Track Routing</h3>
-                <p class="microcopy">Set a custom stop order for the line view (listed top to bottom).</p>
+                <p class="microcopy">
+                  Reorder stops, edit names/coordinates, remove them, or add new stops. Saving makes
+                  this the order users see.
+                </p>
+                <div class="branch-groups-editor">
+                  <p class="branch-groups-heading">Branches</p>
+                  <p class="microcopy">
+                    Optional. Group alternative stop runs, then tag stops with an option below; users
+                    swap options in line view.
+                  </p>
+                  <div id="branchGroupsList" class="branch-groups-list"></div>
+                  <div class="override-actions">
+                    <button id="addBranchGroupBtn" class="btn btn-subtle" type="button">Add branch group</button>
+                  </div>
+                </div>
+                <div class="stop-add-row">
+                  <input id="newStopName" type="text" placeholder="New stop name" />
+                  <input id="newStopLat" type="number" step="any" placeholder="Lat" />
+                  <input id="newStopLon" type="number" step="any" placeholder="Lon" />
+                  <button id="addStopBtn" class="btn btn-subtle" type="button">Add</button>
+                </div>
                 <div id="routeStopsList" class="route-stops-list">
                   <p class="microcopy">Load a route to see its stops.</p>
                 </div>
@@ -234,8 +363,23 @@
                 </div>
               </div>
 
+              <div class="admin-line-editor-section">
+                <h3>Data</h3>
+                <p class="microcopy">
+                  Pull fresh geometry, stops, and headway for this route from Transitland. If it no
+                  longer exists upstream, it is removed from the archive and flagged for review.
+                </p>
+                <div class="override-actions">
+                  <button id="refreshRouteBtn" class="btn" type="button">Refresh from Transitland</button>
+                  <button id="removeRouteBtn" class="btn btn-danger" type="button">Remove from archive</button>
+                </div>
+                <p class="status" id="routeDataStatus"></p>
+              </div>
+
               <div class="admin-line-editor-section admin-line-editor-actions-row">
                 <button id="saveRouteBtn" class="btn" type="button">Save Route Edits</button>
+                <button id="resetRouteBtn" class="btn btn-subtle" type="button">Reset changes</button>
+                <button id="deleteRouteOverrideBtn" class="btn btn-danger" type="button">Delete Override</button>
               </div>
               <p class="status" id="routeEditStatus"></p>
             </div>
@@ -246,9 +390,9 @@
 
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
     <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
-    <script src="/Scripts/Map/basemap-config.js?v=2026-09-22" defer></script>
-    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-22" defer></script>
-    <script src="/Scripts/Shared/constants.js?v=2026-09-22" defer></script>
-  <script src="/Scripts/Admin/admin-override.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Map/basemap-config.js?v=2026-09-23" defer></script>
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-23" defer></script>
+    <script src="/Scripts/Shared/constants.js?v=2026-09-23" defer></script>
+    <script src="/Scripts/Admin/admin-override.js?v=2026-09-23" defer></script>
   </body>
 </html>

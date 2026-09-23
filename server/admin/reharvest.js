@@ -81,6 +81,10 @@ async function flagRemovedUserData(lineKey, counts) {
     const id = await db.openReharvestFlag("route-removed-votes", `Route ${lineKey} no longer exists on Transitland. ${counts.votes} ordering vote(s) preserved for review.`, { lineKey });
     if (id) opened.push(id);
   }
+  if (Number(counts.cities || 0) > 0) {
+    const id = await db.openReharvestFlag("route-removed-city", `Route ${lineKey} no longer exists on Transitland but is part of ${counts.cities} city preset(s). Review the city membership.`, { lineKey });
+    if (id) opened.push(id);
+  }
   return opened;
 }
 
@@ -308,5 +312,8 @@ function getReharvestStats() {
 module.exports = {
   runReharvest,
   getReharvestStats,
-  MAX_SPAN_DEGREES
+  MAX_SPAN_DEGREES,
+  refreshRoute,
+  flagRemovedUserData,
+  lineKeyOf
 };

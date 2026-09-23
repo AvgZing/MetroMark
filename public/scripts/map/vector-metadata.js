@@ -69,6 +69,10 @@ function rebuildLineMetadataFromTiles() {
     const overrideShort = String(overridePayload?.lineShortName || "").trim();
     const overrideLong = String(overridePayload?.lineLongName || "").trim();
     const overrideName = String(overridePayload?.lineName || "").trim() || [overrideShort, overrideLong].filter(Boolean).join(" | ");
+    const overrideFrequencyRaw = String(overridePayload?.frequencyBucket || "").trim().toLowerCase();
+    const overrideFrequency = ["frequent", "regular", "local", "unknown"].includes(overrideFrequencyRaw)
+      ? overrideFrequencyRaw
+      : "";
 
     const baseMode = props.mode || (typeof modeLabelFromRouteType === "function" ? modeLabelFromRouteType(Number(props.route_type)) : "");
     const appliedMode = overrideMode !== null && typeof modeLabelFromRouteType === "function"
@@ -85,12 +89,12 @@ function rebuildLineMetadataFromTiles() {
       routeOnestopId: String(props.onestop_id || ""),
       stopCount: Number.isFinite(knownStopCount) && knownStopCount > 0 ? knownStopCount : 0,
       problematicGeometry: knownProblematic,
-      frequencyBucket: hasKnownHeadway ? String(existing.frequencyBucket || "unknown").toLowerCase() : "unknown",
+      frequencyBucket: overrideFrequency || (hasKnownHeadway ? String(existing.frequencyBucket || "unknown").toLowerCase() : "unknown"),
       headwayBestMinutes: hasKnownHeadway && Number.isFinite(Number(existing.headwayBestMinutes))
         ? Number(existing.headwayBestMinutes)
         : null,
       headwaySource: hasKnownHeadway ? String(existing.headwaySource || "") : "",
-      headwayChecked: hasKnownHeadway ? 1 : 0,
+      headwayChecked: overrideFrequency ? 1 : (hasKnownHeadway ? 1 : 0),
       headwayFallback: hasKnownHeadway ? Number(existing.headwayFallback || 0) : 0
     });
   }

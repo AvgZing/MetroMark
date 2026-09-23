@@ -9,6 +9,8 @@ router.use(require("./accounts"));
 router.use(require("./overrides"));
 router.use(require("./reviews"));
 router.use(require("./reharvest"));
+router.use(require("./routes"));
+router.use(require("./cities"));
 router.use(require("./issues"));
 
 module.exports = router;

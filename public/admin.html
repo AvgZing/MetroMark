@@ -10,7 +10,8 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/Styles/admin.css?v=2026-09-22" />
+    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-09-23" />
+    <link rel="stylesheet" href="/Styles/admin.css?v=2026-09-23" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -20,6 +21,38 @@
     <meta name="theme-color" content="#333333" />
   </head>
   <body>
+    <header class="topbar admin-topbar">
+      <div class="topbar-left">
+        <a class="topbar-brand" href="/admin">
+          <img class="topbar-logo" src="/Assets/icons/favicon.svg" alt="" aria-hidden="true" />
+          <span class="topbar-brand-text">
+            <span class="topbar-name">MetroMark</span>
+            <span class="topbar-tagline">Admin Console</span>
+          </span>
+        </a>
+        <nav class="topbar-nav" aria-label="Admin">
+          <a class="topbar-nav-btn is-active" href="/admin" aria-current="page">Console</a>
+          <a class="topbar-nav-btn" href="/admin/override">Map Editor</a>
+          <a class="topbar-nav-btn" href="/">Open app</a>
+        </nav>
+      </div>
+      <div class="topbar-actions">
+        <button
+          id="themeToggleBtn"
+          class="btn btn-icon theme-toggle-btn"
+          type="button"
+          aria-label="Toggle theme"
+          title="Toggle theme"
+        >
+          <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 3.5v2.2m0 12.6v2.2M5.6 5.6l1.6 1.6m9.6 9.6 1.6 1.6M3.5 12h2.2m12.6 0h2.2M5.6 18.4l1.6-1.6m9.6-9.6 1.6-1.6" />
+            <circle cx="12" cy="12" r="4.4" />
+          </svg>
+        </button>
+        <button id="logoutBtn" class="btn admin-topbar-session" type="button">Logout</button>
+      </div>
+    </header>
+
     <main class="admin-shell" id="adminLoginShell" hidden>
       <section class="card auth-card">
         <h2>Admin Login</h2>
@@ -42,32 +75,7 @@
       </section>
     </main>
 
-    <main class="admin-shell" id="adminApp" hidden>
-      <header class="admin-header card admin-header-row">
-        <div>
-          <p class="kicker">MetroMark Operations</p>
-          <h1>Admin Console</h1>
-          <p class="subtle">Supabase/PostGIS runtime tracking and manual operations.</p>
-          <p class="subtle">
-            <a href="/admin/override">Open map override editor</a>
-            &middot;
-            <a href="/">Open app</a>
-          </p>
-        </div>
-        <button
-          id="themeToggleBtn"
-          class="btn btn-icon theme-toggle-btn"
-          type="button"
-          aria-label="Toggle theme"
-          title="Toggle theme"
-        >
-          <svg class="header-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 3.5v2.2m0 12.6v2.2M5.6 5.6l1.6 1.6m9.6 9.6 1.6 1.6M3.5 12h2.2m12.6 0h2.2M5.6 18.4l1.6-1.6m9.6-9.6 1.6-1.6" />
-            <circle cx="12" cy="12" r="4.4" />
-          </svg>
-        </button>
-      </header>
-
+    <main class="admin-shell admin-console" id="adminApp" hidden>
       <section class="card session-row">
         <div>
           <strong id="sessionEmail">—</strong>
@@ -75,9 +83,20 @@
         </div>
         <div class="row">
           <button id="refreshAllBtn" type="button">Refresh</button>
-          <button id="logoutBtn" type="button">Logout</button>
         </div>
         <p id="statusMessage" class="status">Ready.</p>
+      </section>
+
+      <section class="card review-queue" id="reviewQueueCard">
+        <div class="review-queue-head">
+          <h2>Needs review</h2>
+          <button id="refreshReviewQueueBtn" type="button">Refresh</button>
+        </div>
+        <p class="review-queue-summary" id="reviewQueueSummary">Checking for items that need review…</p>
+        <div class="review-queue-actions">
+          <button id="reviewFlagsJumpBtn" type="button" hidden>Review reharvest flags</button>
+          <button id="reviewIssuesJumpBtn" type="button" hidden>Review issue reports</button>
+        </div>
       </section>
 
       <section class="kpi-grid" id="kpiGrid">
@@ -151,18 +170,15 @@
           <button id="rebuildTilesBtn" type="button">Rebuild Tiles</button>
         </div>
 
-        <h3>Viewport Reharvest</h3>
-        <p class="microcopy">Forces the whole pipeline for a viewport: fresh route catalog, geometry, headway, and stops. Runs uncapped (manual action). Route removals are confirmed against Transitland; admin overrides, reviews, and ordering votes on removed routes are preserved and flagged below. Limit: one push at a time, up to a metro region span.</p>
-        <div class="override-grid">
-          <label for="reharvestBboxInput" class="bbox-label">Viewport bbox (west,south,east,north)</label>
-          <input id="reharvestBboxInput" type="text" placeholder="bbox west,south,east,north (e.g. -122.4,47.5,-122.2,47.7)" />
-          <label class="check-label"><input id="reharvestStopsCb" type="checkbox" checked /> Refresh stops + route metadata</label>
-          <label class="check-label"><input id="reharvestHeadwayCb" type="checkbox" checked /> Refresh headway</label>
-          <button id="reharvestBtn" type="button">Reharvest Viewport (full refresh)</button>
-        </div>
-        <p id="reharvestStatus" class="status"></p>
+        <h3>Area &amp; Route Refresh</h3>
+        <p class="microcopy">
+          Fresh Transitland data is pulled from the
+          <a href="/admin/override">Map Editor</a>, where you can refresh the visible area or a
+          single route and watch the map update in place. Removed routes and routes with admin or
+          user data are flagged below for review.
+        </p>
 
-        <h3>Reharvest Review Flags</h3>
+        <h3 id="reharvestFlagsAnchor">Reharvest Review Flags</h3>
         <div class="action-grid">
           <button id="reloadFlagsBtn" type="button">Reload Flags</button>
         </div>
@@ -183,8 +199,31 @@
       </section>
 
       <section class="card">
-        <h2>User Issue Reports</h2>
-        <p class="microcopy">Submitted from the map's "Report Issue" control. Open reports are area refresh requests: copy the bbox into the Viewport Reharvest tool above, then resolve the report. Screenshots open at full size in a new tab.</p>
+        <h2>Cities</h2>
+        <p class="microcopy">
+          Curated city collections. Create a city here, then add and vet its routes from the Map
+          Editor. Only published cities appear in the app's Cities menu.
+        </p>
+        <div class="city-form">
+          <div class="row"><label for="citySlugInput">Slug</label><input id="citySlugInput" type="text" placeholder="seattle" /></div>
+          <div class="row"><label for="cityNameInput">Name</label><input id="cityNameInput" type="text" placeholder="Seattle" /></div>
+          <div class="row"><label for="cityCountryInput">Country</label><input id="cityCountryInput" type="text" placeholder="USA" /></div>
+          <div class="row"><label for="cityCenterInput">Center (lon,lat)</label><input id="cityCenterInput" type="text" placeholder="-122.335,47.608" /></div>
+          <div class="row"><label for="cityBboxInput">Bbox (w,s,e,n)</label><input id="cityBboxInput" type="text" placeholder="-122.58,47.48,-122.11,47.75" /></div>
+          <div class="row"><label for="cityZoomInput">Default zoom</label><input id="cityZoomInput" type="number" step="0.5" placeholder="11" /></div>
+          <label class="check-label"><input id="cityPublishedCb" type="checkbox" /> Published</label>
+          <div class="override-actions">
+            <button id="saveCityBtn" type="button">Save City</button>
+            <button id="clearCityBtn" type="button" disabled>New City</button>
+          </div>
+        </div>
+        <div id="adminCitiesList" class="city-list"></div>
+        <p id="adminCitiesStatus" class="status"></p>
+      </section>
+
+      <section class="card">
+        <h2 id="issueReportsAnchor">User Issue Reports</h2>
+        <p class="microcopy">Submitted from the map's "Report Issue" control. Open reports are area refresh requests: "Open in map" jumps to the view in the Map Editor, where you refresh that area, then resolve the report. Screenshots open at full size in a new tab.</p>
         <div class="action-grid">
           <button id="reloadIssuesBtn" type="button">Reload</button>
           <label class="check-label"><input id="issuesShowResolvedCb" type="checkbox" /> Show resolved</label>
@@ -214,7 +253,7 @@
       </section>
     </main>
 
-    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-22" defer></script>
-    <script src="/Scripts/Admin/admin.js?v=2026-09-22" defer></script>
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-23" defer></script>
+    <script src="/Scripts/Admin/admin.js?v=2026-09-23" defer></script>
   </body>
 </html>

@@ -13,15 +13,17 @@
  * HTTPS or http://localhost.
  */
 
-const VERSION = "8";
+const VERSION = "10";
 const APP_SHELL_CACHE = `metromark-shell-v${VERSION}`;
 const TILES_CACHE = `metromark-tiles-v${VERSION}`;
 const RUNTIME_CACHE = `metromark-runtime-v${VERSION}`;
 const API_CACHE = `metromark-api-v${VERSION}`;
 const TILES_PATHNAME = "/api/tiles/routes.pmtiles";
+const ARCHIVE_VERSION_PATHNAME = "/api/tiles/archive-version";
+const CATALOG_PATHNAME = "/api/catalog/cities";
+const REVIEWS_PATHNAME = "/api/transit/reviews";
 const NAV_TIMEOUT_MS = 3000;
 const API_TIMEOUT_MS = 20000;
-const TILE_REVALIDATE_MS = 3 * 60 * 1000;
 const API_STALE_MS = 5 * 60 * 1000;
 
 const PRECACHE_URLS = [
@@ -166,17 +168,14 @@ async function handleTilesRequest(request, url) {
   const cache = await caches.open(TILES_CACHE);
   const range = request.headers.get("range");
 
-  // Cache key is the canonical pathname so both /api/tiles/routes.pmtiles and
-  // the ?v= cache-busted variant share the single full-body entry.
-  const cached = await cache.match(TILES_PATHNAME);
+  // The cache key includes the archive build stamp, so a rebuilt archive is a
+  // different entry: bytes and PMTiles directory always come from the same
+  // build. Serving slices of one build against another build's directory is
+  // what made routes vanish after a harvest until the app was restarted.
+  const cacheKey = tilesCacheKey(url);
+  const cached = await cache.match(cacheKey);
 
   if (cached && cached.ok) {
-    // Serve from cache immediately, but refresh the archive in the background
-    // at most once every TILE_REVALIDATE_MS so rebuilt tile archives (the
-    // harvester rebuilds routes.pmtiles regularly) propagate to clients.
-    if (Date.now() - lastTileRefetchAt > TILE_REVALIDATE_MS) {
-      revalidateTiles(cache);
-    }
     if (range) {
       return sliceCachedResponse(cached, range);
     }
@@ -190,7 +189,7 @@ async function handleTilesRequest(request, url) {
   }
 
   // Miss: fetch the FULL archive (no Range header so the complete body is
-  // cached), store it once, then satisfy this request from the cache.
+  // cached), store it once under this build's key, then satisfy the request.
   const fullRequest = new Request(url.href, {
     method: "GET",
     headers: {
@@ -201,11 +200,11 @@ async function handleTilesRequest(request, url) {
   try {
     const networkResponse = await fetch(fullRequest);
     if (networkResponse.ok) {
-      await cache.put(TILES_PATHNAME, networkResponse.clone());
-      lastTileRefetchAt = Date.now();
+      await cache.put(cacheKey, networkResponse.clone());
+      await dropOtherArchiveEntries(cache, cacheKey);
     }
 
-    const fresh = await cache.match(TILES_PATHNAME);
+    const fresh = await cache.match(cacheKey);
     if (fresh) {
       if (range) {
         return sliceCachedResponse(fresh, range);
@@ -225,51 +224,23 @@ async function handleTilesRequest(request, url) {
   }
 }
 
-let lastTileRefetchAt = 0;
-let tileRefetchPromise = null;
+function tilesCacheKey(url) {
+  const version = url.searchParams.get("v") || "unversioned";
+  return `${TILES_PATHNAME}?v=${version}`;
+}
 
-function revalidateTiles(cache) {
-  if (tileRefetchPromise) {
-    return tileRefetchPromise;
+// Keep a single archive body cached: once a new build is stored, drop the rest.
+async function dropOtherArchiveEntries(cache, keepKey) {
+  try {
+    const keys = await cache.keys();
+    await Promise.all(
+      keys
+        .filter((key) => new URL(key.url).pathname === TILES_PATHNAME && key.url !== keepKey && !key.url.endsWith(keepKey))
+        .map((key) => cache.delete(key))
+    );
+  } catch {
+    // Non-critical
   }
-
-  tileRefetchPromise = (async () => {
-    try {
-      // Cheap size check (~1KB, no body): request the first byte and read the
-      // current total from Content-Range. Only refetch the full archive when
-      // the rebuilt archive's size actually changed, so the every-10-minute
-      // revalidation doesn't burn the archive's full size on mobile data.
-      const cached = await cache.match(TILES_PATHNAME);
-      const cachedSize = cached ? Number(cached.headers.get("content-length")) : 0;
-
-      const probe = new Request(new URL(TILES_PATHNAME, self.location.origin).href, {
-        method: "GET",
-        headers: { Range: "bytes=0-0" }
-      });
-      const response = await fetch(probe);
-      if (response.ok || response.status === 206) {
-        const match = /\/\s*(\d+)\s*$/.exec(response.headers.get("content-range") || "");
-        const currentSize = match ? Number(match[1]) : null;
-
-        if (currentSize && currentSize !== cachedSize) {
-          const fullRequest = new Request(new URL(TILES_PATHNAME, self.location.origin).href, {
-            method: "GET"
-          });
-          const fullResponse = await fetch(fullRequest);
-          if (fullResponse.ok) {
-            await cache.put(TILES_PATHNAME, fullResponse.clone());
-          }
-        }
-      }
-      lastTileRefetchAt = Date.now();
-    } catch {
-      // Keep serving the cached archive; retry on the next tile request.
-    } finally {
-      tileRefetchPromise = null;
-    }
-  })();
-
-  return tileRefetchPromise;
 }
 
 async function staleWhileRevalidate(request, cacheName) {
@@ -375,6 +346,28 @@ self.addEventListener("fetch", (event) => {
 
   if (url.pathname === TILES_PATHNAME) {
     event.respondWith(handleTilesRequest(request, url));
+    return;
+  }
+
+  if (url.pathname === ARCHIVE_VERSION_PATHNAME) {
+    // Never serve a stale build stamp from the API cache: this drives whether
+    // clients switch to a rebuilt archive.
+    event.respondWith(fetch(request, { cache: "no-store" }));
+    return;
+  }
+
+  if (url.pathname === CATALOG_PATHNAME) {
+    // City publish/unpublish must be visible immediately, and a stale list
+    // would wrongly clear a user's active city mode. Network-first (with the
+    // API cache as an offline fallback) instead of the 5-minute stale window.
+    event.respondWith(networkFirst(request, API_CACHE, API_TIMEOUT_MS));
+    return;
+  }
+
+  if (url.pathname === REVIEWS_PATHNAME) {
+    // Carries admin route overrides / reviews, which must reflect promptly;
+    // the API SWR window would otherwise hide a just-saved override.
+    event.respondWith(networkFirst(request, API_CACHE, API_TIMEOUT_MS));
     return;
   }
 

@@ -478,6 +478,15 @@ async function init() {
   if (typeof fetchBasemapKey === "function") {
     await fetchBasemapKey();
   }
+  // Stamp the archive version before the vector source is created, so every
+  // cache in the chain keys on the current build.
+  if (typeof fetchArchiveVersion === "function") {
+    try {
+      appState.vectorArchiveVersion = await fetchArchiveVersion();
+    } catch (e) {
+      appState.vectorArchiveVersion = "";
+    }
+  }
   console.log(`[perf] init: pre-map setup in ${(performance.now() - initT0).toFixed(1)}ms`);
   initializeMap();
 
@@ -492,6 +501,12 @@ async function init() {
     // Apply map theme now that the map style is loaded
     if (appState.theme === "dark" || appState.theme === "light") {
       setTheme(appState.theme, { persist: false });
+    }
+
+    // Watch for archive rebuilds (harvester / backfill) so clients recover
+    // without a page reload.
+    if (typeof startArchiveVersionWatch === "function") {
+      startArchiveVersionWatch();
     }
 
     window.requestAnimationFrame(() => {
@@ -513,6 +528,10 @@ async function init() {
 
     if (typeof loadReviewsForCity === "function" && appState.initialCitySlug) {
       loadReviewsForCity(appState.initialCitySlug).catch(() => {});
+    }
+
+    if (typeof applyStartupCityMode === "function") {
+      applyStartupCityMode();
     }
 
     if (typeof maybeShowWhatsNew === "function") {

@@ -364,10 +364,10 @@ async function countLineKeyUserData(lineKeys = []) {
     return byLineKey;
   }
   for (const lineKey of normalizedLineKeys) {
-    byLineKey.set(lineKey, { overrides: 0, reviews: 0, votes: 0 });
+    byLineKey.set(lineKey, { overrides: 0, reviews: 0, votes: 0, cities: 0 });
   }
 
-  const [overrideRows, reviewRows, voteRows] = await Promise.all([
+  const [overrideRows, reviewRows, voteRows, cityRows] = await Promise.all([
     localQuery(
       `select line_key, count(*)::int as count from public.route_override where line_key = any($1::text[]) group by line_key`,
       [normalizedLineKeys]
@@ -378,6 +378,10 @@ async function countLineKeyUserData(lineKeys = []) {
     ),
     localQuery(
       `select line_key, count(*)::int as count from public.route_ordering_vote where line_key = any($1::text[]) group by line_key`,
+      [normalizedLineKeys]
+    ),
+    localQuery(
+      `select line_key, count(*)::int as count from public.city_preset_route where line_key = any($1::text[]) group by line_key`,
       [normalizedLineKeys]
     )
   ]);
@@ -398,6 +402,12 @@ async function countLineKeyUserData(lineKeys = []) {
     const lineKey = normalizeText(row.line_key);
     if (byLineKey.has(lineKey)) {
       byLineKey.get(lineKey).votes = Number(row.count || 0);
+    }
+  }
+  for (const row of cityRows.rows || []) {
+    const lineKey = normalizeText(row.line_key);
+    if (byLineKey.has(lineKey)) {
+      byLineKey.get(lineKey).cities = Number(row.count || 0);
     }
   }
   return byLineKey;

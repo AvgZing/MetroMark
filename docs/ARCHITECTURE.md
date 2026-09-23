@@ -84,7 +84,19 @@ MapLibre "routes-vector" source (pmtiles:// protocol) → routes/casing/hit laye
 - Harvested cities are pre-baked into the archive. On each moveend, the client's `underlay.js` asks `GET /api/transit/coverage?bbox&zoom` (sampled from vector tiles, cached in Postgres). The visual underlay is disabled by design; only the probe remains.
 - That probe samples at most `maxTiles` centre tiles in **Transitland's own id space**, so its `routeCount` is a presence signal only — it is never compared for magnitude against archive counts.
 - `tile-backfill.js` treats an area as missing routes only when coverage > 0 **and** the archive has zero line keys there (`hasIncompleteCoverage`, read from the vector source so filters/zoom cannot influence it), and only once tiles are loaded and the camera has settled. That triggers `POST /api/tiles/backfill` with the bbox.
-- `runBackfill` fetches Transitland routes for the bbox, merges missing `line_key`s into `routes-feed.ndjson` (server-side dedup; seed-owned lines skipped unless `forceRefresh`), rebuilds the archive via tippecanoe, and the client reloads the vector source (`?v=` bump) — all without a page reload.
+- `runBackfill` fetches Transitland routes for the bbox, merges missing `line_key`s into `routes-feed.ndjson` (server-side dedup; seed-owned lines skipped unless `forceRefresh`), rebuilds the archive via tippecanoe, and the client reloads the vector source — all without a page reload.
+
+## Archive Build Stamp (required for rebuilds to propagate)
+
+`routes.pmtiles` is rebuilt in place (same path) by the harvester daily and by
+backfills on demand. Anything that caches archive bytes keyed on the URL would
+otherwise pair a new archive's bytes with an old archive's PMTiles directory and
+render **zero** routes until the app was restarted.
+
+- `GET /api/tiles/archive-version` returns `{ version: "<mtimeMs>-<size>", size, mtimeMs }` (`no-store`).
+- The client stamps the vector source URL: `pmtiles:///api/tiles/routes.pmtiles?v=<version>`, fetched before the map is created (`fetchArchiveVersion`) and re-synced by `startArchiveVersionWatch()` (60s interval + `visibilitychange`). On change, `syncArchiveVersion()` adopts the new stamp and `reloadVectorSource()` calls `setUrl` — no page reload.
+- The Service Worker caches the full archive **keyed on the stamped URL** and keeps only one body (`dropOtherArchiveEntries`), so slices and directory always come from the same build. It never serves the build stamp from the API cache.
+- The Service Worker `VERSION` must be bumped whenever this caching strategy changes, since cache names embed it and stale caches are only purged when the name changes.
 - Repeated views are throttled client-side (coarse-bbox dedup + cooldown) and deduped server-side by `line_key`.
 
 **Key behavior:**

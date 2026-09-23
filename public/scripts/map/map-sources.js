@@ -15,7 +15,8 @@ const MAP_SOURCE_DEFS = [
     id: "routes-vector",
     type: "vector",
     url: "pmtiles:///api/tiles/routes.pmtiles",
-    promoteId: "line_key"
+    promoteId: "line_key",
+    versioned: true
   }
 ];
 
@@ -27,7 +28,12 @@ if (typeof maplibregl !== "undefined" && typeof pmtiles !== "undefined") {
 function registerMapSources(map) {
   for (const sourceDef of MAP_SOURCE_DEFS) {
     try {
-      const { id, ...sourceOptions } = sourceDef;
+      const { id, versioned, ...sourceOptions } = sourceDef;
+      if (versioned && typeof vectorSourceUrl === "function") {
+        // The archive URL carries its build stamp so a rebuilt archive is a new
+        // URL for every cache in the chain.
+        sourceOptions.url = vectorSourceUrl();
+      }
       map.addSource(id, sourceOptions);
     } catch (error) {
       console.warn(`Failed to add source "${sourceDef.id}":`, error);
