@@ -4,6 +4,7 @@ async function onMapMoveEnd() {
   }
 
   appState.currentViewportBbox = typeof mapBoundsToBbox === "function" ? mapBoundsToBbox() : null;
+  appState.lastCameraMoveAt = Date.now();
 
   // Refresh the Transitland underlay + coverage count for this viewport before
   // deciding whether a backfill is needed (the backfill check runs after
@@ -32,19 +33,27 @@ function updateLoadingStatus() {
   });
   const zoom = appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
 
-  if (routeStopLoadingCount > 0) {
-    if (hasRoutes) {
+  // Routes on screen: anything running in the background is the small corner
+  // badge, never a modal over the map the user is reading.
+  if (hasRoutes) {
+    if (routeStopLoadingCount > 0 || backfillInFlight) {
       showMapLoadingBadge();
-      clearMapNotice();
     } else {
       hideMapLoadingBadge();
-      setMapNotice("Loading…", "", "neutral", "center");
     }
+    clearMapNotice();
+    const focusLabel = appState.focusedLineKey ? "Focused route stop view." : "Select a route to load stops.";
+    setBackendStatus(backfillInFlight ? "Fetching routes for this viewport from Transitland…" : focusLabel);
     return;
   }
 
-  // A backfill in progress must keep its notice visible even if the user pans
-  // (routes from the previous city are still rendered, so hasRoutes is true).
+  // Nothing on screen: explain what is happening with the full card.
+  if (routeStopLoadingCount > 0) {
+    hideMapLoadingBadge();
+    setMapNotice("Loading…", "", "neutral", "center");
+    return;
+  }
+
   if (backfillInFlight) {
     hideMapLoadingBadge();
     setMapNotice(
@@ -53,15 +62,23 @@ function updateLoadingStatus() {
       "neutral",
       "center"
     );
+    const notice = document.getElementById("mapNotice");
+    const fill = notice ? notice.querySelector(".map-notice-progress-fill") : null;
+    if (fill) {
+      fill.style.width = appState.backfillStage === "rebuilding" ? "82%" : "38%";
+    }
     setBackendStatus("Fetching routes for this viewport from Transitland…");
     return;
   }
 
-  if (hasRoutes) {
-    const focusLabel = appState.focusedLineKey ? "Focused route stop view." : "Select a route to load stops.";
+  // Informational cards wait for the camera to settle so panning through empty
+  // areas doesn't strobe a modal.
+  const settled = Date.now() - Number(appState.lastCameraMoveAt || 0) >= 1200 &&
+    (!appState.map || typeof appState.map.areTilesLoaded !== "function" || appState.map.areTilesLoaded());
+
+  if (!settled) {
     hideMapLoadingBadge();
     clearMapNotice();
-    setBackendStatus(focusLabel);
     return;
   }
 
@@ -78,6 +95,34 @@ function updateLoadingStatus() {
   }
 
   hideMapLoadingBadge();
+
+  // Routes exist for this area but the current filters hide them all: never
+  // imply the area is empty.
+  const anyLinesKnown = Array.isArray(appState.lineSummaries) && appState.lineSummaries.length > 0;
+  if (anyLinesKnown) {
+    setMapNotice(
+      "No routes match your filters",
+      "Adjust or clear the filters to see routes here.",
+      "neutral",
+      "center"
+    );
+    setBackendStatus("Routes exist for this viewport but are filtered out.");
+    return;
+  }
+
+  // Distinguish "nothing exists here" from "exists upstream, not harvested yet"
+  // so the empty state never implies the area has no transit at all.
+  if (typeof hasIncompleteCoverage === "function" && hasIncompleteCoverage()) {
+    setMapNotice(
+      "Routes for this area aren't loaded yet",
+      "They load automatically — this can take a moment.",
+      "neutral",
+      "center"
+    );
+    setBackendStatus("Archive has no routes for this viewport yet; backfill pending.");
+    return;
+  }
+
   setMapNotice(
     "No transit routes here yet",
     "If transit routes exist in this area they will load automatically.",

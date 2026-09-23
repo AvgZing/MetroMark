@@ -233,9 +233,13 @@ async function getTransitCoverageForBbox(bbox, zoom, options = {}) {
     }
   }
 
+  // NOTE: routeCount samples at most maxTiles centre tiles in Transitland's own
+  // id space. It answers "does anything exist here?" and must never be compared
+  // for magnitude against archive feature/line counts.
   const result = {
     routeCount: seen.size,
     source: "coverage",
+    sampled: true,
     tileZoom,
     tilesLoaded: limitedTiles.length,
     maxTiles
