@@ -81,8 +81,9 @@ MapLibre "routes-vector" source (pmtiles:// protocol) → routes/casing/hit laye
 4. Stops are GeoJSON on the `stops` source, loaded on demand per focused route via `/api/transit/route-stops`.
 
 **Coverage / backfill:**
-- Harvested cities are pre-baked into the archive. On each moveend, the client's `underlay.js` asks `GET /api/transit/coverage?bbox&zoom` for Transitland's distinct route count in the viewport (sampled from vector tiles, cached in Postgres) and renders the ground-truth network as a faint line **underlay** (`routes-underlay` layer) below the archive's routes.
-- `tile-backfill.js` compares that coverage count against what the archive renders (`hasIncompleteCoverage`): no Transitland routes → nothing to do; Transitland has routes but the archive renders none → clear gap; Transitland has significantly more routes than rendered → partial gap. Either gap triggers `POST /api/tiles/backfill` with the bbox.
+- Harvested cities are pre-baked into the archive. On each moveend, the client's `underlay.js` asks `GET /api/transit/coverage?bbox&zoom` (sampled from vector tiles, cached in Postgres). The visual underlay is disabled by design; only the probe remains.
+- That probe samples at most `maxTiles` centre tiles in **Transitland's own id space**, so its `routeCount` is a presence signal only — it is never compared for magnitude against archive counts.
+- `tile-backfill.js` treats an area as missing routes only when coverage > 0 **and** the archive has zero line keys there (`hasIncompleteCoverage`, read from the vector source so filters/zoom cannot influence it), and only once tiles are loaded and the camera has settled. That triggers `POST /api/tiles/backfill` with the bbox.
 - `runBackfill` fetches Transitland routes for the bbox, merges missing `line_key`s into `routes-feed.ndjson` (server-side dedup; seed-owned lines skipped unless `forceRefresh`), rebuilds the archive via tippecanoe, and the client reloads the vector source (`?v=` bump) — all without a page reload.
 - Repeated views are throttled client-side (coarse-bbox dedup + cooldown) and deduped server-side by `line_key`.
 
@@ -149,13 +150,17 @@ Current baseline:
 4. `public.transit_cache` stores cache payloads and metadata for stale verification.
 5. `usage_log` and harvest tables power cap enforcement and admin tracking.
 
-## Notes on 3D Buildings
+## Notes on 3D Buildings (post-1.0)
 
-Current MVP uses raster streets + raster satellite with globe projection.
+Current pre-1.0 build is 2D: raster streets + raster satellite with globe
+projection, drag/pinch only, no tilt or rotate navigation.
 
-For stronger 3D city context later:
+3D buildings and earth-style navigation are deferred to post-1.0 (#29) because
+they need display-order work so transit routes clip behind buildings. When they
+land:
 - Move basemap to vector style with building layers.
-- Add building extrusion layers by zoom/pitch.
+- Add building extrusion layers by zoom/pitch, with routes ordered above them
+  only where they should be visible.
 - Keep transit overlays and auth/progress unchanged.
 
 ## Route Visibility and Progress Rules (UI Contract)

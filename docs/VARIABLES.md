@@ -47,7 +47,9 @@ This document catalogs all major variables, objects, and data structures used th
 - **`appState.focusedLineKey`** - Currently selected/focused route lineKey (empty if none)
 
 ### Tile Backfill (PMTiles feed-in)
-- **`appState.transitCoverageCount`** - Transitland's distinct route count for the current viewport (from `GET /api/transit/coverage`, set by `underlay.js` on moveend)
+- **`appState.transitCoverageCount`** - Sampled Transitland line-key count for the viewport (from `GET /api/transit/coverage`, set by `underlay.js` on moveend). A capped centre-tile sample used only as a presence signal; never compared for magnitude against archive counts.
+- **`appState.backfillStage`** - Last reported backfill stage (`fetching` / `rebuilding`), used for the loading card's progress width
+- **`appState.lastCameraMoveAt`** - Epoch ms of the last moveend; loading/empty cards wait for the camera to settle before appearing
 - **`appState.tileBackfillCount`** / **`tileBackfillTotalMs`** / **`tileBackfillAddedRoutes`** - Backfill run metrics
 - **`appState.tileBackfillInFlight`** - Boolean; a backfill request is in progress
 - **`appState.tileBackfillCooldownUntil`** - Epoch ms; skip new backfills until this time

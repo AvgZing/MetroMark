@@ -18,6 +18,10 @@ var MODE_DEFS = [
 
 var MODE_DEF_BY_KEY = new Map(MODE_DEFS.map(function(entry) { return [entry.key, entry]; }));
 
+// Any headway above this is not real data (guards archives built before the
+// server started flagging fallback headways).
+var MAX_PLAUSIBLE_HEADWAY_MINUTES = 720;
+
 var FREQUENCY_FILTER_ALL = "all";
 var FREQUENCY_FILTER_FREQUENT = "frequent";
 var FREQUENCY_FILTER_REGULAR = "regular";
@@ -162,9 +166,15 @@ function lineSearchText(line) {
     .join(" ");
 }
 
-/** Check whether a headway value matches the system fallback (no real data). */
+/** Check whether a headway value is a fallback (no real data). Uses the server
+    flag, plus a plausibility bound so archives built before the flag existed
+    still degrade gracefully instead of showing an absurd headway. */
 function lineHasFallbackHeadway(line) {
-  return Number(line?.headwayFallback || 0) === 1;
+  if (Number(line?.headwayFallback || 0) === 1) {
+    return true;
+  }
+  const minutes = Number(line?.headwayBestMinutes);
+  return Number.isFinite(minutes) && minutes > MAX_PLAUSIBLE_HEADWAY_MINUTES;
 }
 
 /** Return the best headway minutes for a line, or null if unavailable or fallback. */
