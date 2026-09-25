@@ -10,8 +10,9 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-09-23" />
-    <link rel="stylesheet" href="/Styles/admin.css?v=2026-09-23" />
+    <link rel="stylesheet" href="/Styles/base.css?v=2026-09-24" />
+    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-09-24" />
+    <link rel="stylesheet" href="/Styles/admin.css?v=2026-09-24" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -39,7 +40,7 @@
       <div class="topbar-actions">
         <button
           id="themeToggleBtn"
-          class="btn btn-icon theme-toggle-btn"
+          class="btn btn-icon theme-icon-btn theme-toggle-btn"
           type="button"
           aria-label="Toggle theme"
           title="Toggle theme"
@@ -57,21 +58,14 @@
       <section class="card auth-card">
         <h2>Admin Login</h2>
         <p class="subtle">Sign in with a Supabase account granted the admin role, or the env-designated admin account (<code>ADMIN_EMAIL</code>) — it is auto-promoted on login.</p>
-        <label for="adminEmailInput">Email</label>
-        <div class="row">
-          <input id="adminEmailInput" type="email" placeholder="admin@example.com" autocomplete="username" />
-        </div>
-        <label for="adminPasswordInput">Password</label>
-        <div class="row">
-          <input
-            id="adminPasswordInput"
-            type="password"
-            placeholder="Password"
-            autocomplete="current-password"
-          />
-          <button id="loginBtn" type="button">Login</button>
-        </div>
-        <p id="loginStatusMessage" class="status">Waiting for login.</p>
+        <form id="adminLoginForm" class="auth-form" novalidate>
+          <label for="adminEmailInput">Email</label>
+          <input id="adminEmailInput" type="email" placeholder="admin@example.com" autocomplete="username" required />
+          <label for="adminPasswordInput">Password</label>
+          <input id="adminPasswordInput" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button id="loginBtn" class="btn btn-primary" type="submit">Login</button>
+          <p id="loginStatusMessage" class="status" role="status">Waiting for login.</p>
+        </form>
       </section>
     </main>
 
@@ -114,6 +108,10 @@
           <div id="usageBars"></div>
           <p class="status" id="usageStatus"></p>
           <h3>Usage History (7 days)</h3>
+          <p class="microcopy">
+            Daily external API usage per day — <span class="usage-legend is-rest"></span> REST API calls vs
+            <span class="usage-legend is-vector"></span> vector tile calls. Hover a row for exact counts.
+          </p>
           <div id="usageHistory" class="usage-history"></div>
         </article>
 
@@ -169,6 +167,11 @@
           <button id="runBackupBtn" type="button">Run Nonrecoverable Backup</button>
           <button id="rebuildTilesBtn" type="button">Rebuild Tiles</button>
         </div>
+        <p class="microcopy">
+          Rebuild Tiles is a global escape hatch — use it only if the archive is corrupt or the tile
+          schema changed. Routine Transitland updates come from the Map Editor (refresh an area or a
+          single route). Backup writes a nonrecoverable snapshot.
+        </p>
 
         <h3>Area &amp; Route Refresh</h3>
         <p class="microcopy">
@@ -201,20 +204,18 @@
       <section class="card">
         <h2>Cities</h2>
         <p class="microcopy">
-          Curated city collections. Create a city here, then add and vet its routes from the Map
-          Editor. Only published cities appear in the app's Cities menu.
+          Curated city collections. Create a city in the <a href="/admin/override">Map Editor</a> so
+          its center and zoom come from the map view, then curate its routes there. This form edits a
+          city's name, country, and publish state.
         </p>
         <div class="city-form">
-          <div class="row"><label for="citySlugInput">Slug</label><input id="citySlugInput" type="text" placeholder="seattle" /></div>
+          <div class="row"><label for="citySlugInput">Slug</label><input id="citySlugInput" type="text" placeholder="seattle" disabled /></div>
           <div class="row"><label for="cityNameInput">Name</label><input id="cityNameInput" type="text" placeholder="Seattle" /></div>
           <div class="row"><label for="cityCountryInput">Country</label><input id="cityCountryInput" type="text" placeholder="USA" /></div>
-          <div class="row"><label for="cityCenterInput">Center (lon,lat)</label><input id="cityCenterInput" type="text" placeholder="-122.335,47.608" /></div>
-          <div class="row"><label for="cityBboxInput">Bbox (w,s,e,n)</label><input id="cityBboxInput" type="text" placeholder="-122.58,47.48,-122.11,47.75" /></div>
-          <div class="row"><label for="cityZoomInput">Default zoom</label><input id="cityZoomInput" type="number" step="0.5" placeholder="11" /></div>
           <label class="check-label"><input id="cityPublishedCb" type="checkbox" /> Published</label>
           <div class="override-actions">
-            <button id="saveCityBtn" type="button">Save City</button>
-            <button id="clearCityBtn" type="button" disabled>New City</button>
+            <button id="saveCityBtn" type="button" disabled>Save City</button>
+            <button id="clearCityBtn" type="button" disabled>Clear</button>
           </div>
         </div>
         <div id="adminCitiesList" class="city-list"></div>
@@ -253,7 +254,7 @@
       </section>
     </main>
 
-    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-23" defer></script>
-    <script src="/Scripts/Admin/admin.js?v=2026-09-23" defer></script>
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-24" defer></script>
+    <script src="/Scripts/Admin/admin.js?v=2026-09-24" defer></script>
   </body>
 </html>

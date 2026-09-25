@@ -1,5 +1,8 @@
-function createMapStyle() {
-  const dark = typeof appState !== "undefined" && appState.theme === "dark";
+function createMapStyle(themeOverride) {
+  // Shared by the app and the admin override map. Callers may pass a theme
+  // (the admin has no appState); the app falls back to appState.theme.
+  const theme = themeOverride || (typeof appState !== "undefined" && appState.theme) || "light";
+  const dark = theme === "dark";
   return {
     version: 8,
     projection: {

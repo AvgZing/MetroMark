@@ -141,7 +141,7 @@ body[data-theme="dark"] .admin-line-editor-card {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-bottom: 1px dashed var(--line, #e5e0d5);
+  border-bottom: 1px dashed var(--line);
   padding-bottom: 12px;
 }
 
@@ -165,50 +165,13 @@ body[data-theme="dark"] .admin-line-editor-card {
   padding-bottom: 0;
 }
 
-/* Overlap route-selector popup on the admin map. */
-.admin-route-select-popup {
-  min-width: 220px;
-  max-height: min(60vh, calc(100dvh - 180px));
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.admin-route-select-popup h4 {
-  margin: 0 0 4px;
-  font-size: 14px;
-}
-
-.admin-route-select-hint {
-  margin: 0 0 8px;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.admin-route-select-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  overflow-y: auto;
-  max-height: min(52vh, calc(100dvh - 240px));
-}
-
-.admin-route-select-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  padding: 6px 8px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: var(--button-bg);
+/* The overlap route-selector reuses the frontend markup + map.css (loaded on
+   this page), so there is no second copy of those styles. Only the generic
+   admin `button` baseline (white text) needs overriding so option text stays
+   readable; map.css already sets background/border/layout. */
+.route-select-btn {
   color: var(--ink);
-  cursor: pointer;
-}
-
-.admin-route-select-btn:hover {
-  background: var(--button-hover);
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 .admin-route-select-dot {
@@ -293,6 +256,22 @@ body[data-theme="dark"] .admin-line-editor-card {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
+}
+
+/* Create-a-city sits on the map so center/zoom/bbox come from the view. */
+.city-create {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.city-create input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 .city-members-list {
@@ -511,125 +490,6 @@ body[data-theme="dark"] .admin-line-editor-card {
   font-size: 13px;
 }
 
-.override-stops-list {
-  margin: 10px 0;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.3);
-  max-height: 420px;
-  overflow-y: auto;
-}
-
-.override-stops-toolbar {
-  display: flex;
-  gap: 8px;
-  padding: 8px;
-  border-bottom: 1px solid rgba(45, 45, 45, 0.1);
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(4px);
-}
-
-.override-stop-fields {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(92px, 0.7fr) minmax(92px, 0.7fr) auto;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-}
-
-.override-stop-name-input,
-.override-stop-coordinate-input {
-  min-width: 0;
-  padding: 7px 8px;
-  font-size: 12px;
-}
-
-.override-stop-order-controls {
-  display: flex;
-  gap: 6px;
-}
-
-.override-stop-order-btn {
-  min-width: 44px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  background: rgba(var(--accent-rgb), 0.1);
-  border: 1px solid rgba(var(--accent-rgb), 0.25);
-  color: var(--accent);
-}
-
-.override-stop-order-btn:hover {
-  background: rgba(var(--accent-rgb), 0.18);
-}
-
-.override-stop-item {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid rgba(45, 45, 45, 0.1);
-  font-size: 12px;
-}
-
-.override-stop-item:last-child {
-  border-bottom: none;
-}
-
-.override-stop-item.is-dragging {
-  opacity: 0.6;
-  background: rgba(var(--accent-rgb), 0.1);
-}
-
-.override-stop-drag-handle {
-  cursor: grab;
-  color: var(--muted);
-  font-size: 14px;
-  user-select: none;
-}
-
-.override-stop-drag-handle:active {
-  cursor: grabbing;
-}
-
-.override-stop-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-weight: 500;
-}
-
-.override-stop-delete-btn {
-  width: auto;
-  min-width: 60px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  background: rgba(182, 72, 44, 0.1);
-  border: 1px solid rgba(182, 72, 44, 0.3);
-  color: var(--warn);
-  cursor: pointer;
-}
-
-.override-stop-delete-btn:hover {
-  background: rgba(182, 72, 44, 0.2);
-}
-
-.override-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.override-actions .btn {
-  flex: 1;
-  font-size: 13px;
-}
-
 /* Review Settings */
 .review-setting {
   margin-bottom: 10px;
@@ -660,63 +520,10 @@ body[data-theme="dark"] .admin-line-editor-card {
 .operator-review-list {
   margin-bottom: 12px;
   padding: 8px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--button-bg);
   border-radius: 8px;
   max-height: 180px;
   overflow-y: auto;
-}
-
-.operator-review-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 0;
-  font-size: 12px;
-}
-
-.operator-review-item:not(:last-child) {
-  border-bottom: 1px solid rgba(45, 45, 45, 0.1);
-  padding-bottom: 6px;
-  margin-bottom: 6px;
-}
-
-.operator-review-item .operator-name {
-  flex: 1;
-  font-weight: 500;
-}
-
-.operator-review-toggles {
-  display: flex;
-  gap: 6px;
-}
-
-.operator-toggle-btn {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--panel-border);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--ink);
-  cursor: pointer;
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.operator-toggle-btn:hover {
-  background: rgba(var(--accent-rgb), 0.1);
-}
-
-.operator-toggle-btn.allowed {
-  background: rgba(31, 107, 47, 0.2);
-  border-color: #1f6b2f;
-  color: #1f6b2f;
-}
-
-.operator-toggle-btn.blocked {
-  background: rgba(157, 34, 34, 0.2);
-  border-color: #9d2222;
-  color: #9d2222;
 }
 
 /* Mobile responsive */
@@ -742,14 +549,6 @@ body[data-theme="dark"] .admin-line-editor-card {
   .override-map-stage {
     width: 100%;
     height: 100%;
-  }
-
-  .override-stop-fields {
-    grid-template-columns: 1fr;
-  }
-
-  .override-stops-toolbar {
-    flex-direction: column;
   }
 }
 
@@ -801,12 +600,6 @@ body[data-theme="dark"] .admin-line-editor-card {
   margin-top: 12px;
 }
 
-.override-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
-}
-
 .btn-danger {
   color: #ffffff;
   background: #c0392b;
@@ -818,7 +611,7 @@ body[data-theme="dark"] .admin-line-editor-card {
   justify-content: space-between;
   gap: 8px;
   padding: 6px 0;
-  border-bottom: 1px solid var(--line, #e5e0d5);
+  border-bottom: 1px solid var(--line);
   font-size: 0.85rem;
 }
 
@@ -835,7 +628,7 @@ body[data-theme="dark"] .admin-line-editor-card {
 
 .manual-edit-row {
   padding: 6px 0;
-  border-bottom: 1px dashed var(--line, #e5e0d5);
+  border-bottom: 1px dashed var(--line);
 }
 
 .manual-edit-row p {
@@ -857,12 +650,18 @@ body[data-theme="dark"] .admin-line-editor-card {
   text-transform: uppercase;
 }
 
-.map-overlay-controls {
+/* map.css (shared with the frontend) is loaded on this page for the popup and
+   mode buttons. Its .map-overlay-controls is a top-right column sized for the
+   app; the admin map needs a scoped row, so this wins by specificity. */
+.override-map-stage .map-overlay-controls {
   position: absolute;
   top: 12px;
   right: 12px;
+  left: auto;
+  bottom: auto;
   z-index: 10;
   display: flex;
+  flex-direction: row;
   gap: 8px;
 }
 
@@ -944,7 +743,7 @@ body[data-theme="dark"] .admin-line-editor-card {
   flex-wrap: wrap;
   gap: 8px;
   padding: 4px 0;
-  border-bottom: 1px solid var(--line, #e5e0d5);
+  border-bottom: 1px solid var(--line);
   font-size: 0.82rem;
 }
 

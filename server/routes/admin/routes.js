@@ -28,8 +28,13 @@ router.get("/admin/routes/search", async (req, res) => {
   if (!query) {
     return res.json({ routes: [] });
   }
+  const bbox = String(req.query.bbox || "")
+    .split(",")
+    .map((value) => Number(value.trim()));
   try {
-    const routes = await searchTransitlandRoutes(query);
+    const routes = await searchTransitlandRoutes(query, {
+      bbox: bbox.length === 4 ? bbox : null
+    });
     return res.json({ routes });
   } catch (error) {
     return res.status(502).json({

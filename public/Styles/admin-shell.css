@@ -1,86 +1,65 @@
-/* Admin shell chrome: shared design tokens + the top bar used by both admin
-   pages (admin.html and admin-override.html). The admin pages intentionally
-   reuse the app's top-bar look (ui-shell.css / ui-foundation.css /
-   ui-progress.css) but are self-contained: the console scrolls normally, so it
-   cannot pull in base.css's `html,body{height:100%}` / `overflow:hidden`.
-   Keep these values in sync with base.css and the ui-* top-bar layers. */
-
+/* Admin shell chrome: the top bar shared by both admin pages. Design tokens
+   (colors, spacing, top bar) come from the frontend base.css, which both admin
+   pages load, so the admin uses the app palette by construction rather than a
+   copied one. Only --topbar-h is admin-specific. */
 :root {
-  --gray-0: #ffffff;
-  --gray-1: #f5f5f6;
-  --gray-2: #ededf0;
-  --gray-3: #e2e2e5;
-  --gray-4: #c9c9cd;
-  --gray-5: #9a9aa0;
-  --gray-6: #63636a;
-  --gray-7: #3a3a3e;
-  --gray-8: #1c1c1e;
-  --bg-top: #f5f5f6;
-  --bg-bottom: #f0f0f1;
-  --shell: var(--gray-1);
-  --panel: var(--gray-0);
-  --panel-border: rgba(0, 0, 0, 0.09);
-  --border: var(--gray-3);
-  --line: var(--gray-3);
-  --ink: var(--gray-8);
-  --muted: var(--gray-6);
-  --input-bg: var(--gray-1);
-  --button-bg: var(--gray-2);
-  --button-hover: var(--gray-3);
-  --accent: #177ca2;
-  --accent-strong: #106685;
-  --accent-rgb: 23, 124, 162;
-  --on-accent: #ffffff;
-  --soft-accent: rgba(23, 124, 162, 0.12);
-  --warn: #b6482c;
-  --ok: #0f8a5e;
-  --shadow: 0 10px 24px rgba(15, 16, 18, 0.16);
-  --topbar-bg: #1c1c1e;
-  --topbar-fg: #f2f2f7;
-  --topbar-btn-bg: rgba(255, 255, 255, 0.08);
-  --topbar-btn-hover: rgba(255, 255, 255, 0.16);
-  --topbar-border: rgba(0, 0, 0, 0.45);
   --topbar-h: 60px;
-  --sp-2: 8px;
-  --sp-3: 12px;
-  --sp-4: 16px;
 }
 
-body[data-theme="dark"] {
-  --gray-0: #000000;
-  --gray-1: #0a0a0b;
-  --gray-2: #131315;
-  --gray-3: #232326;
-  --gray-4: #3a3a3e;
-  --gray-5: #6b6b70;
-  --gray-6: #98989f;
-  --gray-7: #c7c7cc;
-  --gray-8: #f2f2f7;
-  --bg-top: #000000;
-  --bg-bottom: #000000;
-  --shell: var(--gray-1);
-  --panel: #121214;
-  --panel-border: rgba(255, 255, 255, 0.09);
-  --border: var(--gray-3);
-  --line: var(--gray-3);
-  --ink: var(--gray-8);
-  --muted: var(--gray-6);
-  --input-bg: var(--gray-2);
-  --button-bg: var(--gray-2);
-  --button-hover: var(--gray-3);
-  --accent: #4ea6c9;
-  --accent-strong: #3d8fb0;
-  --accent-rgb: 78, 166, 201;
-  --on-accent: #0a0a0b;
-  --soft-accent: rgba(78, 166, 201, 0.16);
-  --warn: #e08b74;
-  --ok: #6fc79a;
-  --shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
-  --topbar-bg: #0a0a0b;
-  --topbar-fg: #f2f2f7;
-  --topbar-btn-bg: rgba(255, 255, 255, 0.07);
-  --topbar-btn-hover: rgba(255, 255, 255, 0.14);
-  --topbar-border: rgba(255, 255, 255, 0.14);
+/* base.css locks the app's map shell to the viewport (html,body height:100% /
+   overflow:hidden). The admin console scrolls normally; the override page keeps
+   the app's locked shell (see admin-override.css). */
+html {
+  height: auto;
+}
+
+body:not(.override-body) {
+  height: auto;
+  overflow: auto;
+}
+
+/* base.css sizes inputs/buttons to 100% for the app's stacked forms. Admin
+   buttons size to content unless a flex layout stretches them; the login
+   submit stays full width. */
+button {
+  width: auto;
+}
+
+/* base.css .btn-subtle is a full-width dashed panel action; the admin uses the
+   same class for small inline tool buttons. */
+.btn-subtle {
+  width: auto;
+  margin-top: 0;
+  border-style: solid;
+  color: var(--ink);
+}
+
+.auth-form button {
+  width: 100%;
+}
+
+/* Login card is a panel on both admin pages. The console gets this from
+   admin.css .card; the override page has no .card rule, so it was transparent
+   there. Shared here so both match. */
+.auth-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 18px;
+}
+
+/* Shared action row used by both admin pages (was duplicated per page). */
+.override-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.override-actions .btn,
+.override-actions button {
+  flex: 1 1 auto;
+  font-size: 13px;
 }
 
 /* ---------- Top bar (matches the app's desktop chrome) ---------- */
@@ -227,6 +206,22 @@ body.admin-locked .admin-topbar .admin-topbar-session {
 
 .status.is-error {
   color: var(--warn);
+}
+
+/* Admin pages had no anchor/placeholder defaults, so inline links rendered as
+   browser blue (low-contrast in dark mode). Theme them like the app. Topbar
+   nav/brand set their own color and win by specificity. */
+a {
+  color: var(--accent);
+}
+
+a:hover {
+  color: var(--accent-strong);
+}
+
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
 }
 
 /* The override page is a fixed-height map shell; its own stylesheet applies the

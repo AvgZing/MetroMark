@@ -1,11 +1,7 @@
-/* Palette (light/dark) lives in admin-shell.css so the admin pages share the
-   app's tokens. These aliases keep the console's existing rule names readable:
-   --bg/--text are not app token names, and --card maps to the app's --panel. */
-:root {
-  --bg: var(--bg-top);
-  --card: var(--panel);
-  --text: var(--ink);
-}
+/* Palette (light/dark) lives in admin-shell.css and is used directly here.
+   Note: do NOT alias these on :root (e.g. --card: var(--panel)) — a :root alias
+   resolves against :root's light values and inherits those into body, which
+   silently breaks dark mode. */
 
 body[data-theme="dark"] .usage-bar-track {
   background: #1c1c1f;
@@ -27,7 +23,7 @@ body[data-theme="dark"] pre {
 body {
   margin: 0;
   background: var(--bg-top);
-  color: var(--text);
+  color: var(--ink);
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -63,7 +59,7 @@ body.admin-locked .admin-shell > section:not(.auth-card) {
 .card {
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: var(--card);
+  background: var(--panel);
   padding: 16px;
   box-shadow: var(--shadow);
   /* Allow the card to shrink inside its grid column so long content wraps
@@ -112,6 +108,31 @@ body.admin-locked .admin-shell > section:not(.auth-card) {
   margin-top: 8px;
 }
 
+/* Login is a real form: full-width fields, Enter submits, inline status. */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.auth-form label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.auth-form input {
+  width: 100%;
+}
+
+.auth-form button {
+  margin-top: 6px;
+}
+
+.auth-form .status {
+  margin-top: 2px;
+}
+
 input,
 select,
 button {
@@ -124,7 +145,7 @@ select {
   border-radius: 8px;
   padding: 9px 10px;
   background: var(--input-bg);
-  color: var(--text);
+  color: var(--ink);
 }
 
 button {
@@ -202,7 +223,7 @@ button:hover {
   align-items: center;
   gap: 8px;
   font-size: 0.9rem;
-  color: var(--text);
+  color: var(--ink);
 }
 
 /* City preset management (curated route collections). */
@@ -381,7 +402,7 @@ pre {
   font-size: 1.9rem;
   font-weight: 700;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  color: var(--text);
+  color: var(--ink);
   overflow-wrap: anywhere;
   word-break: break-word;
 }
@@ -453,31 +474,59 @@ pre {
   padding: 4px 10px;
 }
 
+/* Usage history: labeled per-day REST vs tile calls, with a hover tooltip. */
 .usage-history-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
   font-size: 0.8rem;
 }
 
 .usage-history-day {
-  width: 34px;
+  flex: 0 0 auto;
+  min-width: 84px;
+  white-space: nowrap;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  color: var(--muted);
+}
+
+.usage-history-bars {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.usage-history-barline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.usage-history-bar-label {
+  flex: 0 0 auto;
+  width: 34px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--muted);
 }
 
 .usage-history-track {
   flex: 1;
-  height: 8px;
-  border-radius: 4px;
-  background: #e9e4da;
+  min-width: 0;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--button-bg);
   overflow: hidden;
-  display: flex;
 }
 
 .usage-history-bar {
   height: 100%;
+  border-radius: 5px;
 }
 
 .usage-history-bar.is-rest {
@@ -488,10 +537,28 @@ pre {
   background: #d44d1f;
 }
 
-.usage-history-counts {
-  width: 70px;
+.usage-history-count {
+  flex: 0 0 auto;
+  width: 64px;
   text-align: right;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   color: var(--muted);
   font-size: 0.72rem;
+}
+
+.usage-legend {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin: 0 2px;
+}
+
+.usage-legend.is-rest {
+  background: var(--accent);
+}
+
+.usage-legend.is-vector {
+  background: #d44d1f;
 }

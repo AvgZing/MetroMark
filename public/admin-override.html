@@ -11,9 +11,10 @@
       rel="stylesheet"
     />
     <link href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/Styles/base.css?v=2026-09-23" />
-    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-09-23" />
-    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-09-23" />
+    <link rel="stylesheet" href="/Styles/base.css?v=2026-09-24" />
+    <link rel="stylesheet" href="/Styles/map.css?v=2026-09-24" />
+    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-09-24" />
+    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-09-24" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -41,7 +42,7 @@
       <div class="topbar-actions">
         <button
           id="themeToggleBtn"
-          class="btn btn-icon theme-toggle-btn"
+          class="btn btn-icon theme-icon-btn theme-toggle-btn"
           type="button"
           aria-label="Toggle theme"
           title="Toggle theme"
@@ -59,12 +60,14 @@
       <section class="card auth-card">
         <h2>Admin Login</h2>
         <p class="subtle">Sign in with a Supabase account granted the admin role, or the env-designated admin account (<code>ADMIN_EMAIL</code>) — it is auto-promoted on login.</p>
-        <label for="adminEmailInput">Email</label>
-        <input id="adminEmailInput" type="email" placeholder="admin@example.com" autocomplete="username" />
-        <label for="adminPasswordInput">Password</label>
-        <input id="adminPasswordInput" type="password" placeholder="Password" autocomplete="current-password" />
-        <button id="loginBtn" type="button">Login</button>
-        <p id="loginStatusMessage" class="status">Waiting for login.</p>
+        <form id="adminLoginForm" class="auth-form" novalidate>
+          <label for="adminEmailInput">Email</label>
+          <input id="adminEmailInput" type="email" placeholder="admin@example.com" autocomplete="username" required />
+          <label for="adminPasswordInput">Password</label>
+          <input id="adminPasswordInput" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button id="loginBtn" class="btn btn-primary" type="submit">Login</button>
+          <p id="loginStatusMessage" class="status" role="status">Waiting for login.</p>
+        </form>
       </section>
     </main>
 
@@ -79,11 +82,16 @@
         </div>
 
         <div class="panel override-search-panel">
-          <label for="routeSearchInput">Find Route</label>
+          <h2>Find route on map</h2>
+          <p class="microcopy">
+            Search the routes shown in the current view, then select one to edit, or tick several and
+            refresh them together after a service change.
+          </p>
           <input
             id="routeSearchInput"
             type="search"
-            placeholder="Search name, number, operator, or key"
+            placeholder="Name, number, operator, or key"
+            aria-label="Find route on map"
           />
           <label for="routeModeFilterSelect">Filter by Mode</label>
           <select id="routeModeFilterSelect">
@@ -135,6 +143,17 @@
             every current route an operator runs; individual routes can be included, excluded, and
             vetted for accuracy.
           </p>
+          <div class="city-create">
+            <h3 class="city-subhead">Create city from current view</h3>
+            <input id="newCitySlug" type="text" placeholder="slug (e.g. seattle)" />
+            <input id="newCityName" type="text" placeholder="Name (e.g. Seattle)" />
+            <input id="newCityCountry" type="text" placeholder="Country (e.g. USA)" />
+            <p class="microcopy" id="newCityView">Move the map to the city, then create it here.</p>
+            <div class="override-actions">
+              <button id="newCityCreateBtn" class="btn" type="button">Create city from current view</button>
+            </div>
+            <p class="status" id="newCityStatus"></p>
+          </div>
           <label for="cityPanelSelect">City</label>
           <select id="cityPanelSelect">
             <option value="">Select a city…</option>
@@ -197,7 +216,11 @@
 
         <div class="panel">
           <h2>Batch by Mode</h2>
-          <p class="microcopy">Mark every route of a mode in the viewport as disabled-by-default (or clear it).</p>
+          <p class="microcopy">
+            Same effect as operator rules but by mode: mark every route of a mode in the viewport as
+            disabled-by-default (users can re-enable), or clear it. Handy for hiding a whole
+            category such as cable cars.
+          </p>
           <div class="row">
             <label for="batchModeSelect">Mode</label>
             <select id="batchModeSelect">
@@ -390,9 +413,10 @@
 
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
     <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
-    <script src="/Scripts/Map/basemap-config.js?v=2026-09-23" defer></script>
-    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-23" defer></script>
-    <script src="/Scripts/Shared/constants.js?v=2026-09-23" defer></script>
-    <script src="/Scripts/Admin/admin-override.js?v=2026-09-23" defer></script>
+    <script src="/Scripts/Map/basemap-config.js?v=2026-09-24" defer></script>
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-24" defer></script>
+    <script src="/Scripts/Shared/constants.js?v=2026-09-24" defer></script>
+    <script src="/Scripts/Map/viewport-cache.js?v=2026-09-24" defer></script>
+    <script src="/Scripts/Admin/admin-override.js?v=2026-09-24" defer></script>
   </body>
 </html>

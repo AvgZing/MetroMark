@@ -60,22 +60,36 @@ async function searchTransitlandRoutes(query, options = {}) {
   }
   // A route onestop id is an exact lookup; anything else is a name/number search.
   const isOnestopId = /^r-[\w~-]+$/i.test(search);
-  const params = isOnestopId
-    ? { onestop_id: search }
-    : { search };
-  const response = await transitlandRequest(
-    "/routes",
-    {
-      ...params,
-      // normalizeRoute() drops routes with no geometry, so geometry must be
-      // included even though the search UI only needs identity fields.
-      include_geometry: "true",
-      limit: String(Math.max(1, Math.min(options.limit || 20, MAX_SEARCH_RESULTS)))
-    },
-    { requestSource: REQUEST_SOURCE }
-  );
+  const params = isOnestopId ? { onestop_id: search } : { search };
+  // Scoping to the current viewport makes results local/relevant instead of
+  // fuzzy global matches (Transitland's text search is worldwide otherwise).
+  const bbox = Array.isArray(options.bbox) && options.bbox.length === 4
+    ? options.bbox.map((value) => Number(value))
+    : null;
+  const requestParams = {
+    ...params,
+    // normalizeRoute() drops routes with no geometry, so geometry must be
+    // included even though the search UI only needs identity fields.
+    include_geometry: "true",
+    limit: String(Math.max(1, Math.min(options.limit || 20, MAX_SEARCH_RESULTS)))
+  };
+  if (bbox && bbox.every(Number.isFinite)) {
+    requestParams.bbox = bbox.join(",");
+  }
+  const response = await transitlandRequest("/routes", requestParams, { requestSource: REQUEST_SOURCE });
   const normalized = normalizeRoutes(Array.isArray(response?.routes) ? response.routes : []);
-  return normalized.map(searchCandidate).filter((candidate) => candidate.lineKey);
+  const candidates = normalized.map(searchCandidate).filter((candidate) => candidate.lineKey);
+  // Rank exact short-name / key matches above fuzzy substring matches.
+  const lowered = search.toLowerCase();
+  const rank = (candidate) => {
+    if (String(candidate.lineShortName || "").toLowerCase() === lowered) return 0;
+    if (String(candidate.lineKey || "").toLowerCase() === lowered) return 1;
+    if (String(candidate.lineShortName || "").toLowerCase().includes(lowered)) return 2;
+    if (String(candidate.lineName || "").toLowerCase().includes(lowered)) return 3;
+    return 4;
+  };
+  candidates.sort((a, b) => rank(a) - rank(b));
+  return candidates;
 }
 
 async function removeMissingRoute(lineKey, report) {

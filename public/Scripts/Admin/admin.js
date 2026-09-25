@@ -6,6 +6,7 @@ const els = {
   adminEmailInput: document.getElementById("adminEmailInput"),
   adminPasswordInput: document.getElementById("adminPasswordInput"),
   loginBtn: document.getElementById("loginBtn"),
+  adminLoginForm: document.getElementById("adminLoginForm"),
   loginStatusMessage: document.getElementById("loginStatusMessage"),
   sessionEmail: document.getElementById("sessionEmail"),
   sessionSource: document.getElementById("sessionSource"),
@@ -39,9 +40,6 @@ const els = {
   citySlugInput: document.getElementById("citySlugInput"),
   cityNameInput: document.getElementById("cityNameInput"),
   cityCountryInput: document.getElementById("cityCountryInput"),
-  cityCenterInput: document.getElementById("cityCenterInput"),
-  cityBboxInput: document.getElementById("cityBboxInput"),
-  cityZoomInput: document.getElementById("cityZoomInput"),
   cityPublishedCb: document.getElementById("cityPublishedCb"),
   saveCityBtn: document.getElementById("saveCityBtn"),
   clearCityBtn: document.getElementById("clearCityBtn"),
@@ -60,6 +58,7 @@ const state = {
   token: sessionStorage.getItem(SESSION_KEY) || "",
   refreshTimer: null,
   editingCitySlug: "",
+  editingCity: null,
   adminCities: [],
 };
 
@@ -183,34 +182,63 @@ function renderUsageBars(usage) {
 }
 
 function renderUsageHistory(history) {
-  els.usageHistory.innerHTML = "";
+  const el = els.usageHistory;
+  el.innerHTML = "";
   const rows = Array.isArray(history) ? history : [];
   if (!rows.length) {
-    els.usageHistory.textContent = "No usage recorded yet.";
+    el.textContent = "No usage recorded yet.";
     return;
   }
-  const max = Math.max(1, ...rows.map((r) => r.vectorTileCalls || 0));
+  const max = Math.max(
+    1,
+    ...rows.map((row) => Math.max(Number(row.restApiCalls) || 0, Number(row.vectorTileCalls) || 0))
+  );
+
+  const fragment = document.createDocumentFragment();
   for (const row of rows) {
+    const rest = Number(row.restApiCalls) || 0;
+    const vector = Number(row.vectorTileCalls) || 0;
+
     const wrap = document.createElement("div");
     wrap.className = "usage-history-row";
+    wrap.title = `${row.dayKey || ""}: ${rest.toLocaleString()} REST API calls, ${vector.toLocaleString()} vector tile calls`;
+
     const day = document.createElement("span");
     day.className = "usage-history-day";
-    day.textContent = (row.dayKey || "").slice(5);
-    const restBar = document.createElement("div");
-    restBar.className = "usage-history-bar is-rest";
-    restBar.style.width = `${Math.max(2, Math.round((row.restApiCalls / max) * 100))}%`;
-    const vectorBar = document.createElement("div");
-    vectorBar.className = "usage-history-bar is-vector";
-    vectorBar.style.width = `${Math.max(2, Math.round((row.vectorTileCalls / max) * 100))}%`;
-    const track = document.createElement("div");
-    track.className = "usage-history-track";
-    track.append(restBar, vectorBar);
-    const counts = document.createElement("span");
-    counts.className = "usage-history-counts";
-    counts.textContent = `${row.restApiCalls}/${row.vectorTileCalls}`;
-    wrap.append(day, track, counts);
-    els.usageHistory.append(wrap);
+    day.textContent = row.dayKey || "";
+
+    const bars = document.createElement("div");
+    bars.className = "usage-history-bars";
+    for (const [cls, label, value] of [
+      ["is-rest", "REST", rest],
+      ["is-vector", "Tiles", vector]
+    ]) {
+      const line = document.createElement("div");
+      line.className = "usage-history-barline";
+
+      const lab = document.createElement("span");
+      lab.className = "usage-history-bar-label";
+      lab.textContent = label;
+
+      const track = document.createElement("div");
+      track.className = "usage-history-track";
+      const bar = document.createElement("div");
+      bar.className = `usage-history-bar ${cls}`;
+      bar.style.width = `${Math.max(1, Math.round((value / max) * 100))}%`;
+      track.append(bar);
+
+      const count = document.createElement("span");
+      count.className = "usage-history-count";
+      count.textContent = value.toLocaleString();
+
+      line.append(lab, track, count);
+      bars.append(line);
+    }
+
+    wrap.append(day, bars);
+    fragment.append(wrap);
   }
+  el.append(fragment);
 }
 
 function renderAccounts(accounts) {
@@ -447,7 +475,7 @@ async function runAction(label, requestFactory) {
 }
 
 function bindEvents() {
-  els.loginBtn.addEventListener("click", async () => {
+  async function submitAdminLogin() {
     const email = String(els.adminEmailInput.value || "").trim();
     const password = String(els.adminPasswordInput.value || "");
     if (!email || !password) {
@@ -472,7 +500,16 @@ function bindEvents() {
       clearAdminSession();
       els.loginStatusMessage.textContent = error.message;
     }
-  });
+  }
+
+  if (els.adminLoginForm) {
+    els.adminLoginForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitAdminLogin();
+    });
+  } else if (els.loginBtn) {
+    els.loginBtn.addEventListener("click", () => submitAdminLogin());
+  }
 
   if (els.logoutBtn) {
     els.logoutBtn.addEventListener("click", () => {
@@ -727,55 +764,45 @@ async function loadIssueReports(options = {}) {
   }
 }
 
-function parseNumberList(value) {
-  return String(value || "")
-    .split(",")
-    .map((entry) => Number(entry.trim()))
-    .filter((entry) => Number.isFinite(entry));
-}
-
+// The console edits an existing city's metadata; center/bbox/zoom are captured
+// from the Map Editor when the city is created, so they are preserved here.
 function cityFormPayload() {
-  const center = parseNumberList(els.cityCenterInput?.value);
-  const bbox = parseNumberList(els.cityBboxInput?.value);
-  const zoom = Number(els.cityZoomInput?.value);
+  const existing = state.editingCity || {};
   return {
     slug: String(els.citySlugInput?.value || "").trim(),
     name: String(els.cityNameInput?.value || "").trim(),
     country: String(els.cityCountryInput?.value || "").trim(),
-    center: center.length === 2 ? center : null,
-    bbox: bbox.length === 4 ? bbox : null,
-    defaultZoom: Number.isFinite(zoom) ? zoom : null,
+    center: Array.isArray(existing.center) ? existing.center : null,
+    bbox: Array.isArray(existing.bbox) ? existing.bbox : null,
+    defaultZoom: existing.defaultZoom ?? null,
     published: Boolean(els.cityPublishedCb?.checked)
   };
 }
 
 function clearCityForm() {
   state.editingCitySlug = "";
+  state.editingCity = null;
   if (els.citySlugInput) {
     els.citySlugInput.value = "";
-    els.citySlugInput.disabled = false;
+    els.citySlugInput.disabled = true;
   }
   if (els.cityNameInput) els.cityNameInput.value = "";
   if (els.cityCountryInput) els.cityCountryInput.value = "";
-  if (els.cityCenterInput) els.cityCenterInput.value = "";
-  if (els.cityBboxInput) els.cityBboxInput.value = "";
-  if (els.cityZoomInput) els.cityZoomInput.value = "";
   if (els.cityPublishedCb) els.cityPublishedCb.checked = false;
+  if (els.saveCityBtn) els.saveCityBtn.disabled = true;
   if (els.clearCityBtn) els.clearCityBtn.disabled = true;
   renderAdminCities(state.adminCities);
 }
 
 function fillCityForm(city) {
   state.editingCitySlug = city.slug;
+  state.editingCity = city;
   els.citySlugInput.value = city.slug;
   els.citySlugInput.disabled = true;
   els.cityNameInput.value = city.name || "";
   els.cityCountryInput.value = city.country || "";
-  els.cityCenterInput.value = Array.isArray(city.center) ? city.center.join(",") : "";
-  els.cityBboxInput.value = Array.isArray(city.bbox) ? city.bbox.join(",") : "";
-  els.cityZoomInput.value =
-    city.defaultZoom === null || city.defaultZoom === undefined ? "" : String(city.defaultZoom);
   els.cityPublishedCb.checked = Boolean(city.published);
+  if (els.saveCityBtn) els.saveCityBtn.disabled = false;
   els.clearCityBtn.disabled = false;
   renderAdminCities(state.adminCities);
 }
@@ -789,7 +816,7 @@ function renderAdminCities(cities) {
   if (!cities.length) {
     const p = document.createElement("p");
     p.className = "microcopy";
-    p.textContent = "No cities yet. Create one above, then add and vet its routes in the Map Editor.";
+    p.textContent = "No cities yet. Create one in the Map Editor (City presets panel), then edit and publish it here.";
     list.append(p);
     return;
   }
@@ -881,8 +908,8 @@ async function loadAdminCities() {
 
 async function saveCity() {
   const payload = cityFormPayload();
-  if (!payload.slug) {
-    setTextStatus(els.adminCitiesStatus, "Slug is required.", "is-error");
+  if (!state.editingCity) {
+    setTextStatus(els.adminCitiesStatus, "Create cities in the Map Editor; select a city here to edit its name/country/publish.", "is-error");
     return;
   }
   setTextStatus(els.adminCitiesStatus, "Saving…");

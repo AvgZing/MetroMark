@@ -11,6 +11,7 @@ const els = {
   adminEmailInput: document.getElementById("adminEmailInput"),
   adminPasswordInput: document.getElementById("adminPasswordInput"),
   loginBtn: document.getElementById("loginBtn"),
+  adminLoginForm: document.getElementById("adminLoginForm"),
   loginStatusMessage: document.getElementById("loginStatusMessage"),
   logoutBtn: document.getElementById("logoutBtn"),
   refreshMapBtn: document.getElementById("refreshMapBtn"),
@@ -50,6 +51,12 @@ const els = {
   resetRouteBtn: document.getElementById("resetRouteBtn"),
   deleteRouteOverrideBtn: document.getElementById("deleteRouteOverrideBtn"),
   cityPanelSelect: document.getElementById("cityPanelSelect"),
+  newCitySlug: document.getElementById("newCitySlug"),
+  newCityName: document.getElementById("newCityName"),
+  newCityCountry: document.getElementById("newCityCountry"),
+  newCityView: document.getElementById("newCityView"),
+  newCityCreateBtn: document.getElementById("newCityCreateBtn"),
+  newCityStatus: document.getElementById("newCityStatus"),
   cityPanelBody: document.getElementById("cityPanelBody"),
   cityPanelSummary: document.getElementById("cityPanelSummary"),
   citySelectedRoute: document.getElementById("citySelectedRoute"),
@@ -119,6 +126,8 @@ const state = {
   areaRefreshBbox: null,
   routeBatchSelection: new Set(),
   selectedBranchGroups: [],
+  hiddenOperators: new Set(),
+  disabledRouteKeys: new Set(),
   cityPanelList: [],
   cityPanelCity: null
 };
@@ -226,17 +235,14 @@ function renderManualEditsLog() {
 // ---------------------------------------------------------------------------
 
 function mapStyle() {
-  // Use saved theme for the basemap on first paint (admin-theme.js runs first).
+  // Reuse the frontend basemap/projection (createMapStyle from viewport-cache.js)
+  // and add only the admin-specific overlay sources and layers.
   const savedTheme = typeof getAdminTheme === "function" ? getAdminTheme() : "light";
+  const base = createMapStyle(savedTheme);
   return {
-    version: 8,
+    ...base,
     sources: {
-      streets: {
-        type: "raster",
-        tiles: cartoTileUrls(savedTheme === "dark" ? "dark_all" : "light_all"),
-        tileSize: 256,
-        attribution: cartoAttribution()
-      },
+      ...base.sources,
       "routes-vector": { type: "vector", url: "pmtiles:///api/tiles/routes.pmtiles" },
       "routes-underlay": { type: "geojson", data: EMPTY_FC },
       "routes-edited": { type: "geojson", data: EMPTY_FC },
@@ -244,7 +250,7 @@ function mapStyle() {
       "stops-edited": { type: "geojson", data: EMPTY_FC }
     },
     layers: [
-      { id: "streets-base", type: "raster", source: "streets" },
+      ...base.layers,
       {
         id: "routes-underlay",
         type: "line",
@@ -332,12 +338,25 @@ async function initMap() {
     bindMapEvents();
     updateUnderlay();
     applyDeepLinkView();
+    updateNewCityView();
+    // A cold SW/archive cache can occasionally drop the first pmtiles paint;
+    // retry once so the admin never needs a hard reload to see routes.
+    window.setTimeout(() => {
+      if (!state.map || !state.map.getLayer("routes-main")) {
+        return;
+      }
+      if (state.map.queryRenderedFeatures({ layers: ["routes-main"] }).length === 0) {
+        reloadVectorSource();
+        updateUnderlay();
+      }
+    }, 4000);
   });
 
   state.map.on("moveend", () => {
     updateUnderlay();
     updateCurrentCity();
     loadOperatorsForViewport();
+    updateNewCityView();
     if (state.areaRefreshOpen) {
       updateAreaRefreshBbox();
     }
@@ -436,6 +455,11 @@ function reloadVectorSource() {
   for (const layer of layerDefs) {
     map.addLayer(layer, beforeId);
   }
+  // Re-added layers lost their filter; restore hidden/disabled visibility.
+  applyMapRouteVisibility({
+    hiddenOperators: state.hiddenOperators,
+    disabledLineKeys: state.disabledRouteKeys
+  });
 }
 
 async function runAreaRefresh() {
@@ -579,13 +603,61 @@ function focusRouteFeature(feature) {
   selectRouteFromFeature(feature);
 }
 
+// Search corpus = routes actually rendered on the map (which includes routes
+// missing from the simplified coverage/underlay set, e.g. local route 522) plus
+// the underlay features, deduped by line key. Prefers whichever has geometry.
+function collectRouteSearchCorpus() {
+  const byKey = new Map();
+  const add = (feature) => {
+    const props = featureLineProps(feature);
+    if (!props.lineKey) {
+      return;
+    }
+    const existing = byKey.get(props.lineKey);
+    if (!existing) {
+      byKey.set(props.lineKey, feature);
+      return;
+    }
+    const hasGeom = Boolean(feature.geometry && Array.isArray(feature.geometry.coordinates));
+    const existingGeom = Boolean(existing.geometry && Array.isArray(existing.geometry.coordinates));
+    if (hasGeom && !existingGeom) {
+      byKey.set(props.lineKey, feature);
+    }
+  };
+  if (state.map && state.mapReady && state.map.getLayer("routes-main")) {
+    for (const feature of state.map.queryRenderedFeatures({ layers: ["routes-main"] })) {
+      add(feature);
+    }
+  }
+  for (const feature of state.underlayFeatures || []) {
+    add(feature);
+  }
+  return Array.from(byKey.values());
+}
+
+function routeSearchHaystack(feature) {
+  const p = feature?.properties || {};
+  return [
+    p.line_key,
+    p.line_name,
+    p.line_short_name,
+    p.line_long_name,
+    p.operator_name,
+    p.onestop_id,
+    p.route_onestop_id
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+}
+
 function renderRouteSearchResults(features, context = {}) {
   const container = els.routeSearchResults;
   if (!container) {
     return;
   }
-  const list = Array.isArray(features) ? features : [];
-  const hasFilter = Boolean(context.query || context.modeFilter);
+  const query = String(context.query || "").trim().toLowerCase();
+  const modeFilter = String(context.modeFilter || "").trim();
+  const hasFilter = Boolean(query || modeFilter);
   container.innerHTML = "";
   // Keep the panel quiet until the admin actually searches or filters; a full
   // viewport route list repainting on every pan is noise.
@@ -593,6 +665,18 @@ function renderRouteSearchResults(features, context = {}) {
     updateRouteBatchControl();
     return;
   }
+  const list = (Array.isArray(features) ? features : []).filter((feature) => {
+    if (query && !routeSearchHaystack(feature).includes(query)) {
+      return false;
+    }
+    if (modeFilter) {
+      const routeType = Number(feature?.properties?.route_type);
+      if (!Number.isFinite(routeType) || String(routeType) !== modeFilter) {
+        return false;
+      }
+    }
+    return true;
+  });
   if (!list.length) {
     const p = document.createElement("p");
     p.className = "microcopy";
@@ -802,8 +886,12 @@ async function searchTransitland() {
     els.transitlandSearchResults.innerHTML = "";
   }
   try {
+    const bounds = state.map && state.map.getBounds ? state.map.getBounds() : null;
+    const bboxParam = bounds
+      ? `&bbox=${[bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].join(",")}`
+      : "";
     const payload = await apiRequest(
-      `/api/admin/routes/search?q=${encodeURIComponent(query)}`,
+      `/api/admin/routes/search?q=${encodeURIComponent(query)}${bboxParam}`,
       { method: "GET" }
     );
     renderTransitlandResults(Array.isArray(payload?.routes) ? payload.routes : []);
@@ -977,13 +1065,13 @@ function applyUnderlaySearchFilter() {
 
   source.setData({ type: "FeatureCollection", features });
 
+  const corpus = collectRouteSearchCorpus();
   if (els.routeSearchInfo) {
-    const total = state.underlayFeatures ? state.underlayFeatures.length : 0;
     els.routeSearchInfo.textContent =
-      query || modeFilter ? `${features.length} of ${total} routes shown` : "";
+      query || modeFilter ? `${corpus.length} route(s) in view` : "";
   }
 
-  renderRouteSearchResults(features, { query, modeFilter });
+  renderRouteSearchResults(corpus, { query, modeFilter });
 }
 
 async function loadCities() {
@@ -1071,16 +1159,17 @@ function openRouteOverlapPopup(features, lngLat) {
   const rows = features
     .map((feature) => {
       const props = featureLineProps(feature);
-      const color = String(props.color || "#177ca2").trim();
+      const meta = [props.operatorName, props.lineKey].filter(Boolean).join(" | ");
       return `
-        <button class="admin-route-select-btn" type="button" data-admin-route-select="${escapeAdminHtml(props.lineKey)}">
-          <span class="admin-route-select-dot" style="background:${escapeAdminHtml(color)}"></span>
-          <span class="admin-route-select-name">${escapeAdminHtml(adminLineDisplayName(props))}</span>
-          <span class="admin-route-select-meta">${escapeAdminHtml(props.lineKey)}</span>
+        <button class="route-select-btn" type="button" data-admin-route-select="${escapeAdminHtml(props.lineKey)}">
+          <span class="route-select-name">${escapeAdminHtml(adminLineDisplayName(props))}</span>
+          <span class="route-select-meta">${escapeAdminHtml(meta)}</span>
         </button>`;
     })
     .join("");
 
+  // Same markup/classes as the frontend route selector (route-popups.js) so the
+  // two look identical; the matching styles live in admin-override.css.
   state.routeOverlapPopup = new maplibregl.Popup({
     closeButton: true,
     closeOnClick: false,
@@ -1088,10 +1177,10 @@ function openRouteOverlapPopup(features, lngLat) {
   })
     .setLngLat(lngLat)
     .setHTML(
-      `<div class="admin-route-select-popup">
-        <h4>Select Route</h4>
-        <p class="admin-route-select-hint">${features.length} routes overlap here.</p>
-        <div class="admin-route-select-list">${rows}</div>
+      `<div class="station-hover route-select-popup">
+        <div class="route-select-header"><h4>Select Route</h4></div>
+        <p class="hover-subtitle">${features.length} routes overlap here.</p>
+        <div class="route-select-list">${rows}</div>
       </div>`
     )
     .addTo(state.map);
@@ -1936,6 +2025,34 @@ function addStationHighlight(stationKey, name, lon, lat) {
 // Operators (batch hide by default)
 // ---------------------------------------------------------------------------
 
+// Reflect the "hidden/disabled by default" state on the admin map itself, so
+// every such action is visible immediately. Two independent sources: agency
+// rules (hidden operators) and route rules (disabled-by-default line keys).
+function applyMapRouteVisibility({ hiddenOperators, disabledLineKeys } = {}) {
+  if (!state.map || !state.mapReady) {
+    return;
+  }
+  const operators = Array.from(hiddenOperators || []).filter(Boolean);
+  const lineKeys = Array.from(disabledLineKeys || []).filter(Boolean);
+  state.hiddenOperators = new Set(operators);
+  state.disabledRouteKeys = new Set(lineKeys);
+
+  const conditions = [];
+  if (operators.length) {
+    conditions.push(["!", ["in", ["get", "operator_name"], ["literal", operators]]]);
+  }
+  if (lineKeys.length) {
+    conditions.push(["!", ["in", ["get", "line_key"], ["literal", lineKeys]]]);
+  }
+  const filter = conditions.length === 0 ? null : conditions.length === 1 ? conditions[0] : ["all", ...conditions];
+
+  for (const id of ["routes-main", "routes-hit", "routes-underlay"]) {
+    if (state.map.getLayer(id)) {
+      state.map.setFilter(id, filter);
+    }
+  }
+}
+
 async function loadOperatorsForViewport() {
   const features = state.map && state.mapReady
     ? state.map.queryRenderedFeatures({ layers: ["routes-main"] })
@@ -1949,15 +2066,33 @@ async function loadOperatorsForViewport() {
   }
 
   let reviews = [];
+  let disabledRouteKeys = new Set();
   try {
     if (state.currentCitySlug) {
-      const payload = await apiRequest(`/api/admin/reviews/agencies?citySlug=${encodeURIComponent(state.currentCitySlug)}`, { method: "GET" });
-      reviews = Array.isArray(payload.reviews) ? payload.reviews : [];
+      const [agencyPayload, routePayload] = await Promise.all([
+        apiRequest(`/api/admin/reviews/agencies?citySlug=${encodeURIComponent(state.currentCitySlug)}`, { method: "GET" }),
+        apiRequest(`/api/admin/reviews/route?citySlug=${encodeURIComponent(state.currentCitySlug)}`, { method: "GET" })
+      ]);
+      reviews = Array.isArray(agencyPayload.reviews) ? agencyPayload.reviews : [];
+      disabledRouteKeys = new Set(
+        (Array.isArray(routePayload.reviews) ? routePayload.reviews : [])
+          .filter((review) => review.problematic_override === true)
+          .map((review) => String(review.line_key || "").trim())
+          .filter(Boolean)
+      );
     }
   } catch {
     reviews = [];
   }
   const reviewByOperator = new Map(reviews.map((r) => [r.operator_name, r]));
+
+  const hiddenOperators = new Set(
+    reviews
+      .filter((r) => r.allowed_override === false)
+      .map((r) => String(r.operator_name || "").trim())
+      .filter(Boolean)
+  );
+  applyMapRouteVisibility({ hiddenOperators, disabledLineKeys: disabledRouteKeys });
 
   els.operatorList.innerHTML = "";
   const names = Array.from(operatorNames).sort();
@@ -1978,12 +2113,13 @@ async function loadOperatorsForViewport() {
 
     const label = document.createElement("span");
     label.textContent = name;
-    label.title = hidden ? "Hidden by default (users can re-enable)" : "Shown by default";
+    label.title = hidden ? "Currently hidden by default" : "Currently shown by default";
 
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "btn " + (hidden ? "btn-danger" : "btn-subtle");
-    toggle.textContent = hidden ? "Shown: click to hide" : "Hide by default";
+    toggle.textContent = hidden ? "Show by default" : "Hide by default";
+    toggle.title = hidden ? "Currently hidden — click to show" : "Currently shown — click to hide";
     toggle.addEventListener("click", async () => {
       const nextHidden = !hidden;
       toggle.disabled = true;
@@ -2182,7 +2318,7 @@ async function batchAllOperators(hide) {
 // ---------------------------------------------------------------------------
 
 function bindEvents() {
-  els.loginBtn.addEventListener("click", async () => {
+  async function submitAdminLogin() {
     const email = String(els.adminEmailInput.value || "").trim();
     const password = String(els.adminPasswordInput.value || "");
     if (!email || !password) {
@@ -2203,7 +2339,16 @@ function bindEvents() {
       clearAdminSession();
       els.loginStatusMessage.textContent = error.message;
     }
-  });
+  }
+
+  if (els.adminLoginForm) {
+    els.adminLoginForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitAdminLogin();
+    });
+  } else if (els.loginBtn) {
+    els.loginBtn.addEventListener("click", () => submitAdminLogin());
+  }
 
   els.logoutBtn.addEventListener("click", () => {
     apiRequest("/api/admin/logout", { method: "POST" }).catch(() => {});
@@ -2276,6 +2421,11 @@ function bindEvents() {
   if (els.cityPanelSelect) {
     els.cityPanelSelect.addEventListener("change", () => {
       selectCityForPanel(els.cityPanelSelect.value).catch(() => {});
+    });
+  }
+  if (els.newCityCreateBtn) {
+    els.newCityCreateBtn.addEventListener("click", () => {
+      createCityFromView().catch(() => {});
     });
   }
   if (els.cityOperatorSearchBtn) {
@@ -2354,6 +2504,83 @@ function bindEvents() {
 // ---------------------------------------------------------------------------
 // City presets panel: operator rules + explicit route rules + per-route vetting
 // ---------------------------------------------------------------------------
+
+function describeCurrentView() {
+  if (!state.map || !state.mapReady) {
+    return null;
+  }
+  const center = state.map.getCenter();
+  const zoom = state.map.getZoom();
+  const bounds = state.map.getBounds();
+  return {
+    center: [Number(center.lng.toFixed(6)), Number(center.lat.toFixed(6))],
+    zoom: Number(zoom.toFixed(2)),
+    bbox: [
+      Number(bounds.getWest().toFixed(6)),
+      Number(bounds.getSouth().toFixed(6)),
+      Number(bounds.getEast().toFixed(6)),
+      Number(bounds.getNorth().toFixed(6))
+    ]
+  };
+}
+
+function updateNewCityView() {
+  if (!els.newCityView) {
+    return;
+  }
+  const view = describeCurrentView();
+  els.newCityView.textContent = view
+    ? `Center ${view.center[0]}, ${view.center[1]} · zoom ${view.zoom} · bbox ${view.bbox.join(", ")}`
+    : "Move the map to the city, then create it here.";
+}
+
+// City creation lives on the map so center/zoom/bbox come from the view the
+// admin is actually looking at — no hand-typed coordinates.
+async function createCityFromView() {
+  const slug = String(els.newCitySlug?.value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const name = String(els.newCityName?.value || "").trim() || slug;
+  const country = String(els.newCityCountry?.value || "").trim();
+  if (!slug) {
+    setEditStatus(els.newCityStatus, "A slug is required.", true);
+    return;
+  }
+  const view = describeCurrentView();
+  if (!view) {
+    setEditStatus(els.newCityStatus, "Map not ready yet.", true);
+    return;
+  }
+  setEditStatus(els.newCityStatus, "Creating…");
+  try {
+    await apiRequest("/api/admin/cities", {
+      method: "POST",
+      body: {
+        slug,
+        name,
+        country,
+        center: view.center,
+        bbox: view.bbox,
+        defaultZoom: view.zoom,
+        published: false
+      }
+    });
+    setEditStatus(els.newCityStatus, `Created ${slug}.`);
+    if (els.newCitySlug) els.newCitySlug.value = "";
+    if (els.newCityName) els.newCityName.value = "";
+    if (els.newCityCountry) els.newCityCountry.value = "";
+    await loadCityPanelList();
+    if (els.cityPanelSelect) {
+      els.cityPanelSelect.value = slug;
+    }
+    await selectCityForPanel(slug);
+    recordManualEdit("city", slug, "created from current map view");
+  } catch (error) {
+    setEditStatus(els.newCityStatus, `Failed: ${error.message}`, true);
+  }
+}
 
 async function loadCityPanelList() {
   if (!els.cityPanelSelect) {
