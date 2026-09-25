@@ -337,8 +337,8 @@ async function refreshStats() {
     ? `${accounts.profilesActive || 0} active`
     : "Supabase unreachable";
   els.kpiVisits.textContent = accountsAvailable ? String(accounts.visitedStationRows || 0) : "—";
-  els.kpiRoutes.textContent = String(payload.routeCoverage?.totalRoutes ?? payload.harvest?.totalCities ?? "—");
-  els.kpiRoutesSub.textContent = `${payload.routeCoverage?.coveredHeadway || 0} with headway · ${payload.routeCoverage?.distinctOperators || 0} operators`;
+    els.kpiRoutes.textContent = String(payload.routeCoverage?.totalRoutes ?? payload.harvest?.totalCities ?? "—");
+    els.kpiRoutesSub.textContent = `${payload.routeCoverage?.coveredHeadway || 0} with headway · ${payload.routeCoverage?.coveredStops || 0} stops checked · ${payload.routeCoverage?.distinctOperators || 0} operators`;
   els.kpiCache.textContent = String(payload.cache?.total ?? "—");
   const cacheKinds = payload.cache?.byKind
     ? Object.entries(payload.cache.byKind).map(([kind, count]) => `${kind}:${count}`).join(", ")
@@ -353,6 +353,7 @@ async function refreshStats() {
   renderKv(els.routeCoverage, [
     { label: "Routes (metadata)", value: payload.routeCoverage?.totalRoutes },
     { label: "Headway covered", value: payload.routeCoverage?.coveredHeadway },
+    { label: "Stops checked", value: payload.routeCoverage?.coveredStops },
     { label: "Distinct operators", value: payload.routeCoverage?.distinctOperators },
     { label: "With stop counts", value: payload.routeCoverage?.routesWithStopCounts },
     { label: "Archive size", value: fmtMb(payload.archive?.sizeBytes) }

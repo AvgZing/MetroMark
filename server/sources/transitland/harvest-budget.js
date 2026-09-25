@@ -6,6 +6,39 @@ const NEAR_DONE_BUDGET = 50;
 
 const CATEGORIES = ["geometry", "headway", "stops"];
 
+// When a category becomes nearly done its budget drops from ACTIVE_BUDGET to
+// NEAR_DONE_BUDGET. Instead of letting the total shrink, the freed REST budget
+// is reallocated to the categories that still have work, in this priority order
+// (stops is the REST-bound bottleneck; headway mostly uses cache/vector).
+const CATEGORY_PRIORITY = ["stops", "headway", "geometry"];
+
+// The overall daily REST budget is kept at categories * ACTIVE_BUDGET (300).
+function totalDailyBudget() {
+  return CATEGORIES.length * ACTIVE_BUDGET;
+}
+
+function computeBudgets(state) {
+  const budgets = {};
+  let allocated = 0;
+  for (const category of CATEGORIES) {
+    budgets[category] = state.nearDone[category] ? NEAR_DONE_BUDGET : ACTIVE_BUDGET;
+    allocated += budgets[category];
+  }
+
+  let spillover = Math.max(0, totalDailyBudget() - allocated);
+  for (const category of CATEGORY_PRIORITY) {
+    if (spillover <= 0) {
+      break;
+    }
+    if (!state.nearDone[category]) {
+      budgets[category] += spillover;
+      spillover = 0;
+    }
+  }
+
+  return budgets;
+}
+
 const STATE_DIR = path.join(__dirname, "..", "..", "..", "operations", "state");
 const BUDGET_FILE = process.env.HARVEST_BUDGET_FILE
   ? path.resolve(process.env.HARVEST_BUDGET_FILE)
@@ -78,7 +111,7 @@ function categoryFromSource(source) {
 
 function getCategoryBudget(category) {
   const state = loadState();
-  return state.nearDone[category] ? NEAR_DONE_BUDGET : ACTIVE_BUDGET;
+  return computeBudgets(state)[category];
 }
 
 function getRemaining(category) {
@@ -126,22 +159,22 @@ function setNearlyDone(category, value) {
 
 function getTotalBudget() {
   const state = loadState();
-  return CATEGORIES.reduce((sum, category) => {
-    return sum + (state.nearDone[category] ? NEAR_DONE_BUDGET : ACTIVE_BUDGET);
-  }, 0);
+  const budgets = computeBudgets(state);
+  return CATEGORIES.reduce((sum, category) => sum + budgets[category], 0);
 }
 
 function getSummary() {
   const state = loadState();
+  const budgets = computeBudgets(state);
   return {
     dayKey: state.dayKey,
     categories: CATEGORIES.map((category) => ({
       category,
       used: Number(state.counts[category] || 0),
-      budget: state.nearDone[category] ? NEAR_DONE_BUDGET : ACTIVE_BUDGET,
+      budget: budgets[category],
       nearlyDone: Boolean(state.nearDone[category])
     })),
-    totalBudget: getTotalBudget()
+    totalBudget: CATEGORIES.reduce((sum, category) => sum + budgets[category], 0)
   };
 }
 

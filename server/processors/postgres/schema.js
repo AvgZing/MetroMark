@@ -119,10 +119,15 @@ const schemaStatements = [
   headway_checked integer not null default 0,
   color text not null default '',
   stop_count integer not null default 0,
+  stop_checked integer not null default 0,
   problematic_geometry boolean not null default false,
   updated_at timestamptz not null default now()
 )`,
   "alter table public.route_metadata add column if not exists problematic_geometry boolean not null default false",
+  "alter table public.route_metadata add column if not exists stop_checked integer not null default 0",
+  // Treat legacy rows that already have a stop count as checked, so the new
+  // stopChecked filter doesn't refetch them.
+  "update public.route_metadata set stop_checked = 1 where stop_count > 0 and stop_checked = 0",
   `create table if not exists public.route_review (
   line_key text primary key,
   city_slug text,

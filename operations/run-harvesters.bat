@@ -31,6 +31,12 @@ echo [%date% %time%] === Stops backfill done ===
 
 call "%~dp0maybe-backup.bat"
 
-echo Waiting %HARVEST_DELAY_SECONDS% seconds before the next pass...
-timeout /t %HARVEST_DELAY_SECONDS% /nobreak >nul
+REM Wait the normal idle delay while there is daily budget left; once every
+REM category is spent, wait until the next UTC day instead of waking pointlessly
+REM every 600s. (Replaces `timeout /t`, which errors and returns immediately when
+REM stdin is redirected, causing a tight loop.)
+set WAIT_SECONDS=600
+for /f %%r in ('node operations\harvest\harvest-wait-seconds.js') do set WAIT_SECONDS=%%r
+echo Waiting %WAIT_SECONDS% seconds before the next pass...
+powershell -NoProfile -Command "Start-Sleep -Seconds %WAIT_SECONDS%"
 goto loop

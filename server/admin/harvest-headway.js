@@ -128,6 +128,7 @@ async function run() {
     alreadyCached: lineKeys.length - missing.length,
     fetched: 0,
     errors: 0,
+    unavailable: 0,
     stoppedByCap: false,
     fetchedKeys: []
   };
@@ -154,6 +155,22 @@ async function run() {
         summary.stoppedByCap = true;
         log(`Cap reached while fetching headway for ${lineKey}.`, budget.getSummary());
         break;
+      }
+      // A route that no longer exists upstream is definitive: mark it checked
+      // (source "unavailable") so it isn't retried on every future pass.
+      if (/no route found/i.test(String(error?.message || ""))) {
+        summary.unavailable += 1;
+        try {
+          await db.setRouteMetadata(lineKey, {
+            headwayChecked: 1,
+            headwaySource: "unavailable",
+            headwayBestMinutes: null,
+            frequencyBucket: "unknown"
+          });
+        } catch {
+          // best-effort
+        }
+        continue;
       }
       summary.errors += 1;
       log(`Failed headway for ${lineKey}: ${error?.message || error}`);

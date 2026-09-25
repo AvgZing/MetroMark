@@ -16,7 +16,8 @@ function isBackgroundRequest(options = {}) {
     source === "harvest" ||
     source === "scheduler" ||
     source === "harvest-world" ||
-    source === "harvest-headway"
+    source === "harvest-headway" ||
+    source === "harvest-stops"
   );
 }
 

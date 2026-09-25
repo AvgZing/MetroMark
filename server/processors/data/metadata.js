@@ -36,6 +36,7 @@ async function getRouteMetadatasByLineKeys(lineKeys) {
         headwayChecked: Number(row.headway_checked) === 1 ? 1 : 0,
         color: normalizeText(row.color),
         stopCount: Number(row.stop_count) || 0,
+        stopChecked: Number(row.stop_checked) === 1 ? 1 : 0,
         problematicGeometry: Number(row.problematic_geometry) === 1
       });
     }
@@ -73,6 +74,7 @@ async function setRouteMetadata(lineKey, metadata) {
     headwayChecked: "headway_checked",
     color: "color",
     stopCount: "stop_count",
+    stopChecked: "stop_checked",
     problematicGeometry: "problematic_geometry"
   };
 
@@ -96,6 +98,8 @@ async function setRouteMetadata(lineKey, metadata) {
       value = Number(meta[prop] || 0) === 1 ? 1 : 0;
     } else if (prop === "stopCount") {
       value = Number(meta[prop] || 0);
+    } else if (prop === "stopChecked") {
+      value = Number(meta[prop] || 0) === 1 ? 1 : 0;
     } else if (prop === "problematicGeometry") {
       value = Boolean(meta[prop]) ? 1 : 0;
     } else {
@@ -130,6 +134,7 @@ async function getRouteMetadataCoverageStats() {
     `select
        count(*)::int as total_routes,
        count(*) filter (where headway_checked = 1)::int as covered_headway,
+       count(*) filter (where stop_checked = 1)::int as covered_stops,
        count(distinct operator_name)::int as distinct_operators,
        count(*) filter (where stop_count > 0)::int as routes_with_stop_counts
      from public.route_metadata`
@@ -138,6 +143,7 @@ async function getRouteMetadataCoverageStats() {
   return {
     totalRoutes: Number(row.total_routes || 0),
     coveredHeadway: Number(row.covered_headway || 0),
+    coveredStops: Number(row.covered_stops || 0),
     distinctOperators: Number(row.distinct_operators || 0),
     routesWithStopCounts: Number(row.routes_with_stop_counts || 0)
   };

@@ -111,18 +111,19 @@ async function run() {
   }
 
   const missing = lineKeys.filter((lineKey) => {
-    const count = Number(meta.get(lineKey)?.stopCount || 0);
-    return !Number.isFinite(count) || count <= 0;
+    // Checked (real or "route no longer exists") is done — don't refetch.
+    return Number(meta.get(lineKey)?.stopChecked || 0) !== 1;
   });
 
-  // Near done once every archive route has an exact stop count.
+  // Near done once every archive route has a stop count.
   budget.setNearlyDone("stops", missing.length === 0);
-  log(`${lineKeys.length - missing.length} already have stop counts; ${missing.length} need fetching.`);
+  log(`${lineKeys.length - missing.length} already checked; ${missing.length} need fetching.`);
 
   const summary = {
     alreadyCached: lineKeys.length - missing.length,
     fetched: 0,
     errors: 0,
+    unavailable: 0,
     stoppedByCap: false,
     fetchedKeys: []
   };
@@ -149,6 +150,16 @@ async function run() {
         summary.stoppedByCap = true;
         log(`Cap reached while fetching stops for ${lineKey}.`, budget.getSummary());
         break;
+      }
+      // Route gone upstream: mark checked so it is not retried every pass.
+      if (/no route found/i.test(String(error?.message || ""))) {
+        summary.unavailable += 1;
+        try {
+          await db.setRouteMetadata(lineKey, { stopChecked: 1, stopCount: 0 });
+        } catch {
+          // best-effort
+        }
+        continue;
       }
       summary.errors += 1;
       log(`Failed stops for ${lineKey}: ${error?.message || error}`);

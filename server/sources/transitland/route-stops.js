@@ -55,7 +55,8 @@ async function getRouteStopsTransit(lineKey, options = {}) {
             routeFeedId: cachedLineSummary.routeFeedId || "",
             serviceTier: cachedLineSummary.serviceTier || "",
             color: cachedLineSummary.color || "#d44d1f",
-            stopCount: Number(cachedLineSummary.stopCount || 0)
+            stopCount: Number(cachedLineSummary.stopCount || 0),
+            stopChecked: 1
           });
         } catch (error) {
           console.warn("[perf] getRouteStopsTransit: metadata promotion failed for " + normalizedLineKey + ": " + (error?.message || error));
@@ -173,6 +174,7 @@ async function getRouteStopsTransit(lineKey, options = {}) {
         serviceTier: line.serviceTier || routeMetadata.serviceTier,
         color: line.color || routeMetadata.color || "",
         stopCount: Number(routeMetadata.stopCount || 0),
+        stopChecked: 1,
         problematicGeometry
       });
     } catch {
