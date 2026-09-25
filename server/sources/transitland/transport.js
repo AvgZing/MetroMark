@@ -20,7 +20,10 @@ async function transitlandRequest(path, params, options = {}) {
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const controller = new AbortController();
-    const timeoutMs = Math.max(1500, Number(config.TRANSITLAND_REQUEST_TIMEOUT_MS || 15000));
+    const configuredTimeout = Number(config.TRANSITLAND_REQUEST_TIMEOUT_MS || 15000);
+    // Harvest requests cap at 30s so one hung route can't stall the backfill.
+    const isHarvest = String(options.requestSource || "").trim().toLowerCase().startsWith("harvest");
+    const timeoutMs = Math.max(1500, isHarvest ? Math.min(configuredTimeout, 30000) : configuredTimeout);
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
     await enforceDailyUsageCapsIfNeeded("rest", options);

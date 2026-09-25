@@ -234,8 +234,7 @@ async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
     }
   }
 
-  // Outside the try/catch: quota errors must propagate so the harvest pauses
-  // instead of silently returning "no data" for every remaining route.
+  // Outside the try: quota errors must propagate, not become "no data".
   await enforceDailyUsageCapsIfNeeded("routing", options);
 
   const controller = new AbortController();

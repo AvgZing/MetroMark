@@ -154,8 +154,7 @@ async function getRouteHeadway(lineKey, options = {}) {
         routeType: Number.isFinite(Number(line.routeType)) ? Number(line.routeType) : null
       };
     } else {
-      // Definitive = the route page said "no such route / no headway"; transient
-      // (network/timeout) must stay unchecked and be retried later.
+      // Definitive = page says no route/headway; transient must retry later.
       definitiveMiss = Boolean(routePage?.definitive);
     }
   }
@@ -171,9 +170,7 @@ async function getRouteHeadway(lineKey, options = {}) {
     }
   }
 
-  // Persist a terminal state only when we actually resolved it: real data,
-  // fallback bucket, or a definitive "no headway". A transient (network/quota)
-  // miss stays unchecked so it is retried instead of silently marked done.
+  // Persist only when resolved (data, fallback, or definitive); transient retries.
   const persistUsableMinutes = Number.isFinite(Number(summary?.bestMinutes)) && Number(summary.bestMinutes) > 0;
   const persistFallback = Number(summary?.headwayFallback || 0) === 1;
   const persistTerminal = persistUsableMinutes || persistFallback || definitiveMiss;

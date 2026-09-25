@@ -141,7 +141,11 @@ async function getRouteStopsTransit(lineKey, options = {}) {
 
   const membershipRouteKey = sanitizeText(line.routeOnestopId || normalizedLineKey);
   const routeStops = await fetchStopsForRoute(membershipRouteKey, options);
-  const directionStopSequences = await buildDirectionStopSequencesForRoute(membershipRouteKey, options);
+
+  // Backfills skip the /trips sequences; stops geometry + count are still cached.
+  const directionStopSequences = options.skipDirectionSequences
+    ? null
+    : await buildDirectionStopSequencesForRoute(membershipRouteKey, options);
   const payload = buildRouteStopsPayload(line, routeStops.stops, {
     stopLocationTypes,
     sourceStopsTruncated: routeStops.truncated
