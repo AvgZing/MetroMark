@@ -129,6 +129,7 @@ async function run() {
     fetched: 0,
     errors: 0,
     unavailable: 0,
+    transient: 0,
     stoppedByCap: false,
     fetchedKeys: []
   };
@@ -141,14 +142,20 @@ async function run() {
     }
 
     try {
-      await getRouteHeadway(lineKey, {
+      const result = await getRouteHeadway(lineKey, {
         enforceDailyCap: true,
         requestSource: "harvest-headway"
       });
-      summary.fetched += 1;
-      summary.fetchedKeys.push(lineKey);
-      if (summary.fetched % 25 === 0) {
-        log(`Fetched ${summary.fetched}/${missing.length}...`);
+      if (result?.headwayTransient) {
+        summary.transient += 1;
+      } else if (result?.headwayUnavailable) {
+        summary.unavailable += 1;
+      } else {
+        summary.fetched += 1;
+        summary.fetchedKeys.push(lineKey);
+        if (summary.fetched % 25 === 0) {
+          log(`Fetched ${summary.fetched}/${missing.length}...`);
+        }
       }
     } catch (error) {
       if (error?.code === "DAILY_USAGE_LIMIT_REACHED" || error?.code === "TRANSITLAND_DAILY_CAP_REACHED") {

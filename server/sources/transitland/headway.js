@@ -223,23 +223,26 @@ function parseHeadwaySummaryFromRoutePageHtml(html) {
 async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
   const key = sanitizeText(routeLookupKey);
   if (!key) {
-    return null;
+    return { summary: null, definitive: false };
   }
 
   const cacheKey = `${TRANSIT_CACHE_PREFIX}headway:${key}`;
   if (!options.forceRefresh) {
     const cached = await db.getCacheAny(cacheKey);
     if (cached && cached.payload) {
-      return cached.payload;
+      return { summary: cached.payload, definitive: true };
     }
   }
+
+  // Outside the try/catch: quota errors must propagate so the harvest pauses
+  // instead of silently returning "no data" for every remaining route.
+  await enforceDailyUsageCapsIfNeeded("routing", options);
 
   const controller = new AbortController();
   const timeoutMs = Math.max(1500, Number(config.ROUTE_HEADWAY_TIMEOUT_MS || 9000));
   const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    await enforceDailyUsageCapsIfNeeded("routing", options);
     transitlandMetrics.routingApiRequestCount += 1;
     transitlandMetrics.lastRoutingRequestAt = new Date().toISOString();
     await recordUsage("routing", 1);
@@ -255,23 +258,24 @@ async function fetchRouteHeadwaySummary(routeLookupKey, options = {}) {
 
     if (!response.ok) {
       transitlandMetrics.routingApiRequestFailureCount += 1;
-      return null;
+      return { summary: null, definitive: true };
     }
 
     const html = await response.text();
     const summary = parseHeadwaySummaryFromRoutePageHtml(html);
     if (!summary) {
-      return null;
+      return { summary: null, definitive: true };
     }
 
     const ttlHours = Math.max(1, Number(config.ROUTE_HEADWAY_CACHE_TTL_HOURS || 72));
     await db.setCache(cacheKey, summary, ttlHours * 3600, {
       cacheKind: "route-headway"
     });
-    return summary;
+    return { summary, definitive: true };
   } catch {
+    // Network/timeout: not definitive — the caller should retry later.
     transitlandMetrics.routingApiRequestFailureCount += 1;
-    return null;
+    return { summary: null, definitive: false };
   } finally {
     clearTimeout(timeoutHandle);
   }

@@ -128,12 +128,14 @@ async function getRouteHeadway(lineKey, options = {}) {
     }
   }
 
+  let definitiveMiss = false;
   if (!summary) {
-    const routePageSummary = await fetchRouteHeadwaySummary(lookupKey, {
+    const routePage = await fetchRouteHeadwaySummary(lookupKey, {
       forceRefresh: Boolean(options.forceRefresh),
       enforceDailyCap: Boolean(options.enforceDailyCap),
       requestSource: options.requestSource
     });
+    const routePageSummary = routePage?.summary || null;
 
     if (routePageSummary) {
       const summaryBestMinutes = Number(routePageSummary.bestMinutes);
@@ -151,6 +153,10 @@ async function getRouteHeadway(lineKey, options = {}) {
         headwayFallback: usableMinutes ? 0 : 1,
         routeType: Number.isFinite(Number(line.routeType)) ? Number(line.routeType) : null
       };
+    } else {
+      // Definitive = the route page said "no such route / no headway"; transient
+      // (network/timeout) must stay unchecked and be retried later.
+      definitiveMiss = Boolean(routePage?.definitive);
     }
   }
 
@@ -165,23 +171,29 @@ async function getRouteHeadway(lineKey, options = {}) {
     }
   }
 
-  // Always persist a terminal state (quota errors throw above and still retry).
+  // Persist a terminal state only when we actually resolved it: real data,
+  // fallback bucket, or a definitive "no headway". A transient (network/quota)
+  // miss stays unchecked so it is retried instead of silently marked done.
   const persistUsableMinutes = Number.isFinite(Number(summary?.bestMinutes)) && Number(summary.bestMinutes) > 0;
   const persistFallback = Number(summary?.headwayFallback || 0) === 1;
+  const persistTerminal = persistUsableMinutes || persistFallback || definitiveMiss;
   const persistBucket = summary?.frequencyBucket
     || (persistUsableMinutes
       ? frequencyBucketFromHeadwayMinutes(Number(summary.bestMinutes))
       : fallbackFrequencyBucketForRoute(line))
     || "unknown";
-  try {
-    await db.setRouteMetadata(normalizedLineKey, {
-      frequencyBucket: String(persistBucket),
-      headwayBestMinutes: persistUsableMinutes ? Number(summary.bestMinutes) : null,
-      headwaySource: String(summary?.source || "unavailable"),
-      headwayChecked: 1
-    });
-  } catch {
-    // Best-effort
+
+  if (persistTerminal) {
+    try {
+      await db.setRouteMetadata(normalizedLineKey, {
+        frequencyBucket: String(persistBucket),
+        headwayBestMinutes: persistUsableMinutes ? Number(summary.bestMinutes) : null,
+        headwaySource: String(summary?.source || "unavailable"),
+        headwayChecked: 1
+      });
+    } catch {
+      // Best-effort
+    }
   }
 
   return {
@@ -191,7 +203,9 @@ async function getRouteHeadway(lineKey, options = {}) {
     headwayBestMinutes: normalizedBestMinutes,
     headwaySource: summary?.source || "unavailable",
     headwayFallback: persistFallback ? 1 : 0,
-    headwayChecked: 1,
+    headwayChecked: persistTerminal ? 1 : 0,
+    headwayUnavailable: !persistUsableMinutes && !persistFallback && definitiveMiss,
+    headwayTransient: !persistTerminal,
     frequencyBucket: summary?.frequencyBucket || (normalizedBestMinutes
       ? frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)
       : "unknown")
