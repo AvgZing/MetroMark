@@ -101,8 +101,7 @@ function setStatus(text, isError = false) {
 
 const STATUS_KIND_CLASSES = ["is-ok", "is-warn", "is-error"];
 
-// Apply a status message plus a semantic color class (theme-aware) to any
-// status element, instead of hardcoded inline colors that fail in dark mode.
+// Status text + theme-aware color class.
 function setTextStatus(el, text, kind = "") {
   if (!el) {
     return;
@@ -765,8 +764,7 @@ async function loadIssueReports(options = {}) {
   }
 }
 
-// The console edits an existing city's metadata; center/bbox/zoom are captured
-// from the Map Editor when the city is created, so they are preserved here.
+// Console edits metadata only; center/bbox/zoom come from the Map Editor.
 function cityFormPayload() {
   const existing = state.editingCity || {};
   return {
@@ -925,9 +923,7 @@ async function saveCity() {
 }
 
 // ---------------------------------------------------------------------------
-// Review queue: surface anything that needs a maintainer decision. Importance:
-// a removed route that carried an override / review / vote / city membership is
-// high; plain issue reports are normal.
+// Review queue (reharvest flags + issue reports; removals with data rank high).
 // ---------------------------------------------------------------------------
 
 function jumpToElement(el) {

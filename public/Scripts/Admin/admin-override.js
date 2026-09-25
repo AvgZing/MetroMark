@@ -132,8 +132,7 @@ const state = {
   cityPanelCity: null
 };
 
-// Server-side MAX_SPAN_DEGREES in server/admin/reharvest.js; mirrored so the UI
-// can warn before sending an oversized viewport.
+// Mirrors MAX_SPAN_DEGREES in server/admin/reharvest.js.
 const MAX_REFRESH_SPAN_DEGREES = 1.8;
 
 const EMPTY_FC = { type: "FeatureCollection", features: [] };
@@ -235,8 +234,7 @@ function renderManualEditsLog() {
 // ---------------------------------------------------------------------------
 
 function mapStyle() {
-  // Reuse the frontend basemap/projection (createMapStyle from viewport-cache.js)
-  // and add only the admin-specific overlay sources and layers.
+  // Frontend basemap/projection + admin overlay layers.
   const savedTheme = typeof getAdminTheme === "function" ? getAdminTheme() : "light";
   const base = createMapStyle(savedTheme);
   return {
@@ -339,8 +337,7 @@ async function initMap() {
     updateUnderlay();
     applyDeepLinkView();
     updateNewCityView();
-    // A cold SW/archive cache can occasionally drop the first pmtiles paint;
-    // retry once so the admin never needs a hard reload to see routes.
+    // Retry once if a cold cache drops the first pmtiles paint.
     window.setTimeout(() => {
       if (!state.map || !state.map.getLayer("routes-main")) {
         return;
@@ -425,9 +422,7 @@ function closeAreaRefresh() {
   }
 }
 
-// Re-create the vector source (with a cache-busting build stamp) so a freshly
-// rebuilt archive is picked up without a page reload. Dependent layers are
-// re-added before `routes-edited` to preserve the original stacking order.
+// Re-create the vector source with a cache-busting stamp (keeps layer order).
 function reloadVectorSource() {
   const map = state.map;
   if (!map || !map.getStyle) {
@@ -603,9 +598,7 @@ function focusRouteFeature(feature) {
   selectRouteFromFeature(feature);
 }
 
-// Search corpus = routes actually rendered on the map (which includes routes
-// missing from the simplified coverage/underlay set, e.g. local route 522) plus
-// the underlay features, deduped by line key. Prefers whichever has geometry.
+// Rendered + underlay routes, deduped by line key (coverage alone misses some).
 function collectRouteSearchCorpus() {
   const byKey = new Map();
   const add = (feature) => {
@@ -659,8 +652,7 @@ function renderRouteSearchResults(features, context = {}) {
   const modeFilter = String(context.modeFilter || "").trim();
   const hasFilter = Boolean(query || modeFilter);
   container.innerHTML = "";
-  // Keep the panel quiet until the admin actually searches or filters; a full
-  // viewport route list repainting on every pan is noise.
+  // Only render results when a search/filter is active.
   if (!hasFilter) {
     updateRouteBatchControl();
     return;
@@ -1168,8 +1160,7 @@ function openRouteOverlapPopup(features, lngLat) {
     })
     .join("");
 
-  // Same markup/classes as the frontend route selector (route-popups.js) so the
-  // two look identical; the matching styles live in admin-override.css.
+  // Same markup/classes as the frontend route selector.
   state.routeOverlapPopup = new maplibregl.Popup({
     closeButton: true,
     closeOnClick: false,
@@ -1306,8 +1297,7 @@ async function loadStopsForRoute(lineKey) {
     const params = new URLSearchParams({ lineKey, stopTypes: ROUTE_STOP_TYPES_QUERY });
     const payload = await fetch(`/api/transit/route-stops?${params.toString()}`).then((r) => r.json());
     if (Array.isArray(payload?.stopsGeoJson?.features)) {
-      // Deduplicate by station key, then apply a saved custom order (including
-      // any stops the admin added) so the editor matches line view exactly.
+      // Dedupe by station key, then apply the saved custom order.
       let stops = dedupeAdminStopFeatures(payload.stopsGeoJson.features);
       if (state.selectedRouteOverride && Array.isArray(state.selectedRouteOverride.payload?.stops)) {
         stops = orderAdminStopsByCustomOrder(
@@ -1821,8 +1811,7 @@ async function saveRouteEdits() {
   }
   const lineKey = state.selectedLineKey;
 
-  // Merge into the existing payload so saving identity/display fields does not
-  // drop fields this form doesn't own (custom stop order, etc.).
+  // Merge so fields this form doesn't own (custom stops) survive.
   let payload = {};
   try {
     const existing = await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "GET" });
@@ -1861,8 +1850,7 @@ async function saveRouteEdits() {
   }
 
   try {
-    // Clearing every field removes the override entirely rather than leaving an
-    // empty row, so the route returns to harvested values.
+    // Emptied payload deletes the override instead of leaving an empty row.
     const result =
       Object.keys(payload).length === 0
         ? await apiRequest(`/api/admin/overrides/route/${encodeURIComponent(lineKey)}`, { method: "DELETE" }).then(() => ({ override: null }))
@@ -2025,9 +2013,7 @@ function addStationHighlight(stationKey, name, lon, lat) {
 // Operators (batch hide by default)
 // ---------------------------------------------------------------------------
 
-// Reflect the "hidden/disabled by default" state on the admin map itself, so
-// every such action is visible immediately. Two independent sources: agency
-// rules (hidden operators) and route rules (disabled-by-default line keys).
+// Show hidden operators and disabled routes on the map.
 function applyMapRouteVisibility({ hiddenOperators, disabledLineKeys } = {}) {
   if (!state.map || !state.mapReady) {
     return;
@@ -2534,8 +2520,7 @@ function updateNewCityView() {
     : "Move the map to the city, then create it here.";
 }
 
-// City creation lives on the map so center/zoom/bbox come from the view the
-// admin is actually looking at — no hand-typed coordinates.
+// City creation captures the current map view.
 async function createCityFromView() {
   const slug = String(els.newCitySlug?.value || "")
     .trim()

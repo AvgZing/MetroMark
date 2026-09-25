@@ -4,8 +4,7 @@ function getShownLines(options = {}) {
   const ignoreSearch = options.ignoreSearch === undefined ? true : Boolean(options.ignoreSearch);
   const hasQuery = Boolean(query) && !ignoreSearch;
 
-  // City mode: restrict to the active published city's curated route keys.
-  // No active city (Globe View) leaves this null, so behavior is unchanged.
+  // City mode filters to the active city's route keys; null in Globe View.
   const cityKeys =
     appState.activeCitySlug && appState.cityRouteKeysBySlug instanceof Map
       ? appState.cityRouteKeysBySlug.get(appState.activeCitySlug)

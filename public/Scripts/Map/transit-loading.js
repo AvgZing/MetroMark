@@ -171,9 +171,7 @@ async function loadCities() {
   const payload = await apiRequest("/api/catalog/cities", { method: "GET" });
   appState.cities = Array.isArray(payload.cities) ? payload.cities : [];
 
-  // Curated, published cities (each with its resolved route keys). These drive
-  // the Cities menu and city mode; the static `cities` list above stays for
-  // review scoping and harvest baselines.
+  // Published cities (with resolved route keys) drive the Cities menu/city mode.
   appState.publishedCities = Array.isArray(payload.published) ? payload.published : [];
   appState.cityRouteKeysBySlug = new Map(
     appState.publishedCities.map((city) => [String(city.slug || ""), new Set(city.routeKeys || [])])

@@ -156,8 +156,7 @@ async function run() {
         log(`Cap reached while fetching headway for ${lineKey}.`, budget.getSummary());
         break;
       }
-      // A route that no longer exists upstream is definitive: mark it checked
-      // (source "unavailable") so it isn't retried on every future pass.
+      // Route gone upstream: mark checked so it isn't retried every pass.
       if (/no route found/i.test(String(error?.message || ""))) {
         summary.unavailable += 1;
         try {

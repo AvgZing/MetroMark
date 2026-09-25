@@ -6,10 +6,7 @@ const NEAR_DONE_BUDGET = 50;
 
 const CATEGORIES = ["geometry", "headway", "stops"];
 
-// When a category becomes nearly done its budget drops from ACTIVE_BUDGET to
-// NEAR_DONE_BUDGET. Instead of letting the total shrink, the freed REST budget
-// is reallocated to the categories that still have work, in this priority order
-// (stops is the REST-bound bottleneck; headway mostly uses cache/vector).
+// Freed nearly-done budget goes to categories still working, in this order.
 const CATEGORY_PRIORITY = ["stops", "headway", "geometry"];
 
 // The overall daily REST budget is kept at categories * ACTIVE_BUDGET (300).

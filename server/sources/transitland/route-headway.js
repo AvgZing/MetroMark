@@ -165,18 +165,23 @@ async function getRouteHeadway(lineKey, options = {}) {
     }
   }
 
-  // Persist so page reloads and the bulk loader don't re-fetch.
-  if (summary && (Number.isFinite(Number(summary.bestMinutes)) && Number(summary.bestMinutes) > 0 || Number(summary.headwayFallback || 0) === 1)) {
-    try {
-      await db.setRouteMetadata(normalizedLineKey, {
-        frequencyBucket: String(summary.frequencyBucket || "unknown"),
-        headwayBestMinutes: Number.isFinite(Number(summary.bestMinutes)) ? Number(summary.bestMinutes) : null,
-        headwaySource: String(summary.source || "transitland-vector-tiles"),
-        headwayChecked: 1
-      });
-    } catch {
-      // Best-effort
-    }
+  // Always persist a terminal state (quota errors throw above and still retry).
+  const persistUsableMinutes = Number.isFinite(Number(summary?.bestMinutes)) && Number(summary.bestMinutes) > 0;
+  const persistFallback = Number(summary?.headwayFallback || 0) === 1;
+  const persistBucket = summary?.frequencyBucket
+    || (persistUsableMinutes
+      ? frequencyBucketFromHeadwayMinutes(Number(summary.bestMinutes))
+      : fallbackFrequencyBucketForRoute(line))
+    || "unknown";
+  try {
+    await db.setRouteMetadata(normalizedLineKey, {
+      frequencyBucket: String(persistBucket),
+      headwayBestMinutes: persistUsableMinutes ? Number(summary.bestMinutes) : null,
+      headwaySource: String(summary?.source || "unavailable"),
+      headwayChecked: 1
+    });
+  } catch {
+    // Best-effort
   }
 
   return {
@@ -184,8 +189,8 @@ async function getRouteHeadway(lineKey, options = {}) {
     routeOnestopId: lookupKey,
     headwaySummary: summary,
     headwayBestMinutes: normalizedBestMinutes,
-    headwaySource: summary?.source || "",
-    headwayFallback: Number(summary?.headwayFallback || 0) === 1 ? 1 : 0,
+    headwaySource: summary?.source || "unavailable",
+    headwayFallback: persistFallback ? 1 : 0,
     headwayChecked: 1,
     frequencyBucket: summary?.frequencyBucket || (normalizedBestMinutes
       ? frequencyBucketFromHeadwayMinutes(normalizedBestMinutes)

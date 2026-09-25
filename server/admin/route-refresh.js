@@ -14,15 +14,7 @@ const { refreshRoute, flagRemovedUserData } = require("./reharvest");
 
 const log = createLogger("route-refresh");
 
-// Per-route counterpart to the viewport reharvest. A service change usually
-// touches a handful of routes, so refreshing one (or a small batch) is the
-// common case; the whole pmtiles archive is rebuilt once at the end instead of
-// once per route.
-//
-// A route that no longer exists upstream is confirmed by a second failed lookup
-// (a thrown request is treated as "still present" and skipped), then removed
-// from the archive with any admin override / review / ordering vote preserved
-// and flagged for review — the same posture as the viewport reharvest.
+// Per-route refresh/remove/add; one archive rebuild per batch.
 
 const REQUEST_SOURCE = "reharvest";
 const MAX_SEARCH_RESULTS = 25;
@@ -51,8 +43,7 @@ function searchCandidate(route) {
   };
 }
 
-// Text search across Transitland routes, used to add a route that is not in the
-// archive yet. Returns normalized candidates (no geometry).
+// Transitland route search for adding routes not in the archive.
 async function searchTransitlandRoutes(query, options = {}) {
   const search = String(query || "").trim();
   if (!search) {
@@ -61,15 +52,13 @@ async function searchTransitlandRoutes(query, options = {}) {
   // A route onestop id is an exact lookup; anything else is a name/number search.
   const isOnestopId = /^r-[\w~-]+$/i.test(search);
   const params = isOnestopId ? { onestop_id: search } : { search };
-  // Scoping to the current viewport makes results local/relevant instead of
-  // fuzzy global matches (Transitland's text search is worldwide otherwise).
+  // Scope to the viewport (Transitland search is worldwide otherwise).
   const bbox = Array.isArray(options.bbox) && options.bbox.length === 4
     ? options.bbox.map((value) => Number(value))
     : null;
   const requestParams = {
     ...params,
-    // normalizeRoute() drops routes with no geometry, so geometry must be
-    // included even though the search UI only needs identity fields.
+    // normalizeRoute() drops routes without geometry.
     include_geometry: "true",
     limit: String(Math.max(1, Math.min(options.limit || 20, MAX_SEARCH_RESULTS)))
   };
@@ -189,9 +178,7 @@ async function refreshRoutes(lineKeys, options = {}) {
   return report;
 }
 
-// Add routes that Transitland knows but the archive does not yet contain. Keys
-// that are not found upstream are reported instead of removed/flagged, since
-// they were never in the archive to begin with.
+// Add routes Transitland knows but the archive doesn't (missing keys reported).
 async function addRoutes(lineKeys, options = {}) {
   const keys = normalizeKeys(lineKeys);
   const found = [];
@@ -227,9 +214,7 @@ async function addRoutes(lineKeys, options = {}) {
   return report;
 }
 
-// Remove routes from the archive explicitly (admin says they are gone). User
-// data on each route is preserved and flagged, same as an upstream-confirmed
-// removal during a refresh.
+// Explicit removal; user data preserved and flagged.
 async function removeRoutes(lineKeys, options = {}) {
   const t0 = Date.now();
   const keys = normalizeKeys(lineKeys);

@@ -177,8 +177,7 @@ body[data-theme="dark"] .line-view-card {
   gap: 4px;
 }
 
-/* Manual admin stop order: hide the algorithm picker (Auto/Main/U-Shape/Loop)
-   but keep Reverse, and explain why the order is fixed. */
+/* Manual override order: hide the algorithm picker, keep Reverse. */
 .line-view-diagnostics.is-admin-order .diagnostic-label,
 .line-view-diagnostics.is-admin-order #lineViewOrderingResolved,
 .line-view-diagnostics.is-admin-order .line-view-ordering-group {

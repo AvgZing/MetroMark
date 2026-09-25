@@ -1,14 +1,9 @@
-/* Admin shell chrome: the top bar shared by both admin pages. Design tokens
-   (colors, spacing, top bar) come from the frontend base.css, which both admin
-   pages load, so the admin uses the app palette by construction rather than a
-   copied one. Only --topbar-h is admin-specific. */
+/* Admin top bar. Tokens come from base.css; only --topbar-h is admin-specific. */
 :root {
   --topbar-h: 60px;
 }
 
-/* base.css locks the app's map shell to the viewport (html,body height:100% /
-   overflow:hidden). The admin console scrolls normally; the override page keeps
-   the app's locked shell (see admin-override.css). */
+/* Console scrolls; the override page keeps base.css's locked map shell. */
 html {
   height: auto;
 }
@@ -18,15 +13,12 @@ body:not(.override-body) {
   overflow: auto;
 }
 
-/* base.css sizes inputs/buttons to 100% for the app's stacked forms. Admin
-   buttons size to content unless a flex layout stretches them; the login
-   submit stays full width. */
+/* base.css sizes buttons to 100%; admin buttons size to content. */
 button {
   width: auto;
 }
 
-/* base.css .btn-subtle is a full-width dashed panel action; the admin uses the
-   same class for small inline tool buttons. */
+/* base.css .btn-subtle is a full-width dashed panel action; admin uses it inline. */
 .btn-subtle {
   width: auto;
   margin-top: 0;
@@ -38,9 +30,7 @@ button {
   width: 100%;
 }
 
-/* Login card is a panel on both admin pages. The console gets this from
-   admin.css .card; the override page has no .card rule, so it was transparent
-   there. Shared here so both match. */
+/* Login card panel (admin-override has no .card rule of its own). */
 .auth-card {
   background: var(--panel);
   border: 1px solid var(--panel-border);
@@ -48,7 +38,7 @@ button {
   padding: 18px;
 }
 
-/* Shared action row used by both admin pages (was duplicated per page). */
+/* Action row shared by both admin pages. */
 .override-actions {
   display: flex;
   gap: 8px;
@@ -79,8 +69,7 @@ button {
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
-/* The console styles bare `button` with a monospace font; the top bar uses the
-   app's Inter type instead. */
+/* Console buttons are monospace; the top bar uses Inter. */
 .topbar .btn,
 .topbar .topbar-nav-btn {
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -188,14 +177,12 @@ button {
   padding: 0;
 }
 
-/* Logout is only meaningful once signed in; admin.js toggles
-   body.admin-locked while the login screen is showing. */
+/* Hidden while the login screen is showing (body.admin-locked). */
 body.admin-locked .admin-topbar .admin-topbar-session {
   display: none;
 }
 
-/* Shared status text helper: the app uses tokens, so statuses stay legible in
-   both themes instead of hardcoded hex colors in JS. */
+/* Status colors (tokens, so they work in both themes). */
 .status.is-ok {
   color: var(--ok);
 }
@@ -208,9 +195,7 @@ body.admin-locked .admin-topbar .admin-topbar-session {
   color: var(--warn);
 }
 
-/* Admin pages had no anchor/placeholder defaults, so inline links rendered as
-   browser blue (low-contrast in dark mode). Theme them like the app. Topbar
-   nav/brand set their own color and win by specificity. */
+/* Theme anchors/placeholders (browser default blue is low-contrast in dark). */
 a {
   color: var(--accent);
 }
@@ -224,8 +209,7 @@ a:hover {
   opacity: 1;
 }
 
-/* The override page is a fixed-height map shell; its own stylesheet applies the
-   topbar height offset. The console scrolls normally and needs no height math. */
+/* Override map shell handles its own topbar offset. */
 @media (max-width: 720px) {
   .topbar-tagline {
     display: none;

@@ -41,9 +41,7 @@ const appState = {
   colorblindMode: parseBooleanFromStorage("metromark_colorblind_mode", false),
   lineSearchQuery: "",
   initialCitySlug: localStorage.getItem("metromark_initial_city_slug") || "seattle",
-  // City mode is opt-in: "" is Globe View (today's default, all routes). Kept
-  // separate from initialCitySlug (review scoping) so publishing a city never
-  // changes anyone's startup mode.
+  // Active city mode; "" = Globe View. Separate from initialCitySlug.
   activeCitySlug: localStorage.getItem("metromark_active_city_slug") || "",
   publishedCities: [],
   cityRouteKeysBySlug: new Map(),

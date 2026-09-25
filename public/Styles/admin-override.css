@@ -165,10 +165,8 @@ body[data-theme="dark"] .admin-line-editor-card {
   padding-bottom: 0;
 }
 
-/* The overlap route-selector reuses the frontend markup + map.css (loaded on
-   this page), so there is no second copy of those styles. Only the generic
-   admin `button` baseline (white text) needs overriding so option text stays
-   readable; map.css already sets background/border/layout. */
+/* Route-select markup + map.css are shared with the frontend; only the admin
+   `button` baseline needs a color override. */
 .route-select-btn {
   color: var(--ink);
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -650,9 +648,7 @@ body[data-theme="dark"] .admin-line-editor-card {
   text-transform: uppercase;
 }
 
-/* map.css (shared with the frontend) is loaded on this page for the popup and
-   mode buttons. Its .map-overlay-controls is a top-right column sized for the
-   app; the admin map needs a scoped row, so this wins by specificity. */
+/* map.css ships a top-right column; the admin map needs a scoped row. */
 .override-map-stage .map-overlay-controls {
   position: absolute;
   top: 12px;
@@ -747,7 +743,7 @@ body[data-theme="dark"] .admin-line-editor-card {
   font-size: 0.82rem;
 }
 
-/* Branch group editor (alternative stop runs the user can swap in line view). */
+/* Branch group editor (alternative stop runs). */
 .branch-groups-editor {
   margin: 6px 0;
 }

@@ -1,19 +1,7 @@
 const { localQuery, assertLocalConfigured } = require("./core");
 const { normalizeText } = require("./utils");
 
-// Curated city collections: a city is an admin-vetted set of routes. Membership
-// comes from two rules, resolved at read time so upstream service changes flow
-// in without re-editing the city:
-//   - operator rules: every current route of an included operator
-//   - route rules: explicit per-route include/exclude
-// Resolution = (included operators ∪ included routes) − excluded routes, where
-// an explicit route include beats an operator exclude and a route exclude wins.
-// Vetting (accuracy / up-to-date / stop order) is per explicit route row and is
-// QA metadata, not membership.
-//
-// Deliberately separate from:
-//   - server/processors/city-presets.js (static harvest baseline metro list)
-//   - user_filter_presets (Supabase, per-user filter snapshots)
+// Curated cities: (operators + routes) − excluded, resolved at read time.
 
 function normalizeCityRow(row) {
   if (!row) {

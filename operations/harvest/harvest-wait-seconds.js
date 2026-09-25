@@ -1,13 +1,6 @@
 #!/usr/bin/env node
 
-// Prints how long the harvester runner should wait before its next pass.
-//
-// While any category still has daily budget left, wait the normal idle delay.
-// Once every category is spent, there is nothing to do until Transitland's
-// quotas reset at 00:00 UTC, so wait until then instead of waking every pass
-// (the old `timeout /t 600` also failed under redirected stdin and tight-looped).
-//
-// Used by operations/run-harvesters.bat.
+// Runner wait seconds (idle, or until next UTC day when budget is spent).
 
 const budget = require("../../server/sources/transitland/harvest-budget");
 

@@ -21,8 +21,7 @@ function orderByCustomStopKeys(stopFeatures, customStops, lineKey = "") {
       ordered.push(feature);
       continue;
     }
-    // A stop the admin added manually (no live Transitland feature) — render it
-    // from the override coordinates so the custom order is complete.
+    // Admin-added stop: render from override coords.
     const lat = Number(stop?.lat);
     const lon = Number(stop?.lon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
@@ -52,13 +51,7 @@ function orderByCustomStopKeys(stopFeatures, customStops, lineKey = "") {
 }
 
 // ---------------------------------------------------------------------------
-// Branch-tagged override stop orders
-//
-// payload.stops entries may carry `branch: <option id>`; payload.branchGroups
-// is [{ id, label, options: [{ id, label }] }]. A group is a split point where
-// the user swaps between alternative stop runs. Stops with no branch tag are
-// trunk and always shown; a selected option's stops appear at their position in
-// the flat order. The line view stays a single diagram with split markers.
+// Branch orders: stops[i].branch picks an option in branchGroups.
 // ---------------------------------------------------------------------------
 
 var LINE_VIEW_BRANCH_SELECTION_STORAGE_KEY = "metromark_line_view_branch_selections";
@@ -202,10 +195,7 @@ function renderLineViewBranchSelector(lineKey, branchGroups) {
   }
 }
 
-// Orders/renders are async, and openLineView can fire several for the same
-// line while stops load. Without a token, two overlapping renders each clear
-// (before the await) then append, stacking duplicate rows. Only the newest
-// render is allowed to write.
+// Guards against overlapping async renders stacking duplicate stop rows.
 let lineViewStopsRenderToken = 0;
 
 async function renderLineViewStops(lineKey, lineColor, options = {}) {
@@ -248,8 +238,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     return;
   }
 
-  // Committed to rendering this call; claim the newest token. Any older
-  // in-flight render will see a stale token after its await and bail.
+  // Claim the newest token; older in-flight renders bail after their await.
   const renderToken = ++lineViewStopsRenderToken;
 
   const visitedSet = getVisitedSetForLine(lineKey);
@@ -320,8 +309,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     featuresToRender.reverse();
   }
 
-  // Only the latest render writes, and it clears right before appending so an
-  // interleaved older render can never stack rows.
+  // Only the newest render writes (clears right before appending).
   if (renderToken !== lineViewStopsRenderToken) {
     return;
   }

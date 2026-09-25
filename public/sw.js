@@ -13,7 +13,7 @@
  * HTTPS or http://localhost.
  */
 
-const VERSION = "14";
+const VERSION = "15";
 const APP_SHELL_CACHE = `metromark-shell-v${VERSION}`;
 const TILES_CACHE = `metromark-tiles-v${VERSION}`;
 const RUNTIME_CACHE = `metromark-runtime-v${VERSION}`;
@@ -357,16 +357,13 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.pathname === CATALOG_PATHNAME) {
-    // City publish/unpublish must be visible immediately, and a stale list
-    // would wrongly clear a user's active city mode. Network-first (with the
-    // API cache as an offline fallback) instead of the 5-minute stale window.
+    // Network-first so newly published cities appear immediately.
     event.respondWith(networkFirst(request, API_CACHE, API_TIMEOUT_MS));
     return;
   }
 
   if (url.pathname === REVIEWS_PATHNAME) {
-    // Carries admin route overrides / reviews, which must reflect promptly;
-    // the API SWR window would otherwise hide a just-saved override.
+    // Network-first so saved overrides/reviews show immediately.
     event.respondWith(networkFirst(request, API_CACHE, API_TIMEOUT_MS));
     return;
   }

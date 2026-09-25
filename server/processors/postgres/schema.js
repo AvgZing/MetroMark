@@ -125,8 +125,7 @@ const schemaStatements = [
 )`,
   "alter table public.route_metadata add column if not exists problematic_geometry boolean not null default false",
   "alter table public.route_metadata add column if not exists stop_checked integer not null default 0",
-  // Treat legacy rows that already have a stop count as checked, so the new
-  // stopChecked filter doesn't refetch them.
+  // Mark legacy counted rows checked so the new filter doesn't refetch them.
   "update public.route_metadata set stop_checked = 1 where stop_count > 0 and stop_checked = 0",
   `create table if not exists public.route_review (
   line_key text primary key,
@@ -170,11 +169,7 @@ const schemaStatements = [
 )`,
   "create index if not exists idx_issue_report_status on public.issue_report (status)",
   "create index if not exists idx_issue_report_created on public.issue_report (created_at desc)",
-  // Curated city collections (pre-1.0 flagship): a city is an admin-vetted set
-  // of routes, not just a bbox. Metadata lives in city_preset; per-route
-  // include/exclude + vetting state lives in city_preset_route. Distinct from
-  // the harvest baseline list in server/processors/city-presets.js and from the
-  // per-user Supabase user_filter_presets.
+  // Curated city collections (city_preset + city_preset_route/operator).
   `create table if not exists public.city_preset (
   slug text primary key,
   name text not null default '',
@@ -203,9 +198,7 @@ const schemaStatements = [
   primary key (city_slug, line_key)
 )`,
   "create index if not exists idx_city_preset_route_city on public.city_preset_route (city_slug)",
-  // Operator rules: an included operator contributes all of its current routes
-  // to the city (resolved at read time so service changes flow in). Routes can
-  // still be excluded individually via city_preset_route.included = false.
+  // Operator rules: included operator contributes its current routes.
   `create table if not exists public.city_preset_operator (
   city_slug text not null references public.city_preset(slug) on delete cascade,
   operator_name text not null,

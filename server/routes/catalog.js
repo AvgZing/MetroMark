@@ -5,10 +5,7 @@ const db = require("../processors/data");
 
 const router = express.Router();
 
-// `cities` is the static harvest-baseline metro list (kept for existing
-// consumers such as the admin map's city-by-bbox detection). `published` is the
-// admin-curated city presets: each carries its vetted route keys so the app can
-// restrict to a city in city mode.
+// cities = static metro list; published = curated presets with route keys.
 router.get("/catalog/cities", async (req, res) => {
   let published = [];
   try {

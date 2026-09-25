@@ -1,7 +1,4 @@
-/* Palette (light/dark) lives in admin-shell.css and is used directly here.
-   Note: do NOT alias these on :root (e.g. --card: var(--panel)) — a :root alias
-   resolves against :root's light values and inherits those into body, which
-   silently breaks dark mode. */
+/* Tokens come from base.css; don't alias them on :root (breaks dark mode). */
 
 body[data-theme="dark"] .usage-bar-track {
   background: #1c1c1f;
@@ -48,8 +45,7 @@ body.admin-locked .admin-shell > section:not(.auth-card) {
   display: none !important;
 }
 
-/* Console uses the full desktop width instead of a centered 1160px column, so
-   the data cards stop wrapping into narrow columns on wide monitors. */
+/* Console uses full width (not a centered narrow column). */
 .admin-shell.admin-console {
   max-width: none;
   width: 100%;
@@ -227,8 +223,7 @@ button:hover {
 }
 
 /* City preset management (curated route collections). */
-/* Admin review queue: anything needing a maintainer decision, weighted by
-   importance (a removed route that held a vetted city / override is high). */
+/* Review queue; route removals with preserved data are highlighted. */
 .review-queue {
   border-left: 4px solid var(--line);
 }

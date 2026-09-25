@@ -1,15 +1,5 @@
-// Cities menu content + city mode.
-//
-// The Cities sheet itself (open/close, portrait sheet state, body class,
-// backdrop/Escape) is owned by UI/shell/sheet.js via window.setCitiesSheetOpen.
-// This module only fills the list and manages city mode, so the two never
-// double-handle a click.
-//
-// "Globe View" is the default: every route, free panning, exactly today's
-// behavior. A published city is an optional filter: selecting one restricts
-// visible routes to that city's curated route keys (applied in getShownLines)
-// while the map can still be panned anywhere. City mode is stored separately
-// from initialCitySlug so publishing a city never changes a user's startup mode.
+// Cities menu content + city mode. Open/close is owned by sheet.js; this only
+// fills the list and tracks the active city. "" = Globe View (no filter).
 
 function publishedCityBySlug(slug) {
   const key = String(slug || "").trim();
@@ -96,8 +86,7 @@ function setActiveCitySlug(slug, options = {}) {
   }
   refreshForCityMode();
   renderCitiesMenu();
-  // Persist through the preferences pipeline so it syncs like other settings
-  // (signed-out writes localStorage; signed-in patches the account).
+  // Persist via the preferences pipeline (localStorage or account).
   if (typeof saveUserPreferences === "function") {
     saveUserPreferences({ activeCitySlug: appState.activeCitySlug }).catch(() => {});
   }
@@ -176,8 +165,7 @@ function renderCitiesMenu() {
   }
 }
 
-// Called by bootstrap once the map is ready and cities have loaded, so a
-// last-opened city is restored (and framed) on startup.
+// Bootstrap calls this to restore the last city on startup.
 function applyStartupCityMode() {
   updateCityRecenterButton();
   renderCitiesMenu();
@@ -196,8 +184,7 @@ function bindCityRecenter() {
   }
 }
 
-// The list is dynamic, so fill it whenever the existing sheet becomes visible
-// (desktop button or mobile tab), without owning the open/close behavior.
+// Fill the list when the sheet becomes visible (open/close is sheet.js's).
 function observeCitiesSheet() {
   const backdrop = dom.citiesBackdrop;
   if (!backdrop || typeof MutationObserver !== "function") {
