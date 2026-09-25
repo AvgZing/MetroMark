@@ -115,6 +115,6 @@ module.exports = {
   ADMIN_EMAIL: String(process.env.ADMIN_EMAIL || process.env.ADMIN_USERNAME || process.env.ADMIN_USER || "").trim(),
   HARVEST_DAILY_REST_LIMIT: asInt(process.env.HARVEST_DAILY_REST_LIMIT, 300),
   HARVEST_DAILY_VECTOR_LIMIT: asInt(process.env.HARVEST_DAILY_VECTOR_LIMIT, 2500),
-  HARVEST_DAILY_ROUTING_LIMIT: asInt(process.env.HARVEST_DAILY_ROUTING_LIMIT, 250),
+  HARVEST_DAILY_ROUTING_LIMIT: asInt(process.env.HARVEST_DAILY_ROUTING_LIMIT, 30),
   BACKUP_OUTPUT_DIR: String(process.env.BACKUP_OUTPUT_DIR || "data/backups").trim() || "data/backups"
 };

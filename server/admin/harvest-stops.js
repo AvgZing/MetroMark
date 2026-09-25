@@ -138,8 +138,7 @@ async function run() {
     try {
       await getRouteStopsTransit(lineKey, {
         enforceDailyCap: true,
-        requestSource: "harvest-stops",
-        skipDirectionSequences: true
+        requestSource: "harvest-stops"
       });
       summary.fetched += 1;
       summary.fetchedKeys.push(lineKey);
