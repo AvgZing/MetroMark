@@ -13,7 +13,7 @@
  * HTTPS or http://localhost.
  */
 
-const VERSION = "15";
+const VERSION = "17";
 const APP_SHELL_CACHE = `metromark-shell-v${VERSION}`;
 const TILES_CACHE = `metromark-tiles-v${VERSION}`;
 const RUNTIME_CACHE = `metromark-runtime-v${VERSION}`;

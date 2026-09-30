@@ -410,6 +410,30 @@ body[data-theme="dark"] .admin-line-editor-card {
   overflow-wrap: break-word;
 }
 
+/* Collapsible sidebar panels: click the heading to fold a section away. */
+.override-sidebar .panel > h2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.override-sidebar .panel > h2::after {
+  content: "\25BE";
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.override-sidebar .panel.is-collapsed > h2::after {
+  content: "\25B8";
+}
+
+.override-sidebar .panel.is-collapsed > *:not(h2) {
+  display: none;
+}
+
 .override-search-panel {
   display: flex;
   flex-direction: column;

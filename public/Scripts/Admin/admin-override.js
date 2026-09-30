@@ -59,6 +59,7 @@ const els = {
   newCityStatus: document.getElementById("newCityStatus"),
   cityPanelBody: document.getElementById("cityPanelBody"),
   cityPanelSummary: document.getElementById("cityPanelSummary"),
+  cityPreviewBtn: document.getElementById("cityPreviewBtn"),
   citySelectedRoute: document.getElementById("citySelectedRoute"),
   cityOperatorsList: document.getElementById("cityOperatorsList"),
   cityOperatorSearchInput: document.getElementById("cityOperatorSearchInput"),
@@ -88,6 +89,7 @@ const els = {
   routeDataStatus: document.getElementById("routeDataStatus"),
   hideAllOperatorsBtn: document.getElementById("hideAllOperatorsBtn"),
   showAllOperatorsBtn: document.getElementById("showAllOperatorsBtn"),
+  operatorPreviewAllBtn: document.getElementById("operatorPreviewAllBtn"),
   batchModeSelect: document.getElementById("batchModeSelect"),
   batchHideBtn: document.getElementById("batchHideBtn"),
   batchShowBtn: document.getElementById("batchShowBtn"),
@@ -128,6 +130,8 @@ const state = {
   selectedBranchGroups: [],
   hiddenOperators: new Set(),
   disabledRouteKeys: new Set(),
+  visibilityPreviewAll: false,
+  cityPreviewKeys: null,
   cityPanelList: [],
   cityPanelCity: null
 };
@@ -242,18 +246,23 @@ function mapStyle() {
     sources: {
       ...base.sources,
       "routes-vector": { type: "vector", url: "pmtiles:///api/tiles/routes.pmtiles" },
-      "routes-underlay": { type: "geojson", data: EMPTY_FC },
       "routes-edited": { type: "geojson", data: EMPTY_FC },
       stops: { type: "geojson", data: EMPTY_FC },
       "stops-edited": { type: "geojson", data: EMPTY_FC }
     },
     layers: [
       ...base.layers,
+      // Match the app's route look (casing + zoom-scaled width + color fallback).
       {
-        id: "routes-underlay",
+        id: "routes-casing",
         type: "line",
-        source: "routes-underlay",
-        paint: { "line-color": "#4f7ea8", "line-width": 1, "line-opacity": 0.15 }
+        source: "routes-vector",
+        "source-layer": "routes",
+        paint: {
+          "line-color": "#111920",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.7, 3, 1.1, 6, 2.1, 9, 3.2, 12, 4.3],
+          "line-opacity": 0.9
+        }
       },
       {
         id: "routes-main",
@@ -261,9 +270,9 @@ function mapStyle() {
         source: "routes-vector",
         "source-layer": "routes",
         paint: {
-          "line-color": ["coalesce", ["feature-state", "color"], ["get", "color"], "#177ca2"],
-          "line-width": 1.6,
-          "line-opacity": 0.8
+          "line-color": ["coalesce", ["feature-state", "color"], ["get", "color"], "#d44d1f"],
+          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.7, 3, 1.05, 6, 1.9, 9, 2.9, 12, 3.6],
+          "line-opacity": 0.96
         }
       },
       {
@@ -271,7 +280,11 @@ function mapStyle() {
         type: "line",
         source: "routes-vector",
         "source-layer": "routes",
-        paint: { "line-color": "#000000", "line-width": 10, "line-opacity": 0 }
+        paint: {
+          "line-color": "#000000",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 10, 4, 14, 8, 18],
+          "line-opacity": 0
+        }
       },
       {
         id: "routes-edited",
@@ -628,21 +641,6 @@ function collectRouteSearchCorpus() {
   return Array.from(byKey.values());
 }
 
-function routeSearchHaystack(feature) {
-  const p = feature?.properties || {};
-  return [
-    p.line_key,
-    p.line_name,
-    p.line_short_name,
-    p.line_long_name,
-    p.operator_name,
-    p.onestop_id,
-    p.route_onestop_id
-  ]
-    .map((value) => String(value || "").toLowerCase())
-    .join(" ");
-}
-
 function renderRouteSearchResults(features, context = {}) {
   const container = els.routeSearchResults;
   if (!container) {
@@ -658,7 +656,7 @@ function renderRouteSearchResults(features, context = {}) {
     return;
   }
   const list = (Array.isArray(features) ? features : []).filter((feature) => {
-    if (query && !routeSearchHaystack(feature).includes(query)) {
+    if (query && !buildUnderlaySearchText(feature).includes(query)) {
       return false;
     }
     if (modeFilter) {
@@ -1002,14 +1000,10 @@ async function updateUnderlay() {
       includeGeometry: "1"
     });
     const payload = await fetch(`/api/transit/coverage?${params.toString()}`).then((r) => r.json());
-    const source = state.map.getSource("routes-underlay");
-    if (source && payload?.routesGeoJson) {
-      // Cache raw features for the search/filter controls.
-      state.underlayFeatures = Array.isArray(payload.routesGeoJson.features)
-        ? payload.routesGeoJson.features
-        : [];
-      applyUnderlaySearchFilter();
-    }
+    state.underlayFeatures = Array.isArray(payload?.routesGeoJson?.features)
+      ? payload.routesGeoJson.features
+      : [];
+    applyUnderlaySearchFilter();
   } catch {
     // non-critical
   }
@@ -1031,38 +1025,12 @@ function buildUnderlaySearchText(feature) {
 }
 
 function applyUnderlaySearchFilter() {
-  const source = state.map && state.map.getSource("routes-underlay");
-  if (!source) {
-    return;
-  }
-
   const query = String(state.routeSearchQuery || "").trim().toLowerCase();
   const modeFilter = String(state.routeModeFilter || "").trim();
-
-  const features = (state.underlayFeatures || []).filter((feature) => {
-    if (query) {
-      const haystack = buildUnderlaySearchText(feature);
-      if (!haystack.includes(query)) {
-        return false;
-      }
-    }
-    if (modeFilter) {
-      const routeType = Number(feature?.properties?.route_type);
-      if (!Number.isFinite(routeType) || String(routeType) !== modeFilter) {
-        return false;
-      }
-    }
-    return true;
-  });
-
-  source.setData({ type: "FeatureCollection", features });
-
   const corpus = collectRouteSearchCorpus();
   if (els.routeSearchInfo) {
-    els.routeSearchInfo.textContent =
-      query || modeFilter ? `${corpus.length} route(s) in view` : "";
+    els.routeSearchInfo.textContent = query || modeFilter ? `${corpus.length} route(s) in view` : "";
   }
-
   renderRouteSearchResults(corpus, { query, modeFilter });
 }
 
@@ -2030,18 +1998,38 @@ function applyMapRouteVisibility({ hiddenOperators, disabledLineKeys } = {}) {
   if (lineKeys.length) {
     conditions.push(["!", ["in", ["get", "line_key"], ["literal", lineKeys]]]);
   }
-  const filter = conditions.length === 0 ? null : conditions.length === 1 ? conditions[0] : ["all", ...conditions];
+  // City preset preview: show only the resolved preset routes.
+  if (state.cityPreviewKeys instanceof Set && state.cityPreviewKeys.size) {
+    conditions.push(["in", ["get", "line_key"], ["literal", Array.from(state.cityPreviewKeys)]]);
+  }
+  const baseFilter = conditions.length === 0 ? null : conditions.length === 1 ? conditions[0] : ["all", ...conditions];
+  // Preview all temporarily ignores hides so the admin can see/restore them.
+  const filter = state.visibilityPreviewAll ? null : baseFilter;
 
-  for (const id of ["routes-main", "routes-hit", "routes-underlay"]) {
+  for (const id of ["routes-casing", "routes-main", "routes-hit"]) {
     if (state.map.getLayer(id)) {
       state.map.setFilter(id, filter);
     }
   }
 }
 
+function setVisibilityPreviewAll(enabled) {
+  state.visibilityPreviewAll = Boolean(enabled);
+  if (els.operatorPreviewAllBtn) {
+    els.operatorPreviewAllBtn.textContent = state.visibilityPreviewAll
+      ? "Stop preview (hide again)"
+      : "Preview all (show hidden)";
+  }
+  applyMapRouteVisibility({
+    hiddenOperators: state.hiddenOperators,
+    disabledLineKeys: state.disabledRouteKeys
+  });
+}
+
 async function loadOperatorsForViewport() {
+  // Source query (not rendered): hidden operators must stay listed/toggleable.
   const features = state.map && state.mapReady
-    ? state.map.queryRenderedFeatures({ layers: ["routes-main"] })
+    ? state.map.querySourceFeatures("routes-vector", { sourceLayer: "routes" })
     : [];
   const operatorNames = new Set();
   for (const feature of features) {
@@ -2409,6 +2397,11 @@ function bindEvents() {
       selectCityForPanel(els.cityPanelSelect.value).catch(() => {});
     });
   }
+  if (els.cityPreviewBtn) {
+    els.cityPreviewBtn.addEventListener("click", () => {
+      setCityPreview(!(state.cityPreviewKeys instanceof Set));
+    });
+  }
   if (els.newCityCreateBtn) {
     els.newCityCreateBtn.addEventListener("click", () => {
       createCityFromView().catch(() => {});
@@ -2485,6 +2478,11 @@ function bindEvents() {
   els.batchShowBtn.addEventListener("click", () => batchByMode(false));
   els.hideAllOperatorsBtn.addEventListener("click", () => batchAllOperators(true));
   els.showAllOperatorsBtn.addEventListener("click", () => batchAllOperators(false));
+  if (els.operatorPreviewAllBtn) {
+    els.operatorPreviewAllBtn.addEventListener("click", () => {
+      setVisibilityPreviewAll(!state.visibilityPreviewAll);
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2598,6 +2596,7 @@ async function selectCityForPanel(slug) {
     if (els.cityPanelBody) {
       els.cityPanelBody.hidden = true;
     }
+    setCityPreview(false);
     return;
   }
   setEditStatus(els.cityPanelStatus, "Loading city…");
@@ -2607,6 +2606,8 @@ async function selectCityForPanel(slug) {
     if (els.cityPanelBody) {
       els.cityPanelBody.hidden = !state.cityPanelCity;
     }
+    // Keep any active preset preview in sync with the loaded city.
+    setCityPreview(state.cityPreviewKeys instanceof Set && state.cityPanelCity);
     renderCityPanel();
     setEditStatus(els.cityPanelStatus, "");
   } catch (error) {
@@ -2622,6 +2623,20 @@ function cityRouteDisplayName(lineKey) {
     return adminLineDisplayName(featureLineProps(feature)) || lineKey;
   }
   return lineKey;
+}
+
+// Preview the preset on the map: only the city's resolved routes render.
+function setCityPreview(enabled) {
+  const city = state.cityPanelCity;
+  const on = Boolean(enabled) && city && Array.isArray(city.routeKeys);
+  state.cityPreviewKeys = on ? new Set(city.routeKeys) : null;
+  if (els.cityPreviewBtn) {
+    els.cityPreviewBtn.textContent = on ? "Stop preview" : "Preview preset on map";
+  }
+  applyMapRouteVisibility({
+    hiddenOperators: state.hiddenOperators,
+    disabledLineKeys: state.disabledRouteKeys
+  });
 }
 
 function renderCityPanel() {
@@ -2711,6 +2726,20 @@ function renderCitySelectedRoute() {
       labelEl.append(checkbox, document.createTextNode(label));
       actions.append(labelEl);
     }
+  }
+
+  // Add the selected route's whole operator as a rule, in one click.
+  const selectedProps = state.selectedRouteFeature ? featureLineProps(state.selectedRouteFeature) : null;
+  const operatorName = String(selectedProps?.operatorName || "").trim();
+  const hasOperatorRule = (city.operators || []).some((op) => op.operatorName === operatorName);
+  if (operatorName && !hasOperatorRule) {
+    const addOperatorBtn = document.createElement("button");
+    addOperatorBtn.type = "button";
+    addOperatorBtn.className = "btn btn-subtle";
+    addOperatorBtn.textContent = `Add operator: ${operatorName}`;
+    addOperatorBtn.title = `Include every current route by ${operatorName}`;
+    addOperatorBtn.addEventListener("click", () => patchCityOperators([{ operatorName, included: true }]));
+    actions.append(addOperatorBtn);
   }
 
   container.append(main, actions);
@@ -2858,6 +2887,9 @@ function applyCityResponse(payload) {
   if (payload?.city) {
     state.cityPanelCity = payload.city;
     renderCityPanel();
+    if (state.cityPreviewKeys instanceof Set) {
+      setCityPreview(true);
+    }
   }
 }
 
@@ -2990,9 +3022,52 @@ async function bootApp() {
   });
 }
 
+// Click a panel heading to fold it away; state persists per panel.
+function initCollapsiblePanels() {
+  document.querySelectorAll(".override-sidebar .panel").forEach((panel) => {
+    const heading = panel.querySelector(":scope > h2");
+    if (!heading) {
+      return;
+    }
+    const text = (heading.textContent || "").trim();
+    const key = `metromark_admin_panel_${text.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    let collapsed = /batch by mode|manual edits/i.test(text);
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored === "1" || stored === "0") {
+        collapsed = stored === "1";
+      }
+    } catch {
+      // storage unavailable
+    }
+    panel.classList.toggle("is-collapsed", collapsed);
+
+    const toggle = () => {
+      const next = !panel.classList.contains("is-collapsed");
+      panel.classList.toggle("is-collapsed", next);
+      try {
+        localStorage.setItem(key, next ? "1" : "0");
+      } catch {
+        // storage unavailable
+      }
+    };
+
+    heading.setAttribute("role", "button");
+    heading.tabIndex = 0;
+    heading.addEventListener("click", toggle);
+    heading.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggle();
+      }
+    });
+  });
+}
+
 async function init() {
   els.adminEmailInput.value = "";
   els.adminPasswordInput.value = "";
+  initCollapsiblePanels();
   bindEvents();
 
   // Apply the saved light/dark theme and wire the toggle (basemap swap is

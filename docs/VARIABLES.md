@@ -11,7 +11,10 @@ This document catalogs all major variables, objects, and data structures used th
 ### User & Session
 - **`appState.token`** - Auth token (localStorage or sessionStorage)
 - **`appState.user`** - Current user object `{ email, displayName, id, role }`
-- **`appState.initialCitySlug`** - Active city slug for filter presets (stored in localStorage)
+- **`appState.initialCitySlug`** - Default city slug for review scoping / preset snapshots (localStorage `metromark_initial_city_slug`). Not a runtime visibility gate.
+- **`appState.activeCitySlug`** - Explicitly selected city mode (localStorage `metromark_active_city_slug`); `""` = Globe View. When set, `getShownLines()` restricts routes to `appState.cityRouteKeysBySlug.get(activeCitySlug)`.
+- **`appState.publishedCities`** - Published curated cities from `GET /api/catalog/cities` (`published[]`).
+- **`appState.cityRouteKeysBySlug`** - Map city slug → Set of included line keys (city-mode filter).
 
 ### Map & Viewport
 - **`appState.map`** - MapLibre GL instance
@@ -71,6 +74,7 @@ This document catalogs all major variables, objects, and data structures used th
 - **`appState.lineViewOrderingMode`** / **`lineViewOrderingReversed`** / **`lineViewOrderingResolved`** - Active route-ordering mode, reversal flag, and resolved (non-auto) mode
 - **`appState.lineViewOrderingPreferencesByLineKey`** - Map of lineKey → `{ mode, reversed }` user preference
 - **`appState.lineViewOrderingVoteClickSetsByLineKey`** - Map of lineKey → Set of stopKeys clicked (vote trigger)
+- **`appState.lineViewBranchSelectionsByLineKey`** - Map of lineKey → `{ groupId: optionId }` branch choice (localStorage `metromark_line_view_branch_selections`)
 
 ### UI State
 - **`appState.colorblindMode`** - Boolean user preference; adds check/cross glyphs to stop markers (`metromark_colorblind_mode`)
@@ -127,16 +131,20 @@ Used throughout as the canonical route/line object:
 Stored in `route_override` table and edited via admin override page:
 ```js
 {
-  agency: "string" | null,
+  lineName: "string",
+  lineShortName: "string",
+  lineLongName: "string",
+  operatorName: "string",
+  color: "string",  // hex
   mode: number | null,  // GTFS mode
-  frequency: number | null,  // headway minutes
-  orderingMode: "auto" | "geometry-revised" | "legacy-geometry" | "fractions" | null,
-  stops: [  // Reordered/filtered stop list
-    { key: "string", name: "string", lat: number, lon: number },
-    ...
-  ]
+  orderingMode: "geometry-revised" | "legacy-geometry" | "fractions" | null,
+  frequencyBucket: "frequent" | "regular" | "local" | "unknown" | null,
+  stops: [{ key: "string", name: "string", lat: number, lon: number, branch?: "string" }],
+  branchGroups: [{ id: "string", label: "string", options: [{ id: "string", label: "string" }] }]
 }
 ```
+- `stops` (when present) is the authoritative ordered list for the line view; `branch` tags a stop with a `branchGroups` option id (trunk = untagged).
+- Applied client-side (vector-metadata.js + line view); no tile rebuild needed for override changes.
 
 ### Route Ordering Votes
 - **`LINE_VIEW_ORDERING_VOTE_THRESHOLD`** - Minimum signed-in user votes needed before a community default replaces Auto.
@@ -311,6 +319,12 @@ MapLibre "routes-vector" source (pmtiles:// protocol, source-layer "routes") + f
 - **Metadata:** `route_metadata` (Postgres) supplies names/colors/headway/stop counts; vector-metadata.js merges it into map feature properties.
 - **Stops:** rendered on demand per focused route via `/api/transit/route-stops` (GeoJSON `stops` source).
 
+### Harvester Budgets
+The harvester automates the same requests a user makes (route-stops, headway), capped instead of bounded by user patience.
+- Per-category daily REST budgets (`server/sources/transitland/harvest-budget.js`): base 100 each (geometry / headway / stops), 50 once nearly-done. Freed budget reallocates to the categories still working (stops → headway → geometry), keeping the daily total at 300.
+- Transitland plan caps (env): `HARVEST_DAILY_REST_LIMIT`, `HARVEST_DAILY_VECTOR_LIMIT`, `HARVEST_DAILY_ROUTING_LIMIT` (routing is only the headway route-page fallback).
+- `route_metadata.headway_checked` / `stop_checked` mark terminal attempts so backfills converge; `operations/harvest/harvest-wait-seconds.js` has the runner sleep until the next UTC day once budgets are spent.
+
 ## API Endpoints & Data Store
 
 ### Tile & Backfill API
@@ -321,6 +335,7 @@ MapLibre "routes-vector" source (pmtiles:// protocol, source-layer "routes") + f
 
 ### Transit Data API
 - **GET `/api/transit/coverage?bbox=...&zoom=...`** - Transitland's distinct route count for the viewport (gap-detection probe)
+- **GET `/api/catalog/cities`** - Static metro list (`cities`) + published curated presets (`published`, each with resolved route keys)
 - **GET `/api/transit/route-stops?lineKey=...&stopTypes=...`** - Stops for a single route (route membership)
 - **GET `/api/transit/route-headway?lineKey=...`** - Headway summary for one route
 - **GET `/api/transit/route-headway/bulk?lineKeys=a,b,c`** - Cached headway for many routes (one query)
@@ -340,6 +355,18 @@ MapLibre "routes-vector" source (pmtiles:// protocol, source-layer "routes") + f
 - **GET `/api/admin/reviews/agencies?citySlug=...`** - List agency allow/block settings
 - **POST `/api/admin/reviews/agencies`** - Set agency allowed override
 
+### Admin City Preset API
+- **GET `/api/admin/cities`** / **GET `/api/admin/cities/:slug`** - List / load curated cities (routes + operators + resolved route keys)
+- **POST `/api/admin/cities`** / **DELETE `/api/admin/cities/:slug`** / **POST `/api/admin/cities/:slug/publish`** - Create-update / delete / publish
+- **POST `/api/admin/cities/:slug/routes`** (replace) / **PATCH** (merge) / **POST `/api/admin/cities/:slug/routes/remove`** - Explicit route include/exclude + vetting
+- **POST `/api/admin/cities/:slug/operators`** (replace) / **PATCH** (merge) - Operator rules
+- **GET `/api/admin/operators?q=`** - Distinct operators for the picker
+
+### Admin Route Data API (per-route, matches a user click)
+- **GET `/api/admin/routes/search?q=&bbox=`** - Transitland route search, viewport-scoped
+- **POST `/api/admin/routes/refresh`** / **`/add`** / **`/remove`** - Refresh / add / remove routes (one archive rebuild per batch)
+- **DELETE `/api/admin/overrides/route/:lineKey`** - Delete a route override
+
 ### Progress API
 - **GET `/api/progress`** - User's visited stops
 - **POST `/api/progress`** - Mark stop as visited
@@ -358,7 +385,10 @@ MapLibre "routes-vector" source (pmtiles:// protocol, source-layer "routes") + f
 - `"metromark_token"` - Auth token
 - "metromark_admin_session_token" - Admin session token (sessionStorage)
 - `"metromark_theme"` - 'light' or 'dark'
-- `"metromark_initial_city_slug"` - Last active city
+- `"metromark_initial_city_slug"` - Default city slug (review scoping / preset snapshots)
+- `"metromark_active_city_slug"` - Explicitly selected city mode; absent/empty = Globe View
+- `"metromark_line_view_branch_selections"` - Per-line branch option choices (JSON)
+- `"metromark_admin_panel_<panel>"` - Collapsed state of an admin sidebar panel
 - `"metromark_mode_filter_keys"` - Serialized mode filter set
 - `"metromark_frequency_filter_keys"` - Serialized frequency filter set
 - `"metromark_route_visibility_overrides"` - Manual line visibility overrides (JSON)
@@ -372,7 +402,7 @@ MapLibre "routes-vector" source (pmtiles:// protocol, source-layer "routes") + f
 Postgres is the local cache/harvest database (schema is auto-provisioned at server startup from `server/processors/postgres/schema.js`). Transitland data is harvested into it and into the NDJSON store to reduce API calls; the runtime map reads the PMTiles archive.
 
 - `public.transit_cache` - Transitland API response cache (city catalogs, route stops, headway, vector tiles)
-- `public.route_metadata` - Per-route metadata (name, operator, mode, color, headway, frequency, stop count)
+- `public.route_metadata` - Per-route metadata (name, operator, mode, color, headway, frequency, `stop_count`, plus convergence flags `headway_checked` / `stop_checked`)
 - `public.route_geometry_lod` - Level-of-detail route geometries (fractions, detail views)
 - `public.usage_log` - Daily Transitland API usage counters (cap enforcement)
 - `public.stop_translation` - Stop ID normalization map (upstream stop id → stable key)
@@ -381,6 +411,7 @@ Postgres is the local cache/harvest database (schema is auto-provisioned at serv
 - `public.route_ordering_vote` - Community route-ordering preference votes
 - `public.route_review` - Problematic-geometry review flags
 - `public.agency_review` - Operator allow/block flags
+- `public.city_preset` / `public.city_preset_route` / `public.city_preset_operator` - Curated city collections: metadata, explicit route include/exclude + vetting flags, and operator rules (resolved at read time).
 
 Supabase (`operations/sql/supabase-baseline.sql`) holds the auth/user tables: `profiles`, `user_station_visit` (progress), `user_filter_presets`.
 
@@ -394,9 +425,9 @@ Supabase (`operations/sql/supabase-baseline.sql`) holds the auth/user tables: `p
    - Reuse everywhere (status panel, list, popups)
 
 2. **Viewport-Scoped Visibility**
-  - Apply manual overrides only to routes currently intersecting viewport geometry
-  - Do not gate runtime route visibility by `state.initialCitySlug`
-  - Keep city slug usage to harvest/admin/preset workflows
+   - Manual overrides apply only to routes intersecting the viewport
+   - Runtime route visibility is gated by an explicit city choice (`activeCitySlug`) only — never by `initialCitySlug`
+   - Keep city slug usage to harvest/admin/preset workflows
 
 3. **Data Refresh Invalidation**
    - After POST to `/api/admin/overrides/*` or `/api/admin/reviews/*`
