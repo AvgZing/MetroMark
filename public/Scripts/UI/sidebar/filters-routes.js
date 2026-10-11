@@ -15,6 +15,15 @@ function getShownLines(options = {}) {
       return false;
     }
 
+    // Merged members are represented by their canonical row, but only when the
+    // canonical is actually loaded; otherwise the member stands in for itself.
+    if (appState.mergeCanonicalByMember instanceof Map) {
+      const canonical = appState.mergeCanonicalByMember.get(line.lineKey);
+      if (canonical && appState.mergeCanonicalPresent instanceof Set && appState.mergeCanonicalPresent.has(canonical)) {
+        return false;
+      }
+    }
+
     if (cityKeys && !cityKeys.has(line.lineKey)) {
       return false;
     }
@@ -84,6 +93,22 @@ function lineEligibleForToggleCounts(line, options = {}) {
     return false;
   }
 
+  // In city mode, counts reflect only the active preset's routes.
+  if (appState.activeCitySlug && appState.cityRouteKeysBySlug instanceof Map) {
+    const cityKeys = appState.cityRouteKeysBySlug.get(appState.activeCitySlug);
+    if (cityKeys && line.lineKey && !cityKeys.has(line.lineKey)) {
+      return false;
+    }
+  }
+
+  // Merged members are counted through their canonical row (when loaded).
+  if (appState.mergeCanonicalByMember instanceof Map) {
+    const canonical = appState.mergeCanonicalByMember.get(line.lineKey);
+    if (canonical && appState.mergeCanonicalPresent instanceof Set && appState.mergeCanonicalPresent.has(canonical)) {
+      return false;
+    }
+  }
+
   if (typeof lineIntersectsCurrentViewport === "function" && !lineIntersectsCurrentViewport(line)) {
     return false;
   }
@@ -117,7 +142,19 @@ function lineEligibleForToggleCounts(line, options = {}) {
 }
 
 function getVisibleLineKeys(shownLines) {
-  return new Set(shownLines.map((line) => line.lineKey));
+  const keys = new Set(shownLines.map((line) => line.lineKey));
+  // Keep a merged route's member geometry visible even though its row is hidden.
+  const merges = appState.mergeMembersByCanonical instanceof Map ? appState.mergeMembersByCanonical : new Map();
+  for (const canonical of Array.from(keys)) {
+    const members = merges.get(canonical);
+    if (!members) {
+      continue;
+    }
+    for (const member of members) {
+      keys.add(member);
+    }
+  }
+  return keys;
 }
 
 function updateShowAllStopsUi() {

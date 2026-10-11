@@ -470,4 +470,32 @@ function addMapRouteLayers(map) {
       // layer may not exist in this style
     }
   }
+
+  addCityRouteLayers(map);
+}
+
+// City mode renders from the persistent GeoJSON source ("routes") using the
+// existing routes-* geojson layers (see CITY_GEOJSON_LAYERS in city-geometry.js),
+// which mirror the vector styling at city zoom. This adds only the hit layer
+// those routes need for click/hover; the rest are toggled by visibility.
+function addCityRouteLayers(map) {
+  try {
+    map.addLayer(
+      {
+        id: "city-routes-hit",
+        type: "line",
+        source: "routes",
+        layout: { visibility: "none" },
+        paint: {
+          "line-color": "#000000",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 1, 6, 4, 10, 8, 14, 13, 18],
+          "line-opacity": ["case", ["==", ["coalesce", ["to-number", ["feature-state", "visible"]], 1], 1], 0, 0]
+        }
+      },
+      "stops-layer"
+    );
+    map.setPaintProperty("city-routes-hit", "line-width-transition", { duration: 260, delay: 0 });
+  } catch (error) {
+    console.warn("Failed to add city route hit layer:", error);
+  }
 }

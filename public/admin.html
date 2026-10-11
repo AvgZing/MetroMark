@@ -10,9 +10,9 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="/Styles/base.css?v=2026-09-29" />
-    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-09-29" />
-    <link rel="stylesheet" href="/Styles/admin.css?v=2026-09-29" />
+    <link rel="stylesheet" href="/Styles/base.css?v=2026-10-11" />
+    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-10-11" />
+    <link rel="stylesheet" href="/Styles/admin.css?v=2026-10-11" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -90,6 +90,7 @@
         <div class="review-queue-actions">
           <button id="reviewFlagsJumpBtn" type="button" hidden>Review reharvest flags</button>
           <button id="reviewIssuesJumpBtn" type="button" hidden>Review issue reports</button>
+          <button id="reviewSuggestionsJumpBtn" type="button" hidden>Review route suggestions</button>
         </div>
       </section>
 
@@ -249,12 +250,37 @@
       </section>
 
       <section class="card">
+        <h2 id="routeSuggestionsAnchor">User Route Suggestions</h2>
+        <p class="microcopy">Submitted from the line view's "Suggest changes" control. Accept applies the suggested fields to the route override; Deny discards it.</p>
+        <div class="action-grid">
+          <button id="reloadSuggestionsBtn" type="button">Reload</button>
+          <label class="check-label"><input id="suggestionsShowResolvedCb" type="checkbox" /> Show resolved</label>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Created</th>
+              <th>Route</th>
+              <th>Changes</th>
+              <th>Reporter</th>
+              <th>Note</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="routeSuggestionsBody"></tbody>
+        </table>
+        <p id="routeSuggestionsStatus" class="status"></p>
+      </section>
+
+      <section class="card">
         <h2>Action Log</h2>
         <pre id="actionLog"></pre>
       </section>
     </main>
 
-    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-29" defer></script>
-    <script src="/Scripts/Admin/admin.js?v=2026-09-29" defer></script>
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-10-11" defer></script>
+    <script src="/Scripts/Admin/admin.js?v=2026-10-11" defer></script>
   </body>
 </html>

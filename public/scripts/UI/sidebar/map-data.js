@@ -26,8 +26,12 @@ function buildMapFeatureStateSignature(visibility) {
     .map(([lineKey, set]) => `${String(lineKey || "").trim()}:${Number(set?.size || 0)}`)
     .sort()
     .join("|");
+  // The route source differs between globe (tiles) and city (persistent GeoJSON);
+  // include it so switching modes re-applies feature-state to the right source.
+  const routeSourceId = typeof activeRouteSource === "function" ? activeRouteSource().source : "routes-vector";
 
   return [
+    routeSourceId,
     visibility.hasFocus ? appState.focusedLineKey : "",
     visibility.showAllStops ? "1" : "0",
     visibleLineKeys,
@@ -61,6 +65,13 @@ function syncMapFeatureStates() {
   const routeFeatures = Array.isArray(appState.transit.routesGeoJson?.features)
     ? appState.transit.routesGeoJson.features
     : [];
+  const routeSource = typeof activeRouteSource === "function"
+    ? activeRouteSource()
+    : { source: "routes-vector", sourceLayer: "routes" };
+  const routeStateTarget = (id) =>
+    routeSource.sourceLayer
+      ? { source: routeSource.source, sourceLayer: routeSource.sourceLayer, id }
+      : { source: routeSource.source, id };
   const seenRouteIds = new Set();
   for (const feature of routeFeatures) {
     const lineKey = String(feature?.properties?.line_key || "").trim();
@@ -71,7 +82,12 @@ function syncMapFeatureStates() {
     seenRouteIds.add(featureId);
 
     const visible = visibility.visibleLineKeys.has(lineKey) ? 1 : 0;
-    const focused = visible && (!visibility.hasFocus || lineKey === appState.focusedLineKey) ? 1 : 0;
+    const canonicalKey = appState.mergeCanonicalByMember instanceof Map
+      ? appState.mergeCanonicalByMember.get(lineKey)
+      : undefined;
+    const isFocusedGroup =
+      lineKey === appState.focusedLineKey || canonicalKey === appState.focusedLineKey;
+    const focused = visible && (!visibility.hasFocus || isFocusedGroup) ? 1 : 0;
     const nextState = {
       visible,
       focused,
@@ -88,10 +104,7 @@ function syncMapFeatureStates() {
       continue;
     }
 
-    appState.map.setFeatureState(
-      { source: "routes-vector", sourceLayer: "routes", id: featureId },
-      nextState
-    );
+    appState.map.setFeatureState(routeStateTarget(featureId), nextState);
     routeStateCache.set(featureId, nextState);
   }
 

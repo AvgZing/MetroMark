@@ -13,7 +13,7 @@
  * HTTPS or http://localhost.
  */
 
-const VERSION = "17";
+const VERSION = "24";
 const APP_SHELL_CACHE = `metromark-shell-v${VERSION}`;
 const TILES_CACHE = `metromark-tiles-v${VERSION}`;
 const RUNTIME_CACHE = `metromark-runtime-v${VERSION}`;
@@ -173,7 +173,14 @@ async function handleTilesRequest(request, url) {
   // build. Serving slices of one build against another build's directory is
   // what made routes vanish after a harvest until the app was restarted.
   const cacheKey = tilesCacheKey(url);
-  const cached = await cache.match(cacheKey);
+  let cached = await cache.match(cacheKey);
+
+  // A previously poisoned cache entry (empty/short body cached mid-rebuild)
+  // must never be served: purge it and fall through to a fresh fetch.
+  if (cached && cached.ok && !looksLikeArchiveSize(cached.headers.get("content-length"))) {
+    await cache.delete(cacheKey);
+    cached = undefined;
+  }
 
   if (cached && cached.ok) {
     if (range) {
@@ -200,8 +207,17 @@ async function handleTilesRequest(request, url) {
   try {
     const networkResponse = await fetch(fullRequest);
     if (networkResponse.ok) {
-      await cache.put(cacheKey, networkResponse.clone());
-      await dropOtherArchiveEntries(cache, cacheKey);
+      // Validate the PMTiles magic before caching, so a truncated/HTML error
+      // body can never be stored and then served as an empty archive.
+      const usable = await archiveResponseUsable(networkResponse.clone());
+      if (usable) {
+        await cache.put(cacheKey, networkResponse.clone());
+        await dropOtherArchiveEntries(cache, cacheKey);
+      } else {
+        // Do not cache a bad body. The client's zero-route detection + backfill
+        // will rebuild and produce a new stamp to refetch.
+        return networkResponse;
+      }
     }
 
     const fresh = await cache.match(cacheKey);
@@ -221,6 +237,45 @@ async function handleTilesRequest(request, url) {
       return cached;
     }
     throw error;
+  }
+}
+
+// "PMTiles" magic (patched from p7l0) — a valid v3 archive starts with it.
+function archiveMagicOk(bytes) {
+  return (
+    bytes &&
+    bytes.length >= 7 &&
+    bytes[0] === 0x50 &&
+    bytes[1] === 0x4d &&
+    bytes[2] === 0x54 &&
+    bytes[3] === 0x69 &&
+    bytes[4] === 0x6c &&
+    bytes[5] === 0x65 &&
+    bytes[6] === 0x73
+  );
+}
+
+function looksLikeArchiveSize(contentLength) {
+  const length = Number(contentLength);
+  // No length header: don't judge. Otherwise require more than a header minimum.
+  return !Number.isFinite(length) || length >= 128;
+}
+
+async function archiveResponseUsable(response) {
+  if (!looksLikeArchiveSize(response.headers.get("content-length"))) {
+    return false;
+  }
+  try {
+    const reader = response.body.getReader();
+    const { value } = await reader.read();
+    try {
+      await reader.cancel();
+    } catch {
+      // ignore
+    }
+    return archiveMagicOk(value);
+  } catch {
+    return false;
   }
 }
 

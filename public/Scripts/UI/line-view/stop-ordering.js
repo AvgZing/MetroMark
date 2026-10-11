@@ -8,7 +8,7 @@
 function normalizeLineViewOrderingMode(orderingMode) {
   const mode = String(orderingMode || 'geometry-revised').trim();
 
-  if (mode === 'auto' || mode === 'geometry-revised' || mode === 'legacy-geometry' || mode === 'fractions') {
+  if (mode === 'auto' || mode === 'geometry-revised' || mode === 'legacy-geometry' || mode === 'fractions' || mode === 'manual') {
     return mode;
   }
 

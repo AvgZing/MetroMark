@@ -11,6 +11,7 @@ const presetsRoutes = require("./routes/presets");
 const tilesRoutes = require("./routes/tiles");
 const tilesBackfillRoutes = require("./routes/tiles-backfill");
 const issuesRoutes = require("./routes/issues");
+const suggestionsRoutes = require("./routes/suggestions");
 
 function createApp() {
   const app = express();
@@ -27,6 +28,7 @@ function createApp() {
   app.use("/api", tilesRoutes);
   app.use("/api", tilesBackfillRoutes);
   app.use("/api", issuesRoutes);
+  app.use("/api", suggestionsRoutes);
 
   // Service-worker and HTML responses must never be served from an HTTP/CDN
   // cache, or deployed updates (new sw.js byte check, fresh index.html asset

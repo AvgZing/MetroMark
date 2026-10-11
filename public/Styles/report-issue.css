@@ -106,3 +106,41 @@
     width: 100%;
   }
 }
+
+/* "Suggest changes" editor: inline in the line view on desktop, moved into the
+   modal body on portrait mobile. Reuses the app's label/input styles. */
+#lineViewSuggestSlot {
+  flex: 0 0 auto;
+  max-height: 66vh;
+  overflow-y: auto;
+}
+
+.suggest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel, #fff);
+}
+
+.suggest-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.suggest-form-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+#suggestModalBody .suggest-form {
+  padding: 0;
+  border: none;
+  background: transparent;
+}

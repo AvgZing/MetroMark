@@ -11,6 +11,7 @@ const overrides = require("./overrides");
 const cityPresets = require("./city-presets");
 const reharvestFlags = require("./reharvest-flags");
 const issueReports = require("./issue-reports");
+const routeSuggestions = require("./route-suggestions");
 
 module.exports = {
   dbPath,
@@ -94,5 +95,9 @@ module.exports = {
   getIssueReport: issueReports.getIssueReport,
   resolveIssueReport: issueReports.resolveIssueReport,
   reopenIssueReport: issueReports.reopenIssueReport,
+  createRouteSuggestion: routeSuggestions.createRouteSuggestion,
+  listRouteSuggestions: routeSuggestions.listRouteSuggestions,
+  getRouteSuggestion: routeSuggestions.getRouteSuggestion,
+  resolveRouteSuggestion: routeSuggestions.resolveRouteSuggestion,
   getRouteMetadataCoverageStats: metadata.getRouteMetadataCoverageStats
 };

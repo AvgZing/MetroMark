@@ -1,6 +1,11 @@
 function bindMapInteractionEvents(map) {
-  const routeHoverLayers = ["routes-main-vector", "routes-background-main-vector"];
-  const routeClickLayers = ["routes-hit"];
+  const routeHoverLayers = [
+    "routes-main-vector",
+    "routes-background-main-vector",
+    "city-routes-main",
+    "city-routes-background-main"
+  ];
+  const routeClickLayers = ["routes-hit", "city-routes-hit"];
 
   for (const layerId of routeClickLayers) {
     map.on("click", layerId, (event) => {
@@ -138,7 +143,15 @@ function bindMapInteractionEvents(map) {
         [point.x + closePadding, point.y + closePadding]
       ],
       {
-        layers: ["stops-layer", "routes-hit", "routes-main-vector", "routes-background-main-vector"]
+        layers: [
+          "stops-layer",
+          "routes-hit",
+          "routes-main-vector",
+          "routes-background-main-vector",
+          "city-routes-hit",
+          "city-routes-main",
+          "city-routes-background-main"
+        ]
       }
     );
 

@@ -41,6 +41,14 @@ async function syncArchiveVersion() {
     reloadVectorSource();
   }
 
+  // A rebuild changes the archive; drop cached city geometry and re-fetch it.
+  if (hadVersion && typeof invalidateCityGeometry === "function") {
+    invalidateCityGeometry();
+    if (typeof applyCityGeometryMode === "function") {
+      applyCityGeometryMode().catch(() => {});
+    }
+  }
+
   return true;
 }
 

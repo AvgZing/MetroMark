@@ -348,17 +348,28 @@ async function loadReviewsForCity(citySlug) {
     if (typeof applyRouteOverridesToMap === "function") {
       applyRouteOverridesToMap();
     }
+    if (typeof rebuildLineMetadataFromTiles === "function") {
+      rebuildLineMetadataFromTiles();
+    }
   } catch (err) {
     console.warn(`Failed to load reviews for city ${citySlug}:`, err);
   }
 }
 
 function lineProgressMetrics(lineKey, fallbackTotal = 0) {
-  const normalizedLineKey = String(lineKey || "").trim();
-  const cacheEntry = appState.lineStopsCache.get(routeStopCacheKey(normalizedLineKey));
-  const stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
-    ? cacheEntry.payload.stopsGeoJson.features
-    : [];
+  const normalizedLineKey =
+    typeof resolveCanonicalLineKey === "function"
+      ? resolveCanonicalLineKey(lineKey)
+      : String(lineKey || "").trim();
+  let stopFeatures;
+  if (typeof uniqueStopFeaturesForLine === "function") {
+    stopFeatures = uniqueStopFeaturesForLine(normalizedLineKey);
+  } else {
+    const cacheEntry = appState.lineStopsCache.get(routeStopCacheKey(normalizedLineKey));
+    stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
+      ? cacheEntry.payload.stopsGeoJson.features
+      : [];
+  }
 
   const stationKeys = new Set();
   for (const feature of stopFeatures) {

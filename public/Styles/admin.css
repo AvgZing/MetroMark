@@ -557,3 +557,24 @@ pre {
 .usage-legend.is-vector {
   background: #d44d1f;
 }
+
+/* Route suggestion review: one change per line, field name emphasised. */
+.suggestion-changes {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.suggestion-change-field {
+  font-weight: 600;
+}
+
+.suggestion-change-from {
+  color: var(--muted, #5a5a5a);
+}
+
+.suggestion-change-to {
+  font-weight: 600;
+}

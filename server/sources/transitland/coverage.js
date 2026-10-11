@@ -182,7 +182,7 @@ async function getTransitCoverageForBbox(bbox, zoom, options = {}) {
   // separate keys so the small probe payloads are never replaced by geometry.
   const step = userZoom < 5 ? 20 : userZoom < 8 ? 5 : 1;
   const mode = includeGeometry ? "geo" : "count";
-  const cacheKey = `coverage:${mode}:${tileZoom}:${Math.floor(minLon / step) * step}:${Math.floor(minLat / step) * step}:${Math.ceil(maxLon / step) * step}:${Math.ceil(maxLat / step) * step}`;
+  const cacheKey = `transit-v4:coverage:${mode}:${tileZoom}:${Math.floor(minLon / step) * step}:${Math.floor(minLat / step) * step}:${Math.ceil(maxLon / step) * step}:${Math.ceil(maxLat / step) * step}`;
 
   // Check Postgres cache first — Transitland API is never served directly.
   try {

@@ -387,6 +387,9 @@ async function loadVisibleRouteStops() {
   }
 
   // Visible, not-yet-cached, not-in-flight lines only.
+  if (!appState.stopPrefetchAttempted) {
+    appState.stopPrefetchAttempted = new Set();
+  }
   const candidates = [];
   for (const line of appState.lineSummaries) {
     if (!line || !line.lineKey) {
@@ -403,6 +406,11 @@ async function loadVisibleRouteStops() {
     if (appState.inFlightLineStopKeys.has(cacheKey)) {
       continue;
     }
+    // Prefetch each route once per session; the cache is LRU-pruned, and
+    // re-fetching evicted routes caused an endless request loop.
+    if (appState.stopPrefetchAttempted.has(cacheKey)) {
+      continue;
+    }
     candidates.push(line.lineKey);
   }
 
@@ -413,6 +421,9 @@ async function loadVisibleRouteStops() {
   stopsPrefetchInFlight = true;
   const MAX_PREFETCH = 20;
   const batch = candidates.slice(0, MAX_PREFETCH);
+  for (const lineKey of batch) {
+    appState.stopPrefetchAttempted.add(routeStopCacheKey(lineKey));
+  }
   if (batch.length > 0) {
     setStatus(
       `Loading route stops…`,
@@ -431,6 +442,11 @@ async function loadVisibleRouteStops() {
   );
 
   stopsPrefetchInFlight = false;
+  results.forEach((result, index) => {
+    if (result.status !== "fulfilled" || result.value !== true) {
+      appState.stopPrefetchAttempted.delete(routeStopCacheKey(batch[index]));
+    }
+  });
   const loaded = results.filter((r) => r.status === "fulfilled" && r.value === true).length;
 
   if (loaded > 0) {

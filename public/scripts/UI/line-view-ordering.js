@@ -320,6 +320,53 @@ function syncLineViewOrderingControls() {
     dom.lineViewOrderingReverseBtn.setAttribute("aria-pressed", isActive ? "true" : "false");
   }
 
+  // A maintainer-set default (admin override orderingMode) or a saved manual
+  // order locks the algorithm picker and explains why.
+  const focusedLineKey = String(appState.lineViewLineKey || appState.focusedLineKey || "").trim();
+  const focusedLine = Array.isArray(appState.lineSummaries)
+    ? appState.lineSummaries.find((line) => String(line.lineKey || "").trim() === focusedLineKey)
+    : null;
+  const adminOrderSource = String(focusedLine?.orderingModeDefaultSource || "").trim() === "admin";
+  const adminDefaultMode = adminOrderSource
+    ? normalizeLineViewOrderingMode(focusedLine.lineViewOrderingDefaultMode)
+    : "";
+  const override = appState.routeOverridesByCity instanceof Map
+    ? appState.routeOverridesByCity.get(focusedLineKey)
+    : null;
+  const hasCustomStops = Array.isArray(override?.payload?.stops) && override.payload.stops.length > 0;
+  const manualOrder =
+    hasCustomStops &&
+    (typeof lineViewOrderingDefaultModeForLine === "function"
+      ? lineViewOrderingDefaultModeForLine(focusedLineKey) === "manual"
+      : adminDefaultMode === "manual");
+  const locked = adminOrderSource || manualOrder;
+
+  for (const button of Object.values(buttonByMode)) {
+    if (button) {
+      button.disabled = locked;
+    }
+  }
+  const orderingGroup = dom.lineViewOrderingAutoBtn?.closest(".line-view-ordering-group");
+  if (orderingGroup) {
+    orderingGroup.classList.toggle("is-locked", locked);
+  }
+
+  const adminNote = document.getElementById("lineViewAdminOrderNote");
+  if (adminNote) {
+    if (adminOrderSource && manualOrder) {
+      adminNote.textContent = "Stop order and sorting were set by a maintainer for accuracy.";
+      adminNote.hidden = false;
+    } else if (adminOrderSource) {
+      adminNote.textContent = `Stop sorting is set to ${lineViewOrderingModeLabel(adminDefaultMode)} by a maintainer for accuracy.`;
+      adminNote.hidden = false;
+    } else if (manualOrder) {
+      adminNote.textContent = "Stop order was set manually by a maintainer for accuracy.";
+      adminNote.hidden = false;
+    } else {
+      adminNote.hidden = true;
+    }
+  }
+
   if (dom.lineViewOrderingResolved) {
     dom.lineViewOrderingResolved.textContent = lineViewOrderingStatusLabel();
   }

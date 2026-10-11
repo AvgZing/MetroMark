@@ -121,6 +121,10 @@ async function maybeBackfillViewport() {
   if (!appState.mapReady || !appState.map) {
     return;
   }
+  // City mode renders from pre-fetched geometry, so tile gap-detection is moot.
+  if (typeof isCityGeometryMode === "function" && isCityGeometryMode()) {
+    return;
+  }
 
   const zoom = appState.map.getZoom();
   if (zoom < BACKFILL_MIN_ZOOM) {

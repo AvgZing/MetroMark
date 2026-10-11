@@ -151,11 +151,25 @@ function renderLineList() {
 
     const routeStopsCacheKeyValue = routeStopCacheKey(line.lineKey);
     const routeStopsCacheEntry = appState.lineStopsCache.get(routeStopsCacheKeyValue);
-    const routeStopsFullyLoaded = Boolean(routeStopsCacheEntry?.payload?.stopsGeoJson?.features?.length);
+    const stopLineKeys = [line.lineKey];
+    if (appState.mergeMembersByCanonical instanceof Map) {
+      const members = appState.mergeMembersByCanonical.get(line.lineKey);
+      if (members) {
+        stopLineKeys.push(...members);
+      }
+    }
+    const loadedFeatures = [];
+    let routeStopsFullyLoaded = true;
+    for (const stopLineKey of stopLineKeys) {
+      const entry = appState.lineStopsCache.get(routeStopCacheKey(stopLineKey));
+      const feats = entry?.payload?.stopsGeoJson?.features;
+      if (Array.isArray(feats) && feats.length) {
+        loadedFeatures.push(...feats);
+      } else {
+        routeStopsFullyLoaded = false;
+      }
+    }
     const routeStopsLoaded = routeStopsFullyLoaded || Number(line.stopCount || 0) > 0;
-    const loadedFeatures = Array.isArray(routeStopsCacheEntry?.payload?.stopsGeoJson?.features)
-      ? routeStopsCacheEntry.payload.stopsGeoJson.features
-      : [];
     const dedupedLoadedStopCount = loadedFeatures.length
       ? new Set(
           loadedFeatures

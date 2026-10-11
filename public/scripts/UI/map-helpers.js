@@ -248,22 +248,51 @@ function stopKeyForFeature(feature) {
 }
 
 function uniqueStopFeaturesForLine(lineKey) {
-  const cacheEntry = appState.lineStopsCache.get(routeStopCacheKey(lineKey));
-  const stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
-    ? cacheEntry.payload.stopsGeoJson.features
-    : [];
-
-  const seen = new Set();
-  const unique = stopFeatures.filter((feature) => {
-    const key = stopKeyForFeature(feature);
-    if (!key || seen.has(key)) {
-      return false;
+  const canonical = String(lineKey || "").trim();
+  const keys = [canonical];
+  if (appState.mergeMembersByCanonical instanceof Map) {
+    const members = appState.mergeMembersByCanonical.get(canonical);
+    if (members) {
+      keys.push(...members);
     }
-    seen.add(key);
-    return true;
-  });
+  }
 
-  return unique;
+  const byStation = new Map();
+  for (const key of keys) {
+    const cacheEntry = appState.lineStopsCache.get(routeStopCacheKey(key));
+    const stopFeatures = Array.isArray(cacheEntry?.payload?.stopsGeoJson?.features)
+      ? cacheEntry.payload.stopsGeoJson.features
+      : [];
+    for (const feature of stopFeatures) {
+      const stationKey = stopKeyForFeature(feature);
+      if (!stationKey) {
+        continue;
+      }
+      const existing = byStation.get(stationKey);
+      if (!existing) {
+        // Clone so merged names/line_key don't mutate the cached payload.
+        byStation.set(stationKey, {
+          ...feature,
+          properties: { ...(feature.properties || {}), line_key: canonical }
+        });
+        continue;
+      }
+      const a = String(existing.properties.station_name || existing.properties.stop_name || "").trim();
+      const b = String(feature.properties?.station_name || feature.properties?.stop_name || "").trim();
+      if (a && b && a !== b) {
+        const parts = [];
+        for (const piece of `${a}/${b}`.split("/")) {
+          const trimmed = piece.trim();
+          if (trimmed && !parts.includes(trimmed)) {
+            parts.push(trimmed);
+          }
+        }
+        existing.properties.station_name = parts.join(" / ");
+      }
+    }
+  }
+
+  return Array.from(byStation.values());
 }
 
 async function toggleVisitedForStation(properties, coords) {

@@ -12,5 +12,6 @@ router.use(require("./reharvest"));
 router.use(require("./routes"));
 router.use(require("./cities"));
 router.use(require("./issues"));
+router.use(require("./suggestions"));
 
 module.exports = router;

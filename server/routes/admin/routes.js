@@ -6,6 +6,8 @@ const {
   removeRoutes,
   searchTransitlandRoutes
 } = require("../../admin/route-refresh");
+const { findMergeCandidates } = require("../../admin/merge-detect");
+const { getArchiveFeaturesByLineKeys } = require("../../sources/transitland/backfill");
 const { isAdminAuthorized } = require("./auth");
 
 const router = express.Router();
@@ -39,6 +41,51 @@ router.get("/admin/routes/search", async (req, res) => {
   } catch (error) {
     return res.status(502).json({
       error: "Route search failed.",
+      detail: String(error?.message || error)
+    });
+  }
+});
+
+router.get("/admin/routes/geometry", async (req, res) => {
+  if (!(await isAdminAuthorized(req))) {
+    return res.status(403).json({ error: "Admin authorization required." });
+  }
+  const lineKey = String(req.query.lineKey || "").trim();
+  if (!lineKey) {
+    return res.status(400).json({ error: "lineKey is required." });
+  }
+  try {
+    const features = await getArchiveFeaturesByLineKeys([lineKey]);
+    const feature = features.get(lineKey);
+    if (!feature) {
+      return res.status(404).json({ error: "Route not found in the archive." });
+    }
+    return res.json({
+      lineKey,
+      feature: { ...feature, properties: { ...(feature.properties || {}), line_key: lineKey } }
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to load route geometry.", detail: String(error?.message || error) });
+  }
+});
+
+router.get("/admin/routes/merge-candidates", async (req, res) => {
+  if (!(await isAdminAuthorized(req))) {
+    return res.status(403).json({ error: "Admin authorization required." });
+  }
+  const bbox = String(req.query.bbox || "")
+    .split(",")
+    .map((value) => Number(value.trim()));
+  try {
+    const result = await findMergeCandidates({
+      bbox: bbox.length === 4 && bbox.every((value) => Number.isFinite(value)) ? bbox : null,
+      citySlug: String(req.query.citySlug || "").trim() || null,
+      lineKeys: parseLineKeys(req.query.lineKeys)
+    });
+    return res.json(result);
+  } catch (error) {
+    return res.status(500).json({
+      error: "Merge-candidate detection failed.",
       detail: String(error?.message || error)
     });
   }

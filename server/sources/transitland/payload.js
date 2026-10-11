@@ -154,7 +154,9 @@ function buildRouteStopsPayload(line, rawStops, options = {}) {
     headwaySource: headwaySummary?.source || "",
     headwayChecked: headwaySummary ? 1 : 0,
     color: line.color,
-    stopCount: stopFeatures.length
+    // Unique stations (by station_key), matching the client's deduped count so
+    // the list, popup, and search never disagree or flicker.
+    stopCount: new Set(stopFeatures.map((feature) => feature.properties.station_key)).size
   };
 
   return {

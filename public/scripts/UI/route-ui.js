@@ -129,6 +129,15 @@ function lineIntersectsCurrentViewport(line) {
     return false;
   }
 
+  // City mode keeps the preset's routes loaded/listed even when the viewport
+  // no longer covers them (distinct from Globe View's load/unload behavior).
+  if (appState.activeCitySlug && appState.cityRouteKeysBySlug instanceof Map) {
+    const cityKeys = appState.cityRouteKeysBySlug.get(appState.activeCitySlug);
+    if (cityKeys && cityKeys.has(lineKey)) {
+      return true;
+    }
+  }
+
   const viewportBbox = typeof normalizeBboxArray === "function" ? normalizeBboxArray(appState.currentViewportBbox) : null;
   if (!viewportBbox) {
     return true;

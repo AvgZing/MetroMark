@@ -15,6 +15,9 @@ This document catalogs all major variables, objects, and data structures used th
 - **`appState.activeCitySlug`** - Explicitly selected city mode (localStorage `metromark_active_city_slug`); `""` = Globe View. When set, `getShownLines()` restricts routes to `appState.cityRouteKeysBySlug.get(activeCitySlug)`.
 - **`appState.publishedCities`** - Published curated cities from `GET /api/catalog/cities` (`published[]`).
 - **`appState.cityRouteKeysBySlug`** - Map city slug → Set of included line keys (city-mode filter).
+- **`appState.cityGeometryBySlug`** - Map city slug → `{ featureCollection }` of that city's full route geometry (city mode renders from this, so routes never unload).
+- **`appState.cityGeometryActive`** - True while the map renders from the persistent city GeoJSON (`routes` source + `city-routes-*` layers) instead of the `routes-vector` tiles. Everything city-geometry gated on an explicit `activeCitySlug`; Globe View is unchanged. `activeRouteSource()` returns the current feature-state target.
+- **`appState.cityLineSummariesBySlug`** - Map city slug → last-known route summaries, unioned back into `lineSummaries` so an active city's routes stay listed/counted (and prefetched) after the viewport leaves them.
 
 ### Map & Viewport
 - **`appState.map`** - MapLibre GL instance
@@ -42,7 +45,9 @@ This document catalogs all major variables, objects, and data structures used th
 - **`appState.inFlightRouteStopCountKeys`** - Set of lineKeys with an in-flight stop-count fetch
 - **`appState.inFlightHeadwayLineKeys`** - Set of lineKeys with an in-flight headway fetch
 - **`appState.headwayBulkAttemptedKeys`** - Set of lineKeys already queried via the bulk headway endpoint
-- **`appState.routeOverridesByCity`** - Map of lineKey → `route_override` row (`payload` with name/mode/color/operator/orderingMode/stops); applied by vector-metadata.js and the line view (custom stop order)
+- **`appState.routeOverridesByCity`** - Map of lineKey → `route_override` row (`payload` with name/mode/color/operator/orderingMode/stops/mergedLineKeys); applied by vector-metadata.js and the line view (custom stop order)
+- **`appState.mergeMembersByCanonical`** - Map canonical lineKey → member lineKeys (derived from `route_override.payload.mergedLineKeys`)
+- **`appState.mergeCanonicalByMember`** - Map member lineKey → canonical lineKey; `resolveCanonicalLineKey()` uses it to collapse merged routes
 
 ### Active Routes & Data
 - **`appState.cities`** - Array of available city preset objects (for filter presets)
@@ -139,11 +144,14 @@ Stored in `route_override` table and edited via admin override page:
   mode: number | null,  // GTFS mode
   orderingMode: "geometry-revised" | "legacy-geometry" | "fractions" | null,
   frequencyBucket: "frequent" | "regular" | "local" | "unknown" | null,
+  headwayBestMinutes: number | null,
+  mergedLineKeys: ["string"],  // member line keys merged into this canonical route
   stops: [{ key: "string", name: "string", lat: number, lon: number, branch?: "string" }],
   branchGroups: [{ id: "string", label: "string", options: [{ id: "string", label: "string" }] }]
 }
 ```
-- `stops` (when present) is the authoritative ordered list for the line view; `branch` tags a stop with a `branchGroups` option id (trunk = untagged).
+- `stops` (when present) is the authoritative ordered list for the line view when the ordering default is Manual; it always supplies names/coordinates. `branch` tags a stop with a `branchGroups` option id (trunk = untagged).
+- `mergedLineKeys` (on the canonical route's override): collapses the listed member routes into this route. Names join with "/", members inherit the canonical color/operator/frequency, are hidden from the list, and identical stops merge by `station_key`. Resolved client-side by `resolveCanonicalLineKey` + `appState.mergeMembersByCanonical` / `mergeCanonicalByMember`.
 - Applied client-side (vector-metadata.js + line view); no tile rebuild needed for override changes.
 
 ### Route Ordering Votes
@@ -336,6 +344,7 @@ The harvester automates the same requests a user makes (route-stops, headway), c
 ### Transit Data API
 - **GET `/api/transit/coverage?bbox=...&zoom=...`** - Transitland's distinct route count for the viewport (gap-detection probe)
 - **GET `/api/catalog/cities`** - Static metro list (`cities`) + published curated presets (`published`, each with resolved route keys)
+- **GET `/api/catalog/cities/:slug/geometry`** - Full route geometry (FeatureCollection, `feature_id`=lineKey) for a curated city, so the client can render city mode from a persistent source instead of unloading tiles
 - **GET `/api/transit/route-stops?lineKey=...&stopTypes=...`** - Stops for a single route (route membership)
 - **GET `/api/transit/route-headway?lineKey=...`** - Headway summary for one route
 - **GET `/api/transit/route-headway/bulk?lineKeys=a,b,c`** - Cached headway for many routes (one query)
@@ -364,8 +373,15 @@ The harvester automates the same requests a user makes (route-stops, headway), c
 
 ### Admin Route Data API (per-route, matches a user click)
 - **GET `/api/admin/routes/search?q=&bbox=`** - Transitland route search, viewport-scoped
+- **GET `/api/admin/routes/geometry?lineKey=`** - Archive geometry for one route; used by the Map Editor `?lineKey=` deep link to center + highlight a route being reviewed
+- **GET `/api/admin/routes/merge-candidates?bbox=&citySlug=`** - Detect routes whose geometry is identical or near-identical (same corridor, either direction), returned as `{ candidates, scanned }`; each candidate lists `lineKeys`, `names`, `reason` (`identical-geometry` / `near-geometry`), `score`, and `suggestedCanonicalKey`
 - **POST `/api/admin/routes/refresh`** / **`/add`** / **`/remove`** - Refresh / add / remove routes (one archive rebuild per batch)
 - **DELETE `/api/admin/overrides/route/:lineKey`** - Delete a route override
+
+### Route Suggestion API
+- **POST `/api/suggestions`** - Public: submit a route change suggestion (`{ lineKey, citySlug, payload, note }`); guests allowed, per-IP daily cap. Payload is limited to name/operator/color/mode/frequency fields.
+- **GET `/api/admin/suggestions?status=open|applied|denied`** - List suggestions for review; each entry includes a `current` snapshot (override-aware) so the console can show current → suggested
+- **POST `/api/admin/suggestions/:id/resolve`** - `{ status: "applied" | "denied" }`; applying merges the payload into the route's `route_override` and clears the transit cache prefix
 
 ### Progress API
 - **GET `/api/progress`** - User's visited stops
@@ -407,11 +423,12 @@ Postgres is the local cache/harvest database (schema is auto-provisioned at serv
 - `public.usage_log` - Daily Transitland API usage counters (cap enforcement)
 - `public.stop_translation` - Stop ID normalization map (upstream stop id → stable key)
 - `public.station_override` - Manual stop coordinate/name corrections
-- `public.route_override` - Manual route property edits (incl. `orderingMode`)
+- `public.route_override` - Manual route property edits (incl. `orderingMode`, `mergedLineKeys`)
 - `public.route_ordering_vote` - Community route-ordering preference votes
 - `public.route_review` - Problematic-geometry review flags
 - `public.agency_review` - Operator allow/block flags
 - `public.city_preset` / `public.city_preset_route` / `public.city_preset_operator` - Curated city collections: metadata, explicit route include/exclude + vetting flags, and operator rules (resolved at read time).
+- `public.route_suggestion` - User-submitted route change suggestions awaiting admin review (`line_key`, `payload`, `note`, `status`).
 
 Supabase (`operations/sql/supabase-baseline.sql`) holds the auth/user tables: `profiles`, `user_station_visit` (progress), `user_filter_presets`.
 

@@ -28,6 +28,13 @@ const appState = {
   routeStopsAutoLoadAttempts: new Map(),
   inFlightLineStopKeys: new Set(),
   inFlightHeadwayLineKeys: new Set(),
+  // Merged routes (route_override payload.mergedLineKeys): canonical line key ->
+  // member line keys, and the reverse lookup.
+  mergeMembersByCanonical: new Map(),
+  mergeCanonicalByMember: new Map(),
+  // Canonical keys present in the current summaries; members only collapse when
+  // their canonical is actually rendered (otherwise the member shows as itself).
+  mergeCanonicalPresent: new Set(),
   focusedLineKey: "",
   activeModeKeys: parseSetFromStorage("metromark_mode_filter_keys", DEFAULT_ACTIVE_MODE_KEYS),
   activeFrequencyKeys: parseSetFromStorage(
@@ -45,6 +52,12 @@ const appState = {
   activeCitySlug: localStorage.getItem("metromark_active_city_slug") || "",
   publishedCities: [],
   cityRouteKeysBySlug: new Map(),
+  // Persistent route geometry per city (city mode) so routes don't unload.
+  cityGeometryBySlug: new Map(),
+  cityGeometryActive: false,
+  // Last-known route summaries per city, unioned back in so a city's routes stay
+  // listed (and prefetched) after the viewport leaves them.
+  cityLineSummariesBySlug: new Map(),
   theme: localStorage.getItem("metromark_theme") || "dark",
   activePopup: "",
   hoverPopup: null,

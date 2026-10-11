@@ -203,7 +203,29 @@ async function ensureSharded() {
       return;
     }
 
-    const legacyFiles = listNdjsonFiles();
+    const allNames = fs.existsSync(GEO_DIR) ? fs.readdirSync(GEO_DIR) : [];
+
+    // Shards present but no manifest: rebuild the manifest from the shards.
+    // Shard files must never be treated as legacy inputs -- that path wrote the
+    // shards back and then unlinked them (the same filenames), wiping the archive
+    // and making routes vanish after a harvest until the process restarted.
+    if (allNames.some((name) => isShardFile(name))) {
+      const counts = Array.from({ length: SHARD_COUNT }, (_, i) => {
+        const file = shardFileName(i);
+        try {
+          return fs.existsSync(file) ? readShardFeatureCount(file) : 0;
+        } catch {
+          return 0;
+        }
+      });
+      writeManifest(counts);
+      shardsInitialized = true;
+      return;
+    }
+
+    const legacyFiles = allNames
+      .filter((name) => name.endsWith(".ndjson") && !isShardFile(name))
+      .map((name) => path.join(GEO_DIR, name));
     if (legacyFiles.length) {
       const perShard = Array.from({ length: SHARD_COUNT }, () => new Map());
       for (const file of legacyFiles) {
@@ -480,9 +502,12 @@ async function runBackfill(bboxArray, options = {}) {
     };
 
     let built = null;
-    if (merged.added > 0 || merged.updated > 0) {
-      built = await buildPmtiles({ log: { log: () => {} } });
-    } else if (totalRoutesInArchive() === 0) {
+    // A client only requests a backfill when its archive rendered no routes for
+    // an area the coverage probe says has transit. Rebuild whenever we fetched
+    // anything (even if every key already existed in the shards) so the archive
+    // version changes and the client swaps to the fresh source instead of
+    // deadlocking on "routes never appear until restart".
+    if (features.length > 0 || totalRoutesInArchive() === 0) {
       built = await buildPmtiles({ log: { log: () => {} } });
     }
 
@@ -521,11 +546,44 @@ function getBackfillStats() {
   };
 }
 
+// Read specific archive features by line key (only the shards that can hold
+// them), used by merge-candidate detection.
+async function getArchiveFeaturesByLineKeys(lineKeys) {
+  const wanted = new Set(
+    (Array.isArray(lineKeys) ? lineKeys : []).map((key) => String(key || "").trim()).filter(Boolean)
+  );
+  const result = new Map();
+  if (!wanted.size) {
+    return result;
+  }
+  await ensureSharded();
+  const byShard = new Map();
+  for (const key of wanted) {
+    const index = shardIndexFor(key);
+    if (!byShard.has(index)) {
+      byShard.set(index, new Set());
+    }
+    byShard.get(index).add(key);
+  }
+  for (const [index, keys] of byShard) {
+    const shardMap = await readShardFeatures(index);
+    for (const key of keys) {
+      const feature = shardMap.get(key);
+      if (feature) {
+        result.set(key, feature);
+      }
+    }
+  }
+  return result;
+}
+
 module.exports = {
   runBackfill,
   mergeBackfillFeatures,
   removeFeaturesFromArchive,
   listArchiveLineKeysInBbox,
+  getArchiveFeaturesByLineKeys,
+  scanArchiveLineKeysSync,
   getBackfillStats,
   totalRoutesInArchive,
   invalidateArchiveCount,

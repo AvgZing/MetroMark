@@ -114,7 +114,7 @@ function onRouteHoverMove(event) {
   }
 
   const features = appState.map.queryRenderedFeatures(event.point, {
-    layers: ["routes-main-vector", "routes-background-main-vector"]
+    layers: ["routes-main-vector", "routes-background-main-vector", "city-routes-main", "city-routes-background-main"]
   });
 
   const uniqueLines = new Map();

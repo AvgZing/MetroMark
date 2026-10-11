@@ -50,6 +50,35 @@ function orderByCustomStopKeys(stopFeatures, customStops, lineKey = "") {
   return ordered;
 }
 
+// Apply admin stop renames/coordinates to algorithmically ordered stops, without
+// changing their order (used when the ordering default is not Manual).
+function applyCustomStopOverrides(stopFeatures, customStops) {
+  const byKey = new Map();
+  for (const stop of customStops || []) {
+    const key = String(stop?.key || "").trim();
+    if (key) {
+      byKey.set(key, stop);
+    }
+  }
+  for (const feature of stopFeatures || []) {
+    const key = String(feature?.properties?.station_key || "").trim();
+    const stop = byKey.get(key);
+    if (!stop) {
+      continue;
+    }
+    if (stop.name) {
+      feature.properties.station_name = String(stop.name);
+    }
+    const lat = Number(stop.lat);
+    const lon = Number(stop.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      feature.geometry = feature.geometry || { type: "Point", coordinates: [] };
+      feature.geometry.coordinates = [lon, lat];
+    }
+  }
+  return stopFeatures;
+}
+
 // ---------------------------------------------------------------------------
 // Branch orders: stops[i].branch picks an option in branchGroups.
 // ---------------------------------------------------------------------------
@@ -276,7 +305,15 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     splitLabels = resolved.splitLabels;
   }
 
-  const featuresToRender = customStops
+  // Admin stop order only drives the sequence when the ordering default is
+  // Manual; otherwise it still supplies renames/coordinates but the algorithm
+  // decides the order.
+  const defaultMode = typeof lineViewOrderingDefaultModeForLine === "function"
+    ? lineViewOrderingDefaultModeForLine(lineKey)
+    : "auto";
+  const useManualOrder = Boolean(customStops) && defaultMode === "manual";
+
+  const featuresToRender = useManualOrder
     ? orderByCustomStopKeys(stopFeatures, customStops, lineKey)
     : await orderStopsForLineView(
         stopFeatures,
@@ -288,6 +325,10 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
         directionPatterns
       );
 
+  if (!useManualOrder && customStops) {
+    applyCustomStopOverrides(featuresToRender, customStops);
+  }
+
   if (splitLabels.size) {
     for (const feature of featuresToRender) {
       const key = String(feature?.properties?.station_key || "").trim();
@@ -297,13 +338,15 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     }
   }
 
-  // When a maintainer has set the order manually, hide the algorithm picker but
-  // keep Reverse; show the explainer instead.
+  // When a maintainer has set the order manually or a default, hide the
+  // algorithm picker but keep Reverse; show the explainer instead.
   const diagnosticsEl = document.getElementById("lineViewDiagnostics");
+  const currentLine = (appState.lineSummaries || []).find((line) => line.lineKey === lineKey) || null;
+  const adminOrderSource = String(currentLine?.orderingModeDefaultSource || "").trim() === "admin";
   if (diagnosticsEl) {
-    diagnosticsEl.classList.toggle("is-admin-order", Boolean(customStops));
+    diagnosticsEl.classList.toggle("is-admin-order", useManualOrder || adminOrderSource);
   }
-  renderLineViewBranchSelector(lineKey, customStops ? branchGroups : []);
+  renderLineViewBranchSelector(lineKey, useManualOrder ? branchGroups : []);
 
   if (appState.lineViewOrderingReversed) {
     featuresToRender.reverse();
@@ -607,9 +650,16 @@ function renderLineView(options = {}) {
 /** Open the line view panel for a given line, saving prior map/focus state for restoration.
     Pass { zoom: true } when the selection came from a list so the map frames the route. */
 async function openLineView(lineKey, options = {}) {
-  const normalizedLineKey = String(lineKey || "").trim();
+  const normalizedLineKey =
+    typeof resolveCanonicalLineKey === "function"
+      ? resolveCanonicalLineKey(lineKey)
+      : String(lineKey || "").trim();
   if (!normalizedLineKey) {
     return;
+  }
+
+  if (typeof closeSuggest === "function") {
+    closeSuggest();
   }
 
   if (!appState.lineViewOpen) {
@@ -652,8 +702,12 @@ async function openLineView(lineKey, options = {}) {
     fitMapToLine(normalizedLineKey);
   }
 
+  const mergeMembers = appState.mergeMembersByCanonical instanceof Map
+    ? appState.mergeMembersByCanonical.get(normalizedLineKey) || []
+    : [];
   await Promise.all([
     ensureLineStopsLoaded(normalizedLineKey, { silent: true }),
+    ...mergeMembers.map((member) => ensureLineStopsLoaded(member, { silent: true })),
     ensureLineHeadwayLoaded(normalizedLineKey, { forceRefresh: false, silent: true })
   ]).catch(() => {});
 

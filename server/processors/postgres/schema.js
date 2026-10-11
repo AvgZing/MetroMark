@@ -209,6 +209,22 @@ const schemaStatements = [
 )`,
   "create index if not exists idx_city_preset_operator_city on public.city_preset_operator (city_slug)",
   "create index if not exists idx_city_preset_operator_name on public.city_preset_operator (operator_name)",
+  // User-submitted route change suggestions, reviewed in the admin dashboard.
+  `create table if not exists public.route_suggestion (
+  id bigserial primary key,
+  line_key text not null,
+  city_slug text,
+  payload jsonb not null,
+  note text,
+  status text not null default 'open',
+  reporter_name text,
+  reporter_email text,
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz,
+  resolved_by text
+)`,
+  "create index if not exists idx_route_suggestion_status on public.route_suggestion (status)",
+  "create index if not exists idx_route_suggestion_line on public.route_suggestion (line_key)",
 ];
 
 module.exports = { schemaStatements };

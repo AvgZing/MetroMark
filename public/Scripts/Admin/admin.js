@@ -50,8 +50,10 @@ const els = {
   refreshReviewQueueBtn: document.getElementById("refreshReviewQueueBtn"),
   reviewFlagsJumpBtn: document.getElementById("reviewFlagsJumpBtn"),
   reviewIssuesJumpBtn: document.getElementById("reviewIssuesJumpBtn"),
+  reviewSuggestionsJumpBtn: document.getElementById("reviewSuggestionsJumpBtn"),
   reharvestFlagsAnchor: document.getElementById("reharvestFlagsAnchor"),
   issueReportsAnchor: document.getElementById("issueReportsAnchor"),
+  routeSuggestionsAnchor: document.getElementById("routeSuggestionsAnchor"),
 };
 
 const state = {
@@ -496,6 +498,9 @@ function bindEvents() {
       await refreshAll();
       await loadAdminCities();
       await refreshReviewQueue();
+      await loadReharvestFlags();
+      await loadIssueReports({ showResolved: false });
+      await loadRouteSuggestions({ showResolved: false });
     } catch (error) {
       clearAdminSession();
       els.loginStatusMessage.textContent = error.message;
@@ -545,6 +550,9 @@ function bindEvents() {
   if (els.reviewIssuesJumpBtn) {
     els.reviewIssuesJumpBtn.addEventListener("click", () => jumpToElement(els.issueReportsAnchor));
   }
+  if (els.reviewSuggestionsJumpBtn) {
+    els.reviewSuggestionsJumpBtn.addEventListener("click", () => jumpToElement(els.routeSuggestionsAnchor));
+  }
 
   els.runBackupBtn.addEventListener("click", () => {
     runAction("backup", () => apiRequest("/api/admin/actions/backup-nonrecoverable", { method: "POST" }));
@@ -573,6 +581,19 @@ function bindEvents() {
   if (issuesShowResolvedCb) {
     issuesShowResolvedCb.addEventListener("change", () => {
       loadIssueReports({ showResolved: issuesShowResolvedCb.checked });
+    });
+  }
+
+  const reloadSuggestionsBtn = document.getElementById("reloadSuggestionsBtn");
+  const suggestionsShowResolvedCb = document.getElementById("suggestionsShowResolvedCb");
+  if (reloadSuggestionsBtn) {
+    reloadSuggestionsBtn.addEventListener("click", () => {
+      loadRouteSuggestions({ showResolved: Boolean(suggestionsShowResolvedCb && suggestionsShowResolvedCb.checked) });
+    });
+  }
+  if (suggestionsShowResolvedCb) {
+    suggestionsShowResolvedCb.addEventListener("change", () => {
+      loadRouteSuggestions({ showResolved: suggestionsShowResolvedCb.checked });
     });
   }
 }
@@ -764,6 +785,146 @@ async function loadIssueReports(options = {}) {
   }
 }
 
+function suggestionFieldLabels() {
+  return {
+    lineName: "Name",
+    lineShortName: "Short name",
+    lineLongName: "Long name",
+    operatorName: "Operator",
+    color: "Color",
+    mode: "Mode",
+    frequencyBucket: "Frequency",
+    headwayBestMinutes: "Headway"
+  };
+}
+
+function formatSuggestionValue(value) {
+  if (value === undefined || value === null || value === "") {
+    return "(none)";
+  }
+  return String(value);
+}
+
+function suggestionChangesCell(suggestion) {
+  const cell = document.createElement("td");
+  const labels = suggestionFieldLabels();
+  const payload = suggestion.payload || {};
+  const current = suggestion.current || {};
+  const entries = Object.entries(payload);
+  if (!entries.length) {
+    cell.textContent = "-";
+    return cell;
+  }
+  const list = document.createElement("ul");
+  list.className = "suggestion-changes";
+  for (const [key, value] of entries) {
+    const item = document.createElement("li");
+    const field = document.createElement("span");
+    field.className = "suggestion-change-field";
+    field.textContent = labels[key] || key;
+    const from = document.createElement("span");
+    from.className = "suggestion-change-from";
+    from.textContent = formatSuggestionValue(current[key]);
+    const to = document.createElement("span");
+    to.className = "suggestion-change-to";
+    to.textContent = formatSuggestionValue(value);
+    item.append(field, document.createTextNode(" "), from, document.createTextNode(" → "), to);
+    list.append(item);
+  }
+  cell.append(list);
+  return cell;
+}
+
+async function loadRouteSuggestions(options = {}) {
+  const body = document.getElementById("routeSuggestionsBody");
+  const statusEl = document.getElementById("routeSuggestionsStatus");
+  if (!body) {
+    return;
+  }
+  setTextStatus(statusEl, "Loading suggestions…");
+  try {
+    const status = options.showResolved ? "applied" : "open";
+    const payload = await apiRequest(`/api/admin/suggestions?status=${status}`, { method: "GET" });
+    const suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+    body.innerHTML = "";
+    if (!suggestions.length) {
+      setTextStatus(statusEl, `No ${options.showResolved ? "resolved" : "open"} suggestions.`, "is-ok");
+      return;
+    }
+    setTextStatus(statusEl, `${suggestions.length} suggestion(s).`);
+
+    for (const suggestion of suggestions) {
+      const row = document.createElement("tr");
+      const textCell = (text) => {
+        const cell = document.createElement("td");
+        cell.textContent = text;
+        return cell;
+      };
+
+      const actions = document.createElement("td");
+      const openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.textContent = "Open in map";
+      openBtn.title = "Open this route in the Map Editor, centered and highlighted";
+      openBtn.addEventListener("click", () => {
+        window.open(`/admin/override?lineKey=${encodeURIComponent(suggestion.lineKey)}`, "_blank");
+      });
+      actions.append(openBtn);
+      if (suggestion.status === "open") {
+        const acceptBtn = document.createElement("button");
+        acceptBtn.type = "button";
+        acceptBtn.textContent = "Accept";
+        acceptBtn.title = "Apply these fields to the route override";
+        acceptBtn.addEventListener("click", async () => {
+          acceptBtn.disabled = true;
+          try {
+            await apiRequest(`/api/admin/suggestions/${suggestion.id}/resolve`, {
+              method: "POST",
+              body: { status: "applied" }
+            });
+            loadRouteSuggestions({ showResolved: Boolean(options.showResolved) });
+            refreshReviewQueue();
+          } catch (error) {
+            setTextStatus(statusEl, `Failed to accept: ${error.message}`, "is-error");
+          }
+        });
+
+        const denyBtn = document.createElement("button");
+        denyBtn.type = "button";
+        denyBtn.textContent = "Deny";
+        denyBtn.addEventListener("click", async () => {
+          denyBtn.disabled = true;
+          try {
+            await apiRequest(`/api/admin/suggestions/${suggestion.id}/resolve`, {
+              method: "POST",
+              body: { status: "denied" }
+            });
+            loadRouteSuggestions({ showResolved: Boolean(options.showResolved) });
+            refreshReviewQueue();
+          } catch (error) {
+            setTextStatus(statusEl, `Failed to deny: ${error.message}`, "is-error");
+          }
+        });
+        actions.append(acceptBtn, denyBtn);
+      }
+
+      row.append(
+        textCell(String(suggestion.id)),
+        textCell(formatReportTime(suggestion.createdAt)),
+        textCell(suggestion.lineKey),
+        suggestionChangesCell(suggestion),
+        textCell(suggestion.reporterName || suggestion.reporterEmail || "guest"),
+        textCell(suggestion.note || "-"),
+        textCell(suggestion.status),
+        actions
+      );
+      body.appendChild(row);
+    }
+  } catch (error) {
+    setTextStatus(statusEl, `Failed to load suggestions: ${error.message}`, "is-error");
+  }
+}
+
 // Console edits metadata only; center/bbox/zoom come from the Map Editor.
 function cityFormPayload() {
   const existing = state.editingCity || {};
@@ -932,7 +1093,7 @@ function jumpToElement(el) {
   }
 }
 
-function renderReviewQueue(flags, issues) {
+function renderReviewQueue(flags, issues, suggestions = []) {
   const high = flags.filter((flag) => String(flag.kind || "").includes("removed")).length;
   if (els.reviewQueueCard) {
     els.reviewQueueCard.classList.toggle("is-attention", high > 0);
@@ -943,10 +1104,13 @@ function renderReviewQueue(flags, issues) {
   if (els.reviewIssuesJumpBtn) {
     els.reviewIssuesJumpBtn.hidden = issues.length === 0;
   }
+  if (els.reviewSuggestionsJumpBtn) {
+    els.reviewSuggestionsJumpBtn.hidden = suggestions.length === 0;
+  }
   if (!els.reviewQueueSummary) {
     return;
   }
-  const total = flags.length + issues.length;
+  const total = flags.length + issues.length + suggestions.length;
   if (!total) {
     els.reviewQueueSummary.textContent = "Nothing needs review.";
     return;
@@ -958,6 +1122,9 @@ function renderReviewQueue(flags, issues) {
   if (issues.length) {
     parts.push(`${issues.length} issue report(s)`);
   }
+  if (suggestions.length) {
+    parts.push(`${suggestions.length} route suggestion(s)`);
+  }
   els.reviewQueueSummary.textContent = `${total} open review item(s): ${parts.join(" · ")}.`;
 }
 
@@ -966,13 +1133,15 @@ async function refreshReviewQueue() {
     return;
   }
   try {
-    const [flagsPayload, issuesPayload] = await Promise.all([
+    const [flagsPayload, issuesPayload, suggestionsPayload] = await Promise.all([
       apiRequest("/api/admin/reharvest/flags?status=open", { method: "GET" }),
-      apiRequest("/api/admin/issues?status=open", { method: "GET" })
+      apiRequest("/api/admin/issues?status=open", { method: "GET" }),
+      apiRequest("/api/admin/suggestions?status=open", { method: "GET" })
     ]);
     renderReviewQueue(
       Array.isArray(flagsPayload?.flags) ? flagsPayload.flags : [],
-      Array.isArray(issuesPayload?.issues) ? issuesPayload.issues : []
+      Array.isArray(issuesPayload?.issues) ? issuesPayload.issues : [],
+      Array.isArray(suggestionsPayload?.suggestions) ? suggestionsPayload.suggestions : []
     );
   } catch (error) {
     els.reviewQueueSummary.textContent = `Could not check the review queue: ${error.message}`;
@@ -999,6 +1168,7 @@ async function init() {
       await refreshReviewQueue();
       await loadReharvestFlags();
       await loadIssueReports({ showResolved: false });
+      await loadRouteSuggestions({ showResolved: false });
       startPolling();
       return;
     } catch {

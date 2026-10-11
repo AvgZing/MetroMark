@@ -11,10 +11,10 @@
       rel="stylesheet"
     />
     <link href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/Styles/base.css?v=2026-09-29" />
-    <link rel="stylesheet" href="/Styles/map.css?v=2026-09-29" />
-    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-09-29" />
-    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-09-29" />
+    <link rel="stylesheet" href="/Styles/base.css?v=2026-10-11" />
+    <link rel="stylesheet" href="/Styles/map.css?v=2026-10-11" />
+    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-10-11" />
+    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-10-11" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -107,6 +107,14 @@
             <option value="11">Trolleybus</option>
             <option value="12">Monorail</option>
           </select>
+          <label for="routeFrequencyFilterSelect">Filter by Frequency</label>
+          <select id="routeFrequencyFilterSelect">
+            <option value="">All frequencies</option>
+            <option value="frequent">Frequent (up to 10m)</option>
+            <option value="regular">Regular (11-29m)</option>
+            <option value="local">Local (30m+)</option>
+            <option value="unknown">Unknown</option>
+          </select>
           <p class="microcopy" id="routeSearchInfo"></p>
           <div id="routeSearchResults" class="admin-route-search-results"></div>
           <div class="override-actions">
@@ -166,6 +174,13 @@
             <div id="citySelectedRoute" class="city-member-row is-selected" hidden></div>
 
             <h3 class="city-subhead">Operators</h3>
+            <p class="microcopy">
+              An operator rule adds every current route that operator runs. Excluding an operator
+              removes its routes unless a route is explicitly included below.
+            </p>
+            <div class="override-actions">
+              <button id="cityAddVisibleOperatorsBtn" class="btn btn-subtle" type="button">Add operators in view</button>
+            </div>
             <div id="cityOperatorsList" class="city-members-list"></div>
             <div class="city-add-row">
               <input id="cityOperatorSearchInput" type="text" placeholder="Find operator (e.g. King County Metro)" />
@@ -175,8 +190,14 @@
 
             <h3 class="city-subhead">Routes</h3>
             <p class="microcopy">
-              Include a single route (e.g. an Amtrak line) or exclude one that an operator rule would
-              otherwise add. Vetting flags are for accuracy review.
+              <strong>Include/Exclude</strong> keeps a rule: Exclude overrides an operator rule so the
+              route stays out of the city. <strong>Remove rule</strong> deletes the rule entirely, so an
+              operator rule can add the route again.
+            </p>
+            <p class="microcopy">
+              Vetting flags are internal review markers: <strong>Accuracy</strong> = geometry/name
+              checked, <strong>Up to date</strong> = data recently refreshed, <strong>Stop order</strong>
+              = stop sequence verified.
             </p>
             <div class="override-actions">
               <button id="cityAddSelectedRouteBtn" class="btn btn-subtle" type="button">Include selected</button>
@@ -207,11 +228,12 @@
 
         <div class="panel">
           <h2>Operators (batch hide)</h2>
-          <p class="microcopy">Hide every route by an operator by default; users can turn them back on.</p>
+          <p class="microcopy">
+            Toggle an operator to hide all of its routes by default; users can turn them back on.
+            Select a route on the map and use "Hide operator" in the route editor to hide a single operator.
+          </p>
           <div class="override-actions">
-            <button id="hideAllOperatorsBtn" class="btn" type="button">Hide all visible</button>
-            <button id="showAllOperatorsBtn" class="btn btn-subtle" type="button">Show all visible</button>
-            <button id="operatorPreviewAllBtn" class="btn btn-subtle" type="button">Preview all (show hidden)</button>
+            <button id="operatorPreviewAllBtn" class="btn btn-subtle" type="button">Preview hidden operators</button>
           </div>
           <div id="operatorList" class="operator-review-list">
             <p class="microcopy">Loading operators for the visible area...</p>
@@ -249,6 +271,21 @@
         </div>
 
         <div class="panel">
+          <h2>Possible duplicate routes</h2>
+          <p class="microcopy">
+            Routes whose geometry matches (same corridor, either direction) but are counted
+            separately — e.g. two directions of one ferry. Merge to show them as one line.
+          </p>
+          <div class="override-actions">
+            <button id="findMergeCandidatesBtn" class="btn btn-subtle" type="button">Find in view</button>
+          </div>
+          <div id="mergeCandidatesList" class="merge-candidates-list">
+            <p class="microcopy">Pan the map and click "Find in view", or wait for the automatic check.</p>
+          </div>
+          <p class="status" id="mergeCandidatesStatus"></p>
+        </div>
+
+        <div class="panel">
           <h2>Manual Edits Log</h2>
           <div id="manualEditsLog" class="manual-edits-log">
             <p class="microcopy">No manual edits recorded yet.</p>
@@ -262,6 +299,11 @@
           <button id="refreshMapBtn" class="btn btn-subtle" type="button">Reload layers</button>
         </div>
         <div id="overrideMap"></div>
+
+        <div id="adminActionToast" class="admin-action-toast" role="status" hidden>
+          <span id="adminActionToastText"></span>
+          <button id="adminActionToastClose" class="admin-action-toast-close" type="button" aria-label="Dismiss">×</button>
+        </div>
 
         <div class="area-refresh-panel" id="areaRefreshPanel" hidden>
           <header class="area-refresh-header">
@@ -305,14 +347,36 @@
             <div class="admin-line-editor-body">
               <div class="admin-line-editor-section">
                 <h3>Identity</h3>
-                <label for="routeName">Name</label>
-                <input id="routeName" type="text" placeholder="Display name" />
-                <label for="routeShortName">Short Name</label>
+                <p class="microcopy">
+                  Short name is the route badge (e.g. <strong>40</strong>). Long name is the full
+                  destination description (e.g. <strong>Northgate – Rainier Beach</strong>). Name is
+                  the fallback shown when the others are missing.
+                </p>
+                <label for="routeShortName">Short Name (badge)</label>
                 <input id="routeShortName" type="text" placeholder="e.g. 40" />
-                <label for="routeLongName">Long Name</label>
+                <label for="routeLongName">Long Name (destinations)</label>
                 <input id="routeLongName" type="text" placeholder="e.g. Northgate - Rainier Beach" />
+                <label for="routeName">Name (fallback)</label>
+                <input id="routeName" type="text" placeholder="Display name" />
                 <label for="routeOperator">Operator</label>
                 <input id="routeOperator" type="text" placeholder="Operator name" />
+                <div class="override-actions">
+                  <button id="hideOperatorBtn" class="btn btn-subtle" type="button" hidden>Hide operator</button>
+                </div>
+              </div>
+
+              <div class="admin-line-editor-section">
+                <h3>Merge routes</h3>
+                <p class="microcopy">
+                  Combine routes that are the same line counted separately (e.g. two directions).
+                  Names join with "/" and identical stops merge into one.
+                </p>
+                <div id="mergeRoutesList" class="merge-routes-list"></div>
+                <div class="stop-add-row merge-add-row">
+                  <input id="mergeRouteKeyInput" type="text" placeholder="Other route key (e.g. r-…-404)" />
+                  <button id="addMergeRouteBtn" class="btn btn-subtle" type="button">Merge route</button>
+                </div>
+                <p class="status" id="mergeRouteStatus"></p>
               </div>
 
               <div class="admin-line-editor-section">
@@ -339,8 +403,9 @@
                   <option value="geometry-revised">Main</option>
                   <option value="legacy-geometry">U-Shape</option>
                   <option value="fractions">Loop</option>
+                  <option value="manual">Manual (custom stop order)</option>
                 </select>
-                <label for="routeFrequency">Frequency</label>
+                <label for="routeFrequency">Frequency category</label>
                 <select id="routeFrequency">
                   <option value="">Keep current</option>
                   <option value="__default__">Default (clear override)</option>
@@ -349,6 +414,9 @@
                   <option value="local">Local (30m+)</option>
                   <option value="unknown">Frequency Unknown</option>
                 </select>
+                <label for="routeFrequencyMinutes">Peak headway (minutes)</label>
+                <input id="routeFrequencyMinutes" type="number" min="0" step="1" placeholder="Derived from category if blank" />
+                <p class="field-hint">The category reads this number; editing one updates the other.</p>
                 <div class="review-setting">
                   <label>
                     <input id="routeProblematic" type="checkbox" />
@@ -361,8 +429,11 @@
               <div class="admin-line-editor-section">
                 <h3>Stops / Track Routing</h3>
                 <p class="microcopy">
-                  Reorder stops, edit names/coordinates, remove them, or add new stops. Saving makes
-                  this the order users see.
+                  Edit names and coordinates any time. Reordering, adding, and removing stops are
+                  unlocked when Stop Ordering Default is set to Manual.
+                </p>
+                <p class="stop-order-lock-note" id="stopOrderLockNote" hidden>
+                  Stops are shown in automatic order. Set Stop Ordering Default to Manual to drag and reorder.
                 </p>
                 <div class="branch-groups-editor">
                   <p class="branch-groups-heading">Branches</p>
@@ -375,17 +446,17 @@
                     <button id="addBranchGroupBtn" class="btn btn-subtle" type="button">Add branch group</button>
                   </div>
                 </div>
-                <div class="stop-add-row">
+                <div id="stopAddRow" class="stop-add-row" hidden>
                   <input id="newStopName" type="text" placeholder="New stop name" />
                   <input id="newStopLat" type="number" step="any" placeholder="Lat" />
                   <input id="newStopLon" type="number" step="any" placeholder="Lon" />
-                  <button id="addStopBtn" class="btn btn-subtle" type="button">Add</button>
+                  <button id="addStopBtn" class="btn btn-subtle" type="button">Add stop</button>
                 </div>
                 <div id="routeStopsList" class="route-stops-list">
                   <p class="microcopy">Load a route to see its stops.</p>
                 </div>
                 <div class="override-actions">
-                  <button id="saveStopOrderBtn" class="btn" type="button">Save Stop Order</button>
+                  <button id="saveStopOrderBtn" class="btn" type="button">Save stop changes</button>
                   <button id="clearStopOrderBtn" class="btn btn-subtle" type="button">Clear Custom Order</button>
                 </div>
               </div>
@@ -417,10 +488,10 @@
 
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
     <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
-    <script src="/Scripts/Map/basemap-config.js?v=2026-09-29" defer></script>
-    <script src="/Scripts/Admin/admin-theme.js?v=2026-09-29" defer></script>
-    <script src="/Scripts/Shared/constants.js?v=2026-09-29" defer></script>
-    <script src="/Scripts/Map/viewport-cache.js?v=2026-09-29" defer></script>
-    <script src="/Scripts/Admin/admin-override.js?v=2026-09-29" defer></script>
+    <script src="/Scripts/Map/basemap-config.js?v=2026-10-11" defer></script>
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-10-11" defer></script>
+    <script src="/Scripts/Shared/constants.js?v=2026-10-11" defer></script>
+    <script src="/Scripts/Map/viewport-cache.js?v=2026-10-11" defer></script>
+    <script src="/Scripts/Admin/admin-override.js?v=2026-10-11" defer></script>
   </body>
 </html>

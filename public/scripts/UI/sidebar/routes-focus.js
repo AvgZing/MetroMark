@@ -24,7 +24,10 @@ function clearFocusedLine(statusMessage = "Route focus cleared.", statusMeta = "
 }
 
 async function setFocusedLine(lineKey, options = {}) {
-  const normalizedLineKey = String(lineKey || "").trim();
+  const normalizedLineKey =
+    typeof resolveCanonicalLineKey === "function"
+      ? resolveCanonicalLineKey(lineKey)
+      : String(lineKey || "").trim();
   if (!normalizedLineKey) {
     return;
   }

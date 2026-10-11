@@ -530,6 +530,25 @@ async function init() {
       loadReviewsForCity(appState.initialCitySlug).catch(() => {});
     }
 
+    // Admin edits have no push channel; refresh overrides/merges when the tab
+    // returns to the foreground so changes feel immediate.
+    let lastReviewRefreshAt = 0;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible" || typeof loadReviewsForCity !== "function") {
+        return;
+      }
+      const slug = appState.activeCitySlug || appState.initialCitySlug || "";
+      if (!slug) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastReviewRefreshAt < 30000) {
+        return;
+      }
+      lastReviewRefreshAt = now;
+      loadReviewsForCity(slug).catch(() => {});
+    });
+
     if (typeof applyStartupCityMode === "function") {
       applyStartupCityMode();
     }

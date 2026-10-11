@@ -59,6 +59,9 @@ function flyToCity(slug) {
 }
 
 function refreshForCityMode() {
+  if (typeof applyCityGeometryMode === "function") {
+    applyCityGeometryMode().catch(() => {});
+  }
   if (typeof renderLineList === "function") renderLineList();
   if (typeof renderMapData === "function") renderMapData();
   if (typeof renderProgress === "function") renderProgress();
@@ -171,6 +174,9 @@ function applyStartupCityMode() {
   renderCitiesMenu();
   if (appState.activeCitySlug) {
     flyToCity(appState.activeCitySlug);
+  }
+  if (typeof applyCityGeometryMode === "function") {
+    applyCityGeometryMode().catch(() => {});
   }
 }
 

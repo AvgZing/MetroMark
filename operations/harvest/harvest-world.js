@@ -43,10 +43,17 @@ async function run() {
   }
 
   if (newFeatures.length) {
-    log(`Merging ${newFeatures.length} new route features and rebuilding tiles...`);
-    await mergeBackfillFeatures(newFeatures, { overwrite: false });
+    log(`Merging ${newFeatures.length} route features and rebuilding tiles...`);
+    // Overwrite so refreshed geometry replaces stale archive features; admin
+    // edits live in route_override, not the archive, so nothing is clobbered.
+    await mergeBackfillFeatures(newFeatures, { overwrite: true });
     const built = await buildPmtiles({ log: { log: () => {} } });
     log(`Tiles rebuilt: ${built.sizeBytes} bytes, ${built.tileCount} tiles.`);
+  } else if (citiesDone > 0 || gapsDone > 0) {
+    // The pass refreshed metadata but added no new routes; rebuild anyway so the
+    // archive version changes and clients reload instead of serving stale tiles.
+    const built = await buildPmtiles({ log: { log: () => {} } });
+    log(`Tiles rebuilt (no new routes): ${built.sizeBytes} bytes, ${built.tileCount} tiles.`);
   }
 
   state.totalRuns += 1;

@@ -61,12 +61,12 @@ body.override-body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   background: rgba(254, 254, 252, 1);
   border: 1px solid var(--panel-border);
   border-radius: 16px;
   box-shadow: var(--shadow);
-  padding: 12px;
+  padding: 10px;
   overflow: hidden;
 }
 
@@ -133,16 +133,16 @@ body[data-theme="dark"] .admin-line-editor-card {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   padding-right: 2px;
 }
 
 .admin-line-editor-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   border-bottom: 1px dashed var(--line);
-  padding-bottom: 12px;
+  padding-bottom: 10px;
 }
 
 .admin-line-editor-section:last-child {
@@ -373,7 +373,7 @@ body[data-theme="dark"] .admin-line-editor-card {
 
 .override-sidebar {
   position: relative;
-  padding: 14px;
+  padding: 10px;
   overflow-y: auto;
   border-right: 1px solid var(--panel-border);
   background: var(--shell);
@@ -381,6 +381,24 @@ body[data-theme="dark"] .admin-line-editor-card {
   /* Long route/stop identities and log lines must wrap inside the sidebar
      instead of overflowing the panel. */
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.override-sidebar .panel,
+.override-sidebar .override-edit-panel {
+  margin: 0;
+  padding: 10px;
+}
+
+.override-sidebar .panel > h2 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.override-sidebar .microcopy {
+  margin: 0 0 6px;
 }
 
 /* Theme toggle in the sidebar head (the shell is already flex space-between). */
@@ -672,12 +690,14 @@ body[data-theme="dark"] .admin-line-editor-card {
   text-transform: uppercase;
 }
 
-/* map.css ships a top-right column; the admin map needs a scoped row. */
+/* map.css ships a top-right column; the admin map needs a scoped row.
+   Pinned top-left so the route editor panel (full-height right edge) never
+   overlaps it. */
 .override-map-stage .map-overlay-controls {
   position: absolute;
   top: 12px;
-  right: 12px;
-  left: auto;
+  left: 12px;
+  right: auto;
   bottom: auto;
   z-index: 10;
   display: flex;
@@ -686,10 +706,11 @@ body[data-theme="dark"] .admin-line-editor-card {
 }
 
 /* Area refresh: the viewport reharvest action now lives on the map, next to the
-   view it applies to. The panel shows the exact bbox being sent. */
+   view it applies to. The panel shows the exact bbox being sent. Sits below the
+   map controls so they never collide. */
 .area-refresh-panel {
   position: absolute;
-  top: 12px;
+  top: 54px;
   left: 12px;
   width: min(340px, calc(100% - 24px));
   z-index: 9;
@@ -701,6 +722,48 @@ body[data-theme="dark"] .admin-line-editor-card {
   border: 1px solid var(--panel-border);
   border-radius: 14px;
   box-shadow: var(--shadow);
+  max-height: calc(100% - 66px);
+  overflow-y: auto;
+}
+
+/* Persistent result of the last admin action (remove/refresh/add). Stays
+   visible even when the route editor panel closes. */
+.admin-action-toast {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: min(560px, calc(100% - 32px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.admin-action-toast[hidden] {
+  display: none;
+}
+
+.admin-action-toast.is-error {
+  border-color: #c0392b;
+  color: #c0392b;
+}
+
+.admin-action-toast-close {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
 }
 
 .area-refresh-panel[hidden] {
@@ -874,6 +937,91 @@ body[data-theme="dark"] .admin-line-editor-card {
   font-size: 0.8rem;
 }
 
+/* Drag handle + move controls for stop reordering. Only active when the
+   ordering default is Manual; otherwise the list is read-only for order. */
+.stop-order-drag {
+  width: 22px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--button-bg);
+  color: var(--muted);
+  font-size: 12px;
+  cursor: grab;
+  touch-action: none;
+  flex-shrink: 0;
+}
+
+.stop-order-drag:active {
+  cursor: grabbing;
+}
+
+.stop-order-move {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--button-bg);
+  color: var(--ink);
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.stop-order-move:hover:not(:disabled) {
+  background: var(--button-hover);
+}
+
+.stop-order-move:disabled,
+.stop-order-drag:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.stop-order-row.is-locked {
+  opacity: 0.9;
+}
+
+.stop-order-row.is-locked .stop-order-fields input {
+  background: var(--input-bg);
+}
+
+.stop-order-row.is-dragging {
+  opacity: 0.5;
+  border-color: var(--accent);
+}
+
+.stop-order-lock-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.field-hint {
+  display: block;
+  margin: -2px 0 2px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+/* City rule buttons: make the destructive "remove rule" distinct from Exclude. */
+.city-remove-rule {
+  padding: 3px 8px;
+  font-size: 11px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: var(--button-bg);
+  color: #c0392b;
+  cursor: pointer;
+}
+
+.city-remove-rule:hover {
+  background: var(--button-hover);
+}
+
 .stop-add-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 72px 72px auto;
@@ -893,10 +1041,52 @@ body[data-theme="dark"] .admin-line-editor-card {
   font-size: 12px;
 }
 
+.merge-routes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.merge-candidates-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.merge-candidate {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--button-bg);
+}
+
+.merge-candidate-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-text, var(--ink));
+}
+
+.merge-candidate-names {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.merge-add-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .stop-order-pos {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   color: var(--muted, #5a5a5a);
   width: 22px;
+  flex-shrink: 0;
 }
 
 .stop-order-name {
@@ -904,12 +1094,6 @@ body[data-theme="dark"] .admin-line-editor-card {
   min-width: 0;
   overflow-wrap: break-word;
   word-break: break-word;
-}
-
-.stop-order-row button {
-  width: 26px;
-  height: 24px;
-  font-size: 0.8rem;
 }
 
 #batchStatus {
