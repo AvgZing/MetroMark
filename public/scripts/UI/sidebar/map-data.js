@@ -26,8 +26,7 @@ function buildMapFeatureStateSignature(visibility) {
     .map(([lineKey, set]) => `${String(lineKey || "").trim()}:${Number(set?.size || 0)}`)
     .sort()
     .join("|");
-  // The route source differs between globe (tiles) and city (persistent GeoJSON);
-  // include it so switching modes re-applies feature-state to the right source.
+  // Include the source so a globe<->city source swap re-applies feature-state.
   const routeSourceId = typeof activeRouteSource === "function" ? activeRouteSource().source : "routes-vector";
 
   return [

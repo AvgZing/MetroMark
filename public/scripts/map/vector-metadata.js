@@ -41,8 +41,7 @@ function initVectorMetadataWiring() {
   scheduleVectorMetadataRebuild();
 }
 
-// Merge groups live on an override's payload (mergedLineKeys). Derive the
-// canonical->members and member->canonical maps used across the app.
+// Derive canonical<->member merge maps from override payloads.
 function refreshRouteMergeMaps() {
   const membersByCanonical = new Map();
   const canonicalByMember = new Map();
@@ -159,8 +158,7 @@ function rebuildLineMetadataFromTiles() {
     });
   }
 
-  // City mode: union the last-known summaries for the active city so its routes
-  // stay listed and countable after the viewport moves away.
+  // City mode: keep the active city's routes listed after the viewport moves away.
   const activeCity = String(appState.activeCitySlug || "").trim();
   const cityKeys =
     activeCity && appState.cityRouteKeysBySlug instanceof Map
@@ -190,8 +188,7 @@ function rebuildLineMetadataFromTiles() {
     appState.cityLineSummariesBySlug = store;
   }
 
-  // Collapse merged routes: the canonical carries the joined name, the members
-  // inherit its presentation and are hidden from the list (see getShownLines).
+  // Collapse merged routes: the canonical joins names; members hide from the list.
   for (const [canonical, members] of appState.mergeMembersByCanonical) {
     const canonicalLine = lineByKey.get(canonical);
     if (!canonicalLine) {
@@ -298,8 +295,7 @@ function applyRouteOverridesToMap() {
     }
   }
 
-  // Merged members render with the canonical route's color so both directions
-  // read as one line.
+  // Merged members use the canonical color.
   const summaries = Array.isArray(appState.lineSummaries) ? appState.lineSummaries : [];
   const merges = appState.mergeMembersByCanonical instanceof Map ? appState.mergeMembersByCanonical : new Map();
   for (const [canonical, members] of merges) {

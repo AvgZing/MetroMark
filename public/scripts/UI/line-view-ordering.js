@@ -320,8 +320,7 @@ function syncLineViewOrderingControls() {
     dom.lineViewOrderingReverseBtn.setAttribute("aria-pressed", isActive ? "true" : "false");
   }
 
-  // A maintainer-set default (admin override orderingMode) or a saved manual
-  // order locks the algorithm picker and explains why.
+  // A maintainer-set default or saved manual order locks the picker.
   const focusedLineKey = String(appState.lineViewLineKey || appState.focusedLineKey || "").trim();
   const focusedLine = Array.isArray(appState.lineSummaries)
     ? appState.lineSummaries.find((line) => String(line.lineKey || "").trim() === focusedLineKey)

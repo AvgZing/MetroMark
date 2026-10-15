@@ -5,8 +5,7 @@ const {
 } = require("../sources/transitland/backfill");
 const db = require("../processors/data");
 
-// Coordinates are rounded before comparison so GPS jitter doesn't hide an exact
-// corridor match; two directions of one route share the same node set.
+// Rounded coords so GPS jitter doesn't hide a corridor match.
 const COORD_PRECISION = 5;
 const NEAR_JACCARD = 0.9;
 const NEAR_BBOX_OVERLAP = 0.85;

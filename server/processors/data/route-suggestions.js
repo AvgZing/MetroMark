@@ -1,8 +1,7 @@
 const { localQuery, assertLocalConfigured } = require("./core");
 const { normalizeText } = require("./utils");
 
-// Fields a user may suggest. Mirrors the editable route_override payload subset;
-// stop-order and merge edits stay admin-only.
+// Fields a user may suggest (admin-only edits excluded).
 const STRING_FIELDS = ["lineName", "lineShortName", "lineLongName", "operatorName", "color"];
 const NUMBER_FIELDS = ["mode", "headwayBestMinutes"];
 const FREQUENCY_VALUES = ["frequent", "regular", "local", "unknown"];

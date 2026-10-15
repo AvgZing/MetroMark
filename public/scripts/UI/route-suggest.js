@@ -1,7 +1,4 @@
-// "Suggest changes" — lets a user propose route corrections from the line view.
-// Desktop shows the editor inline in the line-view panel; portrait mobile moves
-// the same form into a modal. Submissions go to /api/suggestions for review.
-
+// "Suggest changes": inline in the line view on desktop, modal on portrait mobile.
 let suggestLineKey = "";
 let suggestBaseline = { operatorName: "", color: "", mode: "" };
 let suggestUsingModal = false;

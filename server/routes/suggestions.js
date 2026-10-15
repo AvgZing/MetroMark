@@ -34,8 +34,7 @@ function parseOptionalUser(req) {
   return db.getUserFromToken(token).catch(() => null);
 }
 
-// Public endpoint: signed-in users and guests can suggest route changes from the
-// line view. Submissions are queued for admin review; nothing is applied here.
+// Public: users/guests suggest route changes from the line view (admin-reviewed).
 router.post("/suggestions", async (req, res) => {
   pruneRateCounters();
   const today = new Date().toISOString().slice(0, 10);

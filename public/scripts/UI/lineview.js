@@ -50,8 +50,7 @@ function orderByCustomStopKeys(stopFeatures, customStops, lineKey = "") {
   return ordered;
 }
 
-// Apply admin stop renames/coordinates to algorithmically ordered stops, without
-// changing their order (used when the ordering default is not Manual).
+// Apply admin stop renames/coords without changing order (non-Manual mode).
 function applyCustomStopOverrides(stopFeatures, customStops) {
   const byKey = new Map();
   for (const stop of customStops || []) {
@@ -305,9 +304,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     splitLabels = resolved.splitLabels;
   }
 
-  // Admin stop order only drives the sequence when the ordering default is
-  // Manual; otherwise it still supplies renames/coordinates but the algorithm
-  // decides the order.
+  // Custom order only drives sequence when the default is Manual.
   const defaultMode = typeof lineViewOrderingDefaultModeForLine === "function"
     ? lineViewOrderingDefaultModeForLine(lineKey)
     : "auto";
@@ -338,8 +335,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     }
   }
 
-  // When a maintainer has set the order manually or a default, hide the
-  // algorithm picker but keep Reverse; show the explainer instead.
+  // A maintainer-set order hides the picker and shows the explainer.
   const diagnosticsEl = document.getElementById("lineViewDiagnostics");
   const currentLine = (appState.lineSummaries || []).find((line) => line.lineKey === lineKey) || null;
   const adminOrderSource = String(currentLine?.orderingModeDefaultSource || "").trim() === "admin";

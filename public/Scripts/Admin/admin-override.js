@@ -161,8 +161,7 @@ const state = {
   archiveVersionTimer: null
 };
 
-// Show a result that persists after the route editor closes (remove/refresh/add
-// wrote their status into a panel that then hid, so the user never saw it).
+// Persistent action result that survives the route editor closing.
 function showAdminAction(message, isError = false) {
   if (!els.adminActionToast || !message) {
     return;
@@ -384,8 +383,7 @@ async function initMap() {
     await fetchBasemapKey();
   }
 
-  // Adopt the archive stamp before building the style, so the source URL matches
-  // the frontend's (one SW cache entry for the archive).
+  // Adopt the archive stamp before building the style (shared SW cache entry).
   const initialStamp = await fetchAdminArchiveStamp();
   if (initialStamp) {
     state.archiveVersion = initialStamp;
@@ -495,8 +493,7 @@ function closeAreaRefresh() {
   }
 }
 
-// The archive URL carries the same build stamp the frontend uses, so both maps
-// share one Service Worker cache entry (one archive path, no cross-eviction).
+// Versioned archive URL, matching the frontend (one shared SW cache entry).
 function adminVectorSourceUrl() {
   const stamp = String(state.archiveVersion || "").trim();
   return stamp
@@ -729,8 +726,7 @@ function focusRouteFeature(feature) {
   selectRouteFromFeature(feature);
 }
 
-// Mark the route under review with the amber dashed overlay so the reviewed
-// route is visible on the map, not just in the panel.
+// Mark the reviewed route with the amber dashed overlay.
 function highlightRouteOnMap(feature) {
   if (!state.map) {
     return;
@@ -767,8 +763,7 @@ function clearRouteHighlight() {
   }
 }
 
-// Deep link from the console's route suggestions:
-// /admin/override?lineKey=r-... focuses and highlights that route.
+// ?lineKey=... focuses and highlights that route.
 function applyDeepLinkRoute() {
   const params = new URLSearchParams(window.location.search);
   const lineKey = String(params.get("lineKey") || "").trim();
@@ -813,8 +808,7 @@ function collectRouteSearchCorpus() {
       add(feature);
     }
   }
-  // Source features include routes hidden by operator/disabled filters, so the
-  // search can still find them in the current viewport.
+  // Include source (hidden) features so search finds non-rendered routes too.
   if (state.map && state.mapReady) {
     try {
       for (const feature of state.map.querySourceFeatures("routes-vector", { sourceLayer: "routes" })) {
@@ -1276,8 +1270,7 @@ async function ensureFrequencyMetadata(lineKeys) {
   }
 }
 
-// Searching should not depend on the last pan; refresh the coverage underlay for
-// the current viewport so names outside the viewport's rendered tiles appear.
+// Refresh the coverage underlay for the current viewport while searching.
 let underlayRefreshTimer = null;
 function scheduleUnderlayRefresh() {
   if (underlayRefreshTimer) {
@@ -2134,8 +2127,7 @@ async function saveStopOrder() {
     // new override
   }
   payload = { ...payload, stops };
-  // Persist the ordering selection so a manual reorder actually applies on the
-  // frontend (custom order only drives the sequence when the default is Manual).
+  // Persist the ordering selection so a manual reorder applies on the frontend.
   const orderingValue = String(els.routeOrdering?.value || "").trim();
   if (orderingValue) {
     payload.orderingMode = orderingValue;

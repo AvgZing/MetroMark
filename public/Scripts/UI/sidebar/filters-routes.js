@@ -15,8 +15,7 @@ function getShownLines(options = {}) {
       return false;
     }
 
-    // Merged members are represented by their canonical row, but only when the
-    // canonical is actually loaded; otherwise the member stands in for itself.
+    // Member hides under its canonical, but only when the canonical is loaded.
     if (appState.mergeCanonicalByMember instanceof Map) {
       const canonical = appState.mergeCanonicalByMember.get(line.lineKey);
       if (canonical && appState.mergeCanonicalPresent instanceof Set && appState.mergeCanonicalPresent.has(canonical)) {

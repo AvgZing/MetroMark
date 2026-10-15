@@ -13,7 +13,7 @@
  * HTTPS or http://localhost.
  */
 
-const VERSION = "24";
+const VERSION = "26";
 const APP_SHELL_CACHE = `metromark-shell-v${VERSION}`;
 const TILES_CACHE = `metromark-tiles-v${VERSION}`;
 const RUNTIME_CACHE = `metromark-runtime-v${VERSION}`;
@@ -102,41 +102,39 @@ self.addEventListener("message", (event) => {
 });
 
 function sliceCachedResponse(response, rangeHeader) {
-  const total = Number(response.headers.get("content-length"));
   const match = /^bytes=(\d*)-(\d*)$/.exec(String(rangeHeader || "").trim());
-  if (!match || !Number.isFinite(total) || total <= 0) {
+  if (!match) {
     return response;
   }
 
   const startText = match[1];
   const endText = match[2];
-
-  let start;
-  let end;
   if (startText === "" && endText === "") {
     return response;
   }
-  if (startText === "") {
-    // Suffix range "bytes=-N": the last N bytes.
-    const suffix = Number(endText);
-    start = Math.max(0, total - suffix);
-    end = total - 1;
-  } else {
-    start = Number(startText);
-    end = endText === "" ? total - 1 : Math.min(Number(endText), total - 1);
-  }
 
-  if (start >= total || start > end) {
-    return new Response(null, {
-      status: 416,
-      headers: {
-        "Content-Range": `bytes */${total}`
-      }
-    });
-  }
+  return response.blob().then((blob) => {
+    const total = blob.size;
+    if (total <= 0) {
+      return new Response(null, { status: 416, headers: { "Content-Range": "bytes */0" } });
+    }
 
-  return response.blob().then((blob) =>
-    new Response(blob.slice(start, end + 1), {
+    let start;
+    let end;
+    if (startText === "") {
+      const suffix = Number(endText);
+      start = Math.max(0, total - suffix);
+      end = total - 1;
+    } else {
+      start = Number(startText);
+      end = endText === "" ? total - 1 : Math.min(Number(endText), total - 1);
+    }
+
+    if (start >= total || start > end) {
+      return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${total}` } });
+    }
+
+    return new Response(blob.slice(start, end + 1), {
       status: 206,
       headers: {
         "Content-Type": response.headers.get("content-type") || "application/x-protobuf",
@@ -144,8 +142,8 @@ function sliceCachedResponse(response, rangeHeader) {
         "Content-Range": `bytes ${start}-${end}/${total}`,
         "Accept-Ranges": "bytes"
       }
-    })
-  );
+    });
+  });
 }
 
 // Respect mobile data-saver / slow connections: skip the one-time full-archive
@@ -168,35 +166,25 @@ async function handleTilesRequest(request, url) {
   const cache = await caches.open(TILES_CACHE);
   const range = request.headers.get("range");
 
-  // The cache key includes the archive build stamp, so a rebuilt archive is a
-  // different entry: bytes and PMTiles directory always come from the same
-  // build. Serving slices of one build against another build's directory is
-  // what made routes vanish after a harvest until the app was restarted.
+  // Keyed by build stamp so a rebuilt archive never mixes bytes with its directory.
   const cacheKey = tilesCacheKey(url);
   let cached = await cache.match(cacheKey);
 
-  // A previously poisoned cache entry (empty/short body cached mid-rebuild)
-  // must never be served: purge it and fall through to a fresh fetch.
+  // A previously poisoned/empty cache entry must never be served.
   if (cached && cached.ok && !looksLikeArchiveSize(cached.headers.get("content-length"))) {
     await cache.delete(cacheKey);
     cached = undefined;
   }
 
   if (cached && cached.ok) {
-    if (range) {
-      return sliceCachedResponse(cached, range);
-    }
-    return cached;
+    return range ? sliceCachedResponse(cached, range) : cached;
   }
 
   if (!shouldPrefetchFullArchive()) {
-    // Slow/data-saver connection and no cached archive: pass the range request
-    // straight through. Never cache partial (206) responses.
     return fetch(request);
   }
 
-  // Miss: fetch the FULL archive (no Range header so the complete body is
-  // cached), store it once under this build's key, then satisfy the request.
+  // Miss: fetch the full archive (no Range), cache it under this build's key.
   const fullRequest = new Request(url.href, {
     method: "GET",
     headers: {
@@ -206,41 +194,27 @@ async function handleTilesRequest(request, url) {
 
   try {
     const networkResponse = await fetch(fullRequest);
-    if (networkResponse.ok) {
-      // Validate the PMTiles magic before caching, so a truncated/HTML error
-      // body can never be stored and then served as an empty archive.
-      const usable = await archiveResponseUsable(networkResponse.clone());
-      if (usable) {
-        await cache.put(cacheKey, networkResponse.clone());
-        await dropOtherArchiveEntries(cache, cacheKey);
-      } else {
-        // Do not cache a bad body. The client's zero-route detection + backfill
-        // will rebuild and produce a new stamp to refetch.
-        return networkResponse;
+    // Probe separately (reading a clone can disturb the tee); never return a 200 to a ranged request.
+    const validSize =
+      networkResponse.ok && looksLikeArchiveSize(networkResponse.headers.get("content-length"));
+    if (validSize && (await archiveMagicValid(url))) {
+      await cache.put(cacheKey, networkResponse.clone());
+      await dropOtherArchiveEntries(cache, cacheKey);
+      const fresh = await cache.match(cacheKey);
+      if (fresh) {
+        return range ? sliceCachedResponse(fresh, range) : fresh;
       }
     }
-
-    const fresh = await cache.match(cacheKey);
-    if (fresh) {
-      if (range) {
-        return sliceCachedResponse(fresh, range);
-      }
-      return fresh;
-    }
-
-    return networkResponse;
+    return fetch(request);
   } catch (error) {
     if (cached) {
-      if (range) {
-        return sliceCachedResponse(cached, range);
-      }
-      return cached;
+      return range ? sliceCachedResponse(cached, range) : cached;
     }
-    throw error;
+    return fetch(request);
   }
 }
 
-// "PMTiles" magic (patched from p7l0) — a valid v3 archive starts with it.
+// "PMTiles" magic bytes; a valid v3 archive starts with them.
 function archiveMagicOk(bytes) {
   return (
     bytes &&
@@ -256,24 +230,21 @@ function archiveMagicOk(bytes) {
 }
 
 function looksLikeArchiveSize(contentLength) {
+  if (contentLength === null || contentLength === undefined || contentLength === "") {
+    return true;
+  }
   const length = Number(contentLength);
-  // No length header: don't judge. Otherwise require more than a header minimum.
   return !Number.isFinite(length) || length >= 128;
 }
 
-async function archiveResponseUsable(response) {
-  if (!looksLikeArchiveSize(response.headers.get("content-length"))) {
-    return false;
-  }
+// Ranged probe so validation never disturbs the response we cache.
+async function archiveMagicValid(url) {
   try {
-    const reader = response.body.getReader();
-    const { value } = await reader.read();
-    try {
-      await reader.cancel();
-    } catch {
-      // ignore
+    const probe = await fetch(new Request(url, { headers: { Range: "bytes=0-15" } }));
+    if (!probe.ok && probe.status !== 206) {
+      return false;
     }
-    return archiveMagicOk(value);
+    return archiveMagicOk(new Uint8Array(await probe.arrayBuffer()));
   } catch {
     return false;
   }

@@ -33,8 +33,7 @@ router.get("/catalog/cities", async (req, res) => {
   res.json({ cities, published });
 });
 
-// Full route geometry for a curated city, so the client can render a city's
-// routes from a persistent source instead of streaming tiles that unload.
+// Full route geometry for a curated city (persistent city-mode source).
 router.get("/catalog/cities/:slug/geometry", async (req, res) => {
   const slug = String(req.params.slug || "").trim();
   if (!slug) {

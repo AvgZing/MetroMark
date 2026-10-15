@@ -474,10 +474,7 @@ function addMapRouteLayers(map) {
   addCityRouteLayers(map);
 }
 
-// City mode renders from the persistent GeoJSON source ("routes") using the
-// existing routes-* geojson layers (see CITY_GEOJSON_LAYERS in city-geometry.js),
-// which mirror the vector styling at city zoom. This adds only the hit layer
-// those routes need for click/hover; the rest are toggled by visibility.
+// City mode shows the routes-* GeoJSON layers; this adds the hit layer they need.
 function addCityRouteLayers(map) {
   try {
     map.addLayer(

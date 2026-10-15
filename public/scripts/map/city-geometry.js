@@ -1,7 +1,3 @@
-// City mode renders routes from a persistent GeoJSON source so a city's network
-// does not clip/unload as the viewport moves (unlike Globe View's tile stream).
-// Globe View is untouched: everything here is gated on an explicit active city.
-
 var CITY_GEOJSON_LAYERS = [
   "routes-background-casing",
   "routes-background-main",
@@ -34,14 +30,10 @@ function setLayerVisible(layerId, visible) {
   }
 }
 
-// Switching the route source changes which features feature-state applies to, so
-// force the metadata + feature-state rebuilds to run rather than signature-skip.
+// Per-feature state cache is keyed by id only, so clear it when the source swaps.
 function invalidateRouteRebuilds() {
   appState.lastTileMetadataSignature = "";
   appState.lastMapFeatureStateSignature = "";
-  // The per-feature state cache is keyed by feature id only (not by source), so
-  // it must be cleared on a source switch or syncMapFeatureStates skips applying
-  // feature-state to the new source.
   appState.mapRouteFeatureStateCache = new Map();
   appState.mapStopFeatureStateCache = new Map();
 }
@@ -98,16 +90,12 @@ function applyGlobeSourceMode() {
   invalidateRouteRebuilds();
 }
 
-// Rebuild route metadata + re-apply feature-state to the now-active source.
-// Runs synchronously (not via the debounced scheduler) so the swap is atomic.
 function refreshRouteRendering() {
   if (typeof rebuildLineMetadataFromTiles === "function") {
     rebuildLineMetadataFromTiles();
   }
 }
 
-// Switch the route source based on the active city. Falls back to the tile path
-// whenever geometry cannot be loaded, so routes never disappear.
 async function applyCityGeometryMode() {
   if (!appState.map || !appState.mapReady) {
     return;
@@ -127,7 +115,6 @@ async function applyCityGeometryMode() {
   }
   const features = entry?.featureCollection?.features;
   if (!Array.isArray(features) || !features.length) {
-    // Keep the tile renderer as a fallback rather than showing nothing.
     applyGlobeSourceMode();
     refreshRouteRendering();
     return;

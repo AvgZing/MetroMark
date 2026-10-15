@@ -205,10 +205,8 @@ async function ensureSharded() {
 
     const allNames = fs.existsSync(GEO_DIR) ? fs.readdirSync(GEO_DIR) : [];
 
-    // Shards present but no manifest: rebuild the manifest from the shards.
-    // Shard files must never be treated as legacy inputs -- that path wrote the
-    // shards back and then unlinked them (the same filenames), wiping the archive
-    // and making routes vanish after a harvest until the process restarted.
+    // Shards without a manifest: rebuild the manifest. Never treat shards as
+    // legacy inputs, or this path unlinks them and wipes the archive.
     if (allNames.some((name) => isShardFile(name))) {
       const counts = Array.from({ length: SHARD_COUNT }, (_, i) => {
         const file = shardFileName(i);
@@ -502,11 +500,8 @@ async function runBackfill(bboxArray, options = {}) {
     };
 
     let built = null;
-    // A client only requests a backfill when its archive rendered no routes for
-    // an area the coverage probe says has transit. Rebuild whenever we fetched
-    // anything (even if every key already existed in the shards) so the archive
-    // version changes and the client swaps to the fresh source instead of
-    // deadlocking on "routes never appear until restart".
+    // Always rebuild when anything was fetched so the archive version changes
+    // and the client stops retrying against a stale source.
     if (features.length > 0 || totalRoutesInArchive() === 0) {
       built = await buildPmtiles({ log: { log: () => {} } });
     }
