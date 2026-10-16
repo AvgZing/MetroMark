@@ -75,7 +75,7 @@ MapLibre "routes-vector" source (pmtiles:// protocol) → routes/casing/hit laye
 ```
 
 **Client-side flow:**
-1. Map loads the `routes-vector` source from `pmtiles:///api/tiles/routes.pmtiles` (Range requests; the service worker caches the archive and serves 206 slices).
+1. Map loads the `routes-vector` source from `pmtiles:///api/tiles/routes.pmtiles` (Range requests). The service worker passes the archive through untouched; PMTiles drives its own ranges and the browser HTTP cache handles them (`Cache-Control` + ETag from the server).
 2. Route geometry renders as vector tiles; feature-state (`visible`/`focused`) drives styling.
 3. `vector-metadata.js` merges `route_metadata` (name, color, headway, stop count) into rendered feature properties; `lineSummaries` power the sidebar list.
 4. Stops are GeoJSON on the `stops` source, loaded on demand per focused route via `/api/transit/route-stops`.
@@ -95,8 +95,7 @@ render **zero** routes until the app was restarted.
 
 - `GET /api/tiles/archive-version` returns `{ version: "<mtimeMs>-<size>", size, mtimeMs }` (`no-store`).
 - The client stamps the vector source URL: `pmtiles:///api/tiles/routes.pmtiles?v=<version>`, fetched before the map is created (`fetchArchiveVersion`) and re-synced by `startArchiveVersionWatch()` (60s interval + `visibilitychange`). On change, `syncArchiveVersion()` adopts the new stamp and `reloadVectorSource()` calls `setUrl` — no page reload.
-- The Service Worker caches the full archive **keyed on the stamped URL** and keeps only one body (`dropOtherArchiveEntries`), so slices and directory always come from the same build. It never serves the build stamp from the API cache.
-- The Service Worker `VERSION` must be bumped whenever this caching strategy changes, since cache names embed it and stale caches are only purged when the name changes.
+- The Service Worker must **not** intercept `/api/tiles/routes.pmtiles`: PMTiles owns its range requests and the browser HTTP cache keys them on the stamped URL. An earlier SW-side full-archive cache stalled first loads for the whole archive download and raced parallel range requests; it was removed.
 - Repeated views are throttled client-side (coarse-bbox dedup + cooldown) and deduped server-side by `line_key`.
 
 **Key behavior:**

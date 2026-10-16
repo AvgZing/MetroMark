@@ -2,11 +2,10 @@
  * MetroMark service worker
  *
  * 1. Precache the app shell (index.html, CSS, JS) on install.
- * 2. Range-aware cache for /api/tiles/routes.pmtiles: serve 206 slices from the
- *    cached full archive; on cache miss fetch the FULL body (no Range header),
- *    cache it once, then answer the request from the cache.
- * 3. Stale-while-revalidate for static assets; network-first for API routes
- *    outside the tile archive.
+ * 2. Pass the PMTiles archive (/api/tiles/routes.pmtiles) straight through:
+ *    PMTiles drives its own HTTP range requests and the browser HTTP cache
+ *    handles them. The SW must not intercept, cache, or reshape those bytes.
+ * 3. Stale-while-revalidate for static assets; network-first for API routes.
  * 4. skipWaiting() on install; clients.claim() on activate.
  *
  * Note: service workers require a secure context. Registration only works on
@@ -15,7 +14,6 @@
 
 const VERSION = "56";
 const APP_SHELL_CACHE = `metromark-shell-v${VERSION}`;
-const TILES_CACHE = `metromark-tiles-v${VERSION}`;
 const RUNTIME_CACHE = `metromark-runtime-v${VERSION}`;
 const API_CACHE = `metromark-api-v${VERSION}`;
 const TILES_PATHNAME = "/api/tiles/routes.pmtiles";
@@ -85,7 +83,7 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      const keep = new Set([APP_SHELL_CACHE, TILES_CACHE, RUNTIME_CACHE, API_CACHE]);
+      const keep = new Set([APP_SHELL_CACHE, RUNTIME_CACHE, API_CACHE]);
       const keys = await caches.keys();
       await Promise.all(
         keys.filter((key) => !keep.has(key)).map((key) => caches.delete(key))
@@ -100,174 +98,6 @@ self.addEventListener("message", (event) => {
     self.skipWaiting();
   }
 });
-
-function sliceCachedResponse(response, rangeHeader) {
-  const match = /^bytes=(\d*)-(\d*)$/.exec(String(rangeHeader || "").trim());
-  if (!match) {
-    return response;
-  }
-
-  const startText = match[1];
-  const endText = match[2];
-  if (startText === "" && endText === "") {
-    return response;
-  }
-
-  return response.blob().then((blob) => {
-    const total = blob.size;
-    if (total <= 0) {
-      return new Response(null, { status: 416, headers: { "Content-Range": "bytes */0" } });
-    }
-
-    let start;
-    let end;
-    if (startText === "") {
-      const suffix = Number(endText);
-      start = Math.max(0, total - suffix);
-      end = total - 1;
-    } else {
-      start = Number(startText);
-      end = endText === "" ? total - 1 : Math.min(Number(endText), total - 1);
-    }
-
-    if (start >= total || start > end) {
-      return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${total}` } });
-    }
-
-    return new Response(blob.slice(start, end + 1), {
-      status: 206,
-      headers: {
-        "Content-Type": response.headers.get("content-type") || "application/x-protobuf",
-        "Content-Length": String(end - start + 1),
-        "Content-Range": `bytes ${start}-${end}/${total}`,
-        "Accept-Ranges": "bytes"
-      }
-    });
-  });
-}
-
-// Respect mobile data-saver / slow connections: skip the one-time full-archive
-// pre-cache so a quick browse doesn't download the whole archive. The map still
-// works (range requests pass through to the network); the archive is only fully
-// cached when it's cheap to do so.
-function shouldPrefetchFullArchive() {
-  try {
-    const connection = self.navigator && self.navigator.connection;
-    if (connection && (connection.saveData === true || connection.effectiveType === "slow-2g" || connection.effectiveType === "2g")) {
-      return false;
-    }
-  } catch {
-    // Unknown — default to prefetching.
-  }
-  return true;
-}
-
-async function handleTilesRequest(request, url) {
-  const cache = await caches.open(TILES_CACHE);
-  const range = request.headers.get("range");
-
-  // Keyed by build stamp so a rebuilt archive never mixes bytes with its directory.
-  const cacheKey = tilesCacheKey(url);
-  let cached = await cache.match(cacheKey);
-
-  // A previously poisoned/empty cache entry must never be served.
-  if (cached && cached.ok && !looksLikeArchiveSize(cached.headers.get("content-length"))) {
-    await cache.delete(cacheKey);
-    cached = undefined;
-  }
-
-  if (cached && cached.ok) {
-    return range ? sliceCachedResponse(cached, range) : cached;
-  }
-
-  if (!shouldPrefetchFullArchive()) {
-    return fetch(request);
-  }
-
-  // Miss: fetch the full archive (no Range), cache it under this build's key.
-  const fullRequest = new Request(url.href, {
-    method: "GET",
-    headers: {
-      Accept: request.headers.get("accept") || ""
-    }
-  });
-
-  try {
-    const networkResponse = await fetch(fullRequest);
-    // Probe separately (reading a clone can disturb the tee); never return a 200 to a ranged request.
-    const validSize =
-      networkResponse.ok && looksLikeArchiveSize(networkResponse.headers.get("content-length"));
-    if (validSize && (await archiveMagicValid(url))) {
-      await cache.put(cacheKey, networkResponse.clone());
-      await dropOtherArchiveEntries(cache, cacheKey);
-      const fresh = await cache.match(cacheKey);
-      if (fresh) {
-        return range ? sliceCachedResponse(fresh, range) : fresh;
-      }
-    }
-    return fetch(request);
-  } catch (error) {
-    if (cached) {
-      return range ? sliceCachedResponse(cached, range) : cached;
-    }
-    return fetch(request);
-  }
-}
-
-// "PMTiles" magic bytes; a valid v3 archive starts with them.
-function archiveMagicOk(bytes) {
-  return (
-    bytes &&
-    bytes.length >= 7 &&
-    bytes[0] === 0x50 &&
-    bytes[1] === 0x4d &&
-    bytes[2] === 0x54 &&
-    bytes[3] === 0x69 &&
-    bytes[4] === 0x6c &&
-    bytes[5] === 0x65 &&
-    bytes[6] === 0x73
-  );
-}
-
-function looksLikeArchiveSize(contentLength) {
-  if (contentLength === null || contentLength === undefined || contentLength === "") {
-    return true;
-  }
-  const length = Number(contentLength);
-  return !Number.isFinite(length) || length >= 128;
-}
-
-// Ranged probe so validation never disturbs the response we cache.
-async function archiveMagicValid(url) {
-  try {
-    const probe = await fetch(new Request(url, { headers: { Range: "bytes=0-15" } }));
-    if (!probe.ok && probe.status !== 206) {
-      return false;
-    }
-    return archiveMagicOk(new Uint8Array(await probe.arrayBuffer()));
-  } catch {
-    return false;
-  }
-}
-
-function tilesCacheKey(url) {
-  const version = url.searchParams.get("v") || "unversioned";
-  return `${TILES_PATHNAME}?v=${version}`;
-}
-
-// Keep a single archive body cached: once a new build is stored, drop the rest.
-async function dropOtherArchiveEntries(cache, keepKey) {
-  try {
-    const keys = await cache.keys();
-    await Promise.all(
-      keys
-        .filter((key) => new URL(key.url).pathname === TILES_PATHNAME && key.url !== keepKey && !key.url.endsWith(keepKey))
-        .map((key) => cache.delete(key))
-    );
-  } catch {
-    // Non-critical
-  }
-}
 
 async function staleWhileRevalidate(request, cacheName) {
   const cache = await caches.open(cacheName);
@@ -371,7 +201,8 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.pathname === TILES_PATHNAME) {
-    event.respondWith(handleTilesRequest(request, url));
+    // Let PMTiles drive its own range requests + HTTP caching. Do not respondWith,
+    // cache, or otherwise reshape the archive bytes.
     return;
   }
 
