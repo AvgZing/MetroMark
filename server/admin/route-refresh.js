@@ -8,9 +8,9 @@ const {
   removeFeaturesFromArchive,
   totalRoutesInArchive
 } = require("../sources/transitland/backfill");
-const { buildPmtiles } = require("../scripts/build/build-pmtiles");
 const { transitlandRequest } = require("../sources/transitland/payload");
 const { refreshRoute, flagRemovedUserData } = require("./reharvest");
+const { scheduleRebuild } = require("./rebuild-job");
 
 const log = createLogger("route-refresh");
 
@@ -104,6 +104,22 @@ async function removeMissingRoute(lineKey, report) {
   log.info("Route refresh removed missing route", { lineKey, userData: counts, flagsOpened: opened });
 }
 
+// A missing route on refresh is NOT removed — Transitland GTFS gaps cause false
+// "missing". Keep it, flag it, and let the admin confirm removal.
+async function flagMissingRoute(lineKey, report) {
+  const userData = await db.countLineKeyUserData([lineKey]);
+  const counts = userData.get(lineKey) || { overrides: 0, reviews: 0, votes: 0 };
+  const opened = await flagRemovedUserData(lineKey, counts);
+  const missingFlagId = await db.openReharvestFlag(
+    "route-missing",
+    `Route ${lineKey} was not found on Transitland during a refresh. It was kept — remove it only if it is truly gone.`,
+    { lineKey }
+  );
+  report.flagsOpened.push(...opened, ...(missingFlagId ? [missingFlagId] : []));
+  report.missing.push({ lineKey, userData: counts });
+  log.info("Route refresh: missing route kept and flagged", { lineKey });
+}
+
 // Refresh one or more routes in a single pass, rebuilding tiles once at the end.
 async function refreshRoutes(lineKeys, options = {}) {
   const t0 = Date.now();
@@ -116,6 +132,7 @@ async function refreshRoutes(lineKeys, options = {}) {
     requested: keys.length,
     refreshed: [],
     removed: [],
+    missing: [],
     failures: [],
     flagsOpened: [],
     merged: { added: 0, updated: 0 },
@@ -124,6 +141,7 @@ async function refreshRoutes(lineKeys, options = {}) {
     totalRoutesInArchive: null,
     elapsedMs: 0
   };
+  const changes = [];
 
   for (const lineKey of keys) {
     let route = null;
@@ -137,7 +155,8 @@ async function refreshRoutes(lineKeys, options = {}) {
 
     if (!route) {
       try {
-        await removeMissingRoute(lineKey, report);
+        await flagMissingRoute(lineKey, report);
+        changes.push(`Missing ${lineKey} (kept for review)`);
       } catch (error) {
         report.failures.push({ lineKey, error: String(error?.message || error) });
       }
@@ -153,17 +172,17 @@ async function refreshRoutes(lineKeys, options = {}) {
       }
       const refreshed = await refreshRoute(lineKey, { refreshHeadway, refreshStops, zoom });
       report.refreshed.push(refreshed);
+      changes.push(`Refreshed ${lineKey}`);
     } catch (error) {
       report.failures.push({ lineKey, error: String(error?.message || error) });
     }
   }
 
   const changed =
-    report.merged.added > 0 || report.merged.updated > 0 || report.removed.length > 0;
-  if (changed || totalRoutesInArchive() === 0) {
-    const built = await buildPmtiles({ log: { log: () => {} } });
-    report.tileCount = built ? built.tileCount : null;
-    report.sizeBytes = built ? built.sizeBytes : null;
+    report.merged.added > 0 || report.merged.updated > 0 || report.removed.length > 0 || report.refreshed.length > 0;
+  report.rebuilding = changed || totalRoutesInArchive() === 0;
+  if (report.rebuilding) {
+    scheduleRebuild(changes);
   }
 
   report.totalRoutesInArchive = totalRoutesInArchive();
@@ -239,9 +258,8 @@ async function removeRoutes(lineKeys, options = {}) {
   }
 
   if (report.removed.length) {
-    const built = await buildPmtiles({ log: { log: () => {} } });
-    report.tileCount = built ? built.tileCount : null;
-    report.sizeBytes = built ? built.sizeBytes : null;
+    scheduleRebuild(report.removed.map((entry) => `Removed ${entry.lineKey}`));
+    report.rebuilding = true;
   }
 
   report.totalRoutesInArchive = totalRoutesInArchive();

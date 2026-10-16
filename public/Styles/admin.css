@@ -578,3 +578,12 @@ pre {
 .suggestion-change-to {
   font-weight: 600;
 }
+
+.ro-tag {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}

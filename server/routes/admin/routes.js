@@ -7,6 +7,7 @@ const {
   searchTransitlandRoutes
 } = require("../../admin/route-refresh");
 const { findMergeCandidates } = require("../../admin/merge-detect");
+const { getRebuildStatus } = require("../../admin/rebuild-job");
 const { getArchiveFeaturesByLineKeys } = require("../../sources/transitland/backfill");
 const { isAdminAuthorized } = require("./auth");
 
@@ -44,6 +45,13 @@ router.get("/admin/routes/search", async (req, res) => {
       detail: String(error?.message || error)
     });
   }
+});
+
+router.get("/admin/archive/rebuild-status", async (req, res) => {
+  if (!(await isAdminAuthorized(req))) {
+    return res.status(403).json({ error: "Admin authorization required." });
+  }
+  return res.json(getRebuildStatus());
 });
 
 router.get("/admin/routes/geometry", async (req, res) => {

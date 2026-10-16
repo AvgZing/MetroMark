@@ -61,19 +61,24 @@ function refreshRouteMergeMaps() {
   }
   appState.mergeMembersByCanonical = membersByCanonical;
   appState.mergeCanonicalByMember = canonicalByMember;
-}
 
-function joinMergedNames(names) {
-  const parts = [];
-  for (const name of names) {
-    for (const piece of String(name || "").split("/")) {
-      const trimmed = piece.trim();
-      if (trimmed && !parts.includes(trimmed)) {
-        parts.push(trimmed);
+  // Combine visited stops onto the canonical (idempotent; unmerging keeps both).
+  if (appState.visitedByLine instanceof Map) {
+    for (const [canonical, members] of membersByCanonical) {
+      const canonicalSet = appState.visitedByLine.get(canonical) instanceof Set
+        ? appState.visitedByLine.get(canonical)
+        : new Set();
+      for (const member of members) {
+        const memberSet = appState.visitedByLine.get(member);
+        if (memberSet instanceof Set) {
+          for (const stationKey of memberSet) {
+            canonicalSet.add(stationKey);
+          }
+        }
       }
+      appState.visitedByLine.set(canonical, canonicalSet);
     }
   }
-  return parts.join(" / ");
 }
 
 function resolveCanonicalLineKey(lineKey) {
@@ -188,16 +193,12 @@ function rebuildLineMetadataFromTiles() {
     appState.cityLineSummariesBySlug = store;
   }
 
-  // Collapse merged routes: the canonical joins names; members hide from the list.
+  // Merged members collapse into the canonical row; the canonical keeps its own
+  // (or overridden) identity — names are not joined.
   for (const [canonical, members] of appState.mergeMembersByCanonical) {
     const canonicalLine = lineByKey.get(canonical);
     if (!canonicalLine) {
       continue;
-    }
-    const group = [canonicalLine, ...members.map((member) => lineByKey.get(member))].filter(Boolean);
-    const mergedName = joinMergedNames(group.map((line) => line.lineName));
-    if (mergedName) {
-      canonicalLine.lineName = mergedName;
     }
     canonicalLine.mergedLineKeys = members.slice();
     for (const member of members) {

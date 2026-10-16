@@ -227,8 +227,24 @@ async function findMergeCandidates(options = {}) {
     });
   }
 
-  candidates.sort((a, b) => (a.reason === b.reason ? a.score - b.score : a.reason === "identical-geometry" ? -1 : 1));
-  return { candidates, scanned: entries.length };
+  // Drop candidates whose routes are already part of one merge group.
+  const overrideRows = await db.listRouteOverrides().catch(() => []);
+  const memberToCanonical = new Map();
+  for (const row of overrideRows) {
+    const members = Array.isArray(row?.payload?.mergedLineKeys) ? row.payload.mergedLineKeys.map(String) : [];
+    for (const member of members) {
+      memberToCanonical.set(member, String(row.line_key || ""));
+    }
+  }
+  const resolveCanonical = (key) => memberToCanonical.get(key) || key;
+  const mergeable = candidates.filter(
+    (candidate) => new Set(candidate.lineKeys.map(resolveCanonical)).size > 1
+  );
+
+  mergeable.sort((a, b) =>
+    a.reason === b.reason ? a.score - b.score : a.reason === "identical-geometry" ? -1 : 1
+  );
+  return { candidates: mergeable, scanned: entries.length };
 }
 
 async function resolveLineKeys(options) {

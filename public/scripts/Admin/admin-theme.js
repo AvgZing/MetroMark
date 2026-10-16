@@ -48,6 +48,15 @@ function applyAdminTheme(theme) {
       console.warn("Could not update admin basemap theme:", e);
     }
   }
+
+  // Keep the route focus mask in step with the theme, like the app's map.
+  if (map && map.getLayer && map.getLayer("focus-dim-layer")) {
+    try {
+      map.setPaintProperty("focus-dim-layer", "fill-color", next === "dark" ? "#0a121c" : "#1f262d");
+    } catch (e) {
+      console.warn("Could not update admin focus mask theme:", e);
+    }
+  }
 }
 
 function toggleAdminTheme() {

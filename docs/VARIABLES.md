@@ -374,6 +374,7 @@ The harvester automates the same requests a user makes (route-stops, headway), c
 ### Admin Route Data API (per-route, matches a user click)
 - **GET `/api/admin/routes/search?q=&bbox=`** - Transitland route search, viewport-scoped
 - **GET `/api/admin/routes/geometry?lineKey=`** - Archive geometry for one route; used by the Map Editor `?lineKey=` deep link to center + highlight a route being reviewed
+- **Map Editor focus model** - Selecting a route sets `focused` feature-state on the `routes-vector` source (must use `promoteId: "line_key"`, matching the app). Non-focused routes draw under `focus-dim-layer` (a `focus-mask` fill); the selected route draws on top via `routes-casing` / `routes-main`
 - **GET `/api/admin/routes/merge-candidates?bbox=&citySlug=`** - Detect routes whose geometry is identical or near-identical (same corridor, either direction), returned as `{ candidates, scanned }`; each candidate lists `lineKeys`, `names`, `reason` (`identical-geometry` / `near-geometry`), `score`, and `suggestedCanonicalKey`
 - **POST `/api/admin/routes/refresh`** / **`/add`** / **`/remove`** - Refresh / add / remove routes (one archive rebuild per batch)
 - **DELETE `/api/admin/overrides/route/:lineKey`** - Delete a route override

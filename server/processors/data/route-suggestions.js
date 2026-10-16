@@ -51,8 +51,9 @@ async function createRouteSuggestion(data = {}) {
     throw new Error("lineKey is required.");
   }
   const payload = sanitizePayload(data.payload);
-  if (!Object.keys(payload).length) {
-    throw new Error("At least one changed field is required.");
+  const note = String(data.note || "").trim().slice(0, 1000);
+  if (!Object.keys(payload).length && !note) {
+    throw new Error("Enter a change or a note.");
   }
 
   const { rows } = await localQuery(
@@ -66,7 +67,7 @@ async function createRouteSuggestion(data = {}) {
       lineKey,
       normalizeText(data.citySlug) || null,
       JSON.stringify(payload),
-      String(data.note || "").trim().slice(0, 1000) || null,
+      note || null,
       normalizeText(data.reporterName) || null,
       normalizeText(data.reporterEmail) || null
     ]

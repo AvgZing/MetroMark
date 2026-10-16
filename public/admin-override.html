@@ -11,10 +11,10 @@
       rel="stylesheet"
     />
     <link href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/Styles/base.css?v=2026-10-11" />
-    <link rel="stylesheet" href="/Styles/map.css?v=2026-10-11" />
-    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-10-11" />
-    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-10-11" />
+    <link rel="stylesheet" href="/Styles/base.css?v=2026-10-15" />
+    <link rel="stylesheet" href="/Styles/map.css?v=2026-10-15" />
+    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-10-15" />
+    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-10-15" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -168,8 +168,29 @@
           </select>
           <div id="cityPanelBody" hidden>
             <p class="microcopy" id="cityPanelSummary"></p>
-            <div class="override-actions">
-              <button id="cityPreviewBtn" class="btn btn-subtle" type="button">Preview preset on map</button>
+            <label class="switch" title="Show only this city's routes on the map">
+              <input id="cityPreviewCb" type="checkbox" />
+              <span class="switch-slider"></span>
+              <span>Preview preset on map</span>
+            </label>
+
+            <h3 class="city-subhead">Name &amp; visibility</h3>
+            <p class="microcopy">
+              The display name is free text (e.g. "Seattle, WA, USA"). Slug and center/zoom are set
+              when the city is created.
+            </p>
+            <div class="city-meta">
+              <input id="cityMetaName" type="text" placeholder="Display name (e.g. Seattle, WA, USA)" />
+              <div class="override-actions">
+                <button id="cityMetaSaveBtn" class="btn" type="button">Update Name</button>
+              </div>
+              <label class="switch" title="Published cities are visible to users">
+                <input id="cityMetaPublished" type="checkbox" />
+                <span class="switch-slider"></span>
+                <span>Published (visible to users)</span>
+              </label>
+              <button id="cityMetaPublishBtn" class="btn" type="button" hidden></button>
+              <p class="status" id="cityMetaStatus"></p>
             </div>
             <div id="citySelectedRoute" class="city-member-row is-selected" hidden></div>
 
@@ -227,13 +248,16 @@
         </div>
 
         <div class="panel">
-          <h2>Operators (batch hide)</h2>
+          <h2>Manage private operators</h2>
           <p class="microcopy">
-            Toggle an operator to hide all of its routes by default; users can turn them back on.
-            Select a route on the map and use "Hide operator" in the route editor to hide a single operator.
+            Settings. Toggle an operator to hide all of its routes by default; users can reveal them.
           </p>
           <div class="override-actions">
-            <button id="operatorPreviewAllBtn" class="btn btn-subtle" type="button">Preview hidden operators</button>
+            <label class="switch" title="Show the map as users see it (hidden operators applied)">
+              <input id="operatorPreviewAllCb" type="checkbox" />
+              <span class="switch-slider"></span>
+              <span>Preview as users see it</span>
+            </label>
           </div>
           <div id="operatorList" class="operator-review-list">
             <p class="microcopy">Loading operators for the visible area...</p>
@@ -241,48 +265,73 @@
         </div>
 
         <div class="panel">
-          <h2>Batch by Mode</h2>
+          <h2>Problematic geometries</h2>
           <p class="microcopy">
-            Same effect as operator rules but by mode: mark every route of a mode in the viewport as
-            disabled-by-default (users can re-enable), or clear it. Handy for hiding a whole
-            category such as cable cars.
+            Routes hidden for users by default because their geometry/route data is unreliable.
+            Flag or unflag the selected route here; preview toggles the user view.
           </p>
-          <div class="row">
-            <label for="batchModeSelect">Mode</label>
-            <select id="batchModeSelect">
-              <option value="">All modes</option>
-              <option value="0">Tram</option>
-              <option value="1">Metro</option>
-              <option value="2">Rail</option>
-              <option value="3">Bus</option>
-              <option value="4">Ferry</option>
-              <option value="5">Cable Tram</option>
-              <option value="6">Aerial</option>
-              <option value="7">Funicular</option>
-              <option value="11">Trolleybus</option>
-              <option value="12">Monorail</option>
-            </select>
-          </div>
           <div class="override-actions">
-            <button id="batchHideBtn" class="btn" type="button">Hide matching by default</button>
-            <button id="batchShowBtn" class="btn btn-subtle" type="button">Show matching</button>
+            <label class="switch" title="Show the map as users see it (problematic geometries hidden)">
+              <input id="problematicPreviewCb" type="checkbox" checked />
+              <span class="switch-slider"></span>
+              <span>Preview user view</span>
+            </label>
           </div>
-          <p class="status" id="batchStatus"></p>
+          <div id="problematicSelectedRow" class="review-list"></div>
+          <div id="problematicList" class="review-list"></div>
+          <p class="status" id="problematicStatus"></p>
         </div>
 
         <div class="panel">
-          <h2>Possible duplicate routes</h2>
+          <h2>Review queue <span id="reviewQueueBadge" class="panel-badge" hidden></span></h2>
           <p class="microcopy">
-            Routes whose geometry matches (same corridor, either direction) but are counted
-            separately — e.g. two directions of one ferry. Merge to show them as one line.
+            Routes flagged by reharvest, user issue reports, user route suggestions, and duplicate
+            detection. Open a route on the map to review it, then act here.
           </p>
           <div class="override-actions">
-            <button id="findMergeCandidatesBtn" class="btn btn-subtle" type="button">Find in view</button>
+            <button id="reloadReviewQueueBtn" class="btn btn-subtle" type="button">Reload</button>
+          </div>
+          <h3 class="review-subhead">Reharvest flags</h3>
+          <div id="flagsReviewList" class="review-list"></div>
+          <h3 class="review-subhead">User issue reports</h3>
+          <div id="issuesReviewList" class="review-list"></div>
+          <h3 class="review-subhead">Route suggestions</h3>
+          <div id="suggestionsReviewList" class="review-list"></div>
+          <h3 class="review-subhead">Duplicate routes</h3>
+          <p class="microcopy">
+            Routes whose geometry matches (same corridor, either direction) but are counted separately —
+            e.g. two directions of one ferry.
+          </p>
+          <div class="override-actions">
+            <button id="findMergeCandidatesBtn" class="btn btn-subtle" type="button">Scan current viewport</button>
           </div>
           <div id="mergeCandidatesList" class="merge-candidates-list">
-            <p class="microcopy">Pan the map and click "Find in view", or wait for the automatic check.</p>
+            <p class="microcopy">Pan the map and scan, or wait for the automatic check.</p>
           </div>
           <p class="status" id="mergeCandidatesStatus"></p>
+          <p class="status" id="reviewQueueStatus"></p>
+        </div>
+
+        <div class="panel">
+          <h2>Map operations</h2>
+          <p class="microcopy">
+            <strong>Refresh this area</strong> re-harvests every route in the current viewport from
+            Transitland (admin overrides are preserved). <strong>Reload layers</strong> just re-fetches
+            the tile archive for your session — nothing changes for users.
+          </p>
+          <div class="override-actions">
+            <button id="areaRefreshBtn" class="btn" type="button">Refresh this area</button>
+            <button id="refreshMapBtn" class="btn btn-subtle" type="button">Reload layers</button>
+          </div>
+          <p class="microcopy">
+            System-level — affects everyone: <strong>Rebuild all tiles</strong> regenerates the entire
+            tile archive (emergency only); <strong>Back up</strong> snapshots the nonrecoverable
+            admin/user data.
+          </p>
+          <div class="override-actions">
+            <button id="rebuildTilesBtn" class="btn btn-danger" type="button">Rebuild all tiles for everyone (emergency)</button>
+            <button id="runBackupBtn" class="btn btn-subtle" type="button">Back up nonrecoverable data</button>
+          </div>
         </div>
 
         <div class="panel">
@@ -294,15 +343,16 @@
       </aside>
 
       <main class="override-map-stage">
-        <div class="map-overlay-controls" role="group" aria-label="Map controls">
-          <button id="areaRefreshBtn" class="btn" type="button">Refresh this area</button>
-          <button id="refreshMapBtn" class="btn btn-subtle" type="button">Reload layers</button>
-        </div>
         <div id="overrideMap"></div>
 
         <div id="adminActionToast" class="admin-action-toast" role="status" hidden>
           <span id="adminActionToastText"></span>
           <button id="adminActionToastClose" class="admin-action-toast-close" type="button" aria-label="Dismiss">×</button>
+        </div>
+
+        <div id="rebuildIndicator" class="rebuild-indicator" role="status" hidden>
+          <p class="rebuild-indicator-title" id="rebuildIndicatorTitle">Rebuilding tiles…</p>
+          <ul id="rebuildIndicatorChanges" class="rebuild-indicator-changes"></ul>
         </div>
 
         <div class="area-refresh-panel" id="areaRefreshPanel" hidden>
@@ -340,7 +390,8 @@
                 </div>
               </div>
               <div class="admin-line-editor-actions">
-                <button id="discardRouteBtn" class="btn admin-line-editor-close" type="button">Close</button>
+                <button id="routeEditZoomBtn" class="btn line-view-nav" type="button" title="Center the map on this route">Zoom</button>
+                <button id="discardRouteBtn" class="btn btn-primary line-view-nav" type="button">Close</button>
               </div>
             </header>
 
@@ -360,9 +411,6 @@
                 <input id="routeName" type="text" placeholder="Display name" />
                 <label for="routeOperator">Operator</label>
                 <input id="routeOperator" type="text" placeholder="Operator name" />
-                <div class="override-actions">
-                  <button id="hideOperatorBtn" class="btn btn-subtle" type="button" hidden>Hide operator</button>
-                </div>
               </div>
 
               <div class="admin-line-editor-section">
@@ -373,9 +421,10 @@
                 </p>
                 <div id="mergeRoutesList" class="merge-routes-list"></div>
                 <div class="stop-add-row merge-add-row">
-                  <input id="mergeRouteKeyInput" type="text" placeholder="Other route key (e.g. r-…-404)" />
+                  <input id="mergeRouteKeyInput" type="text" placeholder="Search a route name or key…" />
                   <button id="addMergeRouteBtn" class="btn btn-subtle" type="button">Merge route</button>
                 </div>
+                <div id="mergeRouteKeyResults" class="admin-route-search-results"></div>
                 <p class="status" id="mergeRouteStatus"></p>
               </div>
 
@@ -397,18 +446,10 @@
                 </select>
                 <label for="routeColor">Color</label>
                 <input id="routeColor" type="text" placeholder="#d44d1f" />
-                <label for="routeOrdering">Stop Ordering Default</label>
-                <select id="routeOrdering">
-                  <option value="">Auto</option>
-                  <option value="geometry-revised">Main</option>
-                  <option value="legacy-geometry">U-Shape</option>
-                  <option value="fractions">Loop</option>
-                  <option value="manual">Manual (custom stop order)</option>
-                </select>
                 <label for="routeFrequency">Frequency category</label>
                 <select id="routeFrequency">
-                  <option value="">Keep current</option>
-                  <option value="__default__">Default (clear override)</option>
+                  <option value="">Keep current (don't change)</option>
+                  <option value="__default__">Reset to automatic (clear override)</option>
                   <option value="frequent">Frequent (Up to 10m)</option>
                   <option value="regular">Regular (11-29m)</option>
                   <option value="local">Local (30m+)</option>
@@ -417,21 +458,22 @@
                 <label for="routeFrequencyMinutes">Peak headway (minutes)</label>
                 <input id="routeFrequencyMinutes" type="number" min="0" step="1" placeholder="Derived from category if blank" />
                 <p class="field-hint">The category reads this number; editing one updates the other.</p>
-                <div class="review-setting">
-                  <label>
-                    <input id="routeProblematic" type="checkbox" />
-                    Disabled by default (problematic geometry)
-                  </label>
-                  <p class="setting-note">Hidden for users unless they enable "Show problematic geometries".</p>
-                </div>
               </div>
 
               <div class="admin-line-editor-section">
                 <h3>Stops / Track Routing</h3>
                 <p class="microcopy">
-                  Edit names and coordinates any time. Reordering, adding, and removing stops are
+                  Edit names and coordinates any time. Reordering, adding, and deleting stops are
                   unlocked when Stop Ordering Default is set to Manual.
                 </p>
+                <label for="routeOrdering">Stop Ordering Default</label>
+                <select id="routeOrdering">
+                  <option value="">Auto</option>
+                  <option value="geometry-revised">Main</option>
+                  <option value="legacy-geometry">U-Shape</option>
+                  <option value="fractions">Loop</option>
+                  <option value="manual">Manual (drag to reorder)</option>
+                </select>
                 <p class="stop-order-lock-note" id="stopOrderLockNote" hidden>
                   Stops are shown in automatic order. Set Stop Ordering Default to Manual to drag and reorder.
                 </p>
@@ -456,9 +498,11 @@
                   <p class="microcopy">Load a route to see its stops.</p>
                 </div>
                 <div class="override-actions">
-                  <button id="saveStopOrderBtn" class="btn" type="button">Save stop changes</button>
-                  <button id="clearStopOrderBtn" class="btn btn-subtle" type="button">Clear Custom Order</button>
+                  <button id="saveStopOrderBtn" class="btn" type="button">Save Changes</button>
+                  <button id="clearStopChangesBtn" class="btn btn-subtle" type="button">Clear Changes</button>
+                  <button id="clearStopOrderBtn" class="btn btn-subtle" type="button">Reset All Changes</button>
                 </div>
+                <p class="field-hint">These save the stop list, order, and stop ordering default. Other route fields are saved with Save Changes at the bottom.</p>
               </div>
 
               <div class="admin-line-editor-section">
@@ -475,9 +519,9 @@
               </div>
 
               <div class="admin-line-editor-section admin-line-editor-actions-row">
-                <button id="saveRouteBtn" class="btn" type="button">Save Route Edits</button>
-                <button id="resetRouteBtn" class="btn btn-subtle" type="button">Reset changes</button>
-                <button id="deleteRouteOverrideBtn" class="btn btn-danger" type="button">Delete Override</button>
+                <button id="saveRouteBtn" class="btn" type="button" title="Save these changes to the route">Save Changes</button>
+                <button id="resetRouteBtn" class="btn btn-subtle" type="button" title="Discard unsaved edits">Clear Changes</button>
+                <button id="deleteRouteOverrideBtn" class="btn btn-danger" type="button" title="Delete this route's override entirely">Reset All</button>
               </div>
               <p class="status" id="routeEditStatus"></p>
             </div>
@@ -486,12 +530,28 @@
       </main>
     </div>
 
+    <div id="adminDesktopNotice" class="admin-desktop-notice">
+      <div class="admin-desktop-notice-body">
+        <h2>Map Editor is desktop-only</h2>
+        <p>Please use a desktop or a landscape tablet. The Map Editor needs a wide screen to lay out the map and the edit panels.</p>
+      </div>
+    </div>
+
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
     <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
-    <script src="/Scripts/Map/basemap-config.js?v=2026-10-11" defer></script>
-    <script src="/Scripts/Admin/admin-theme.js?v=2026-10-11" defer></script>
-    <script src="/Scripts/Shared/constants.js?v=2026-10-11" defer></script>
-    <script src="/Scripts/Map/viewport-cache.js?v=2026-10-11" defer></script>
-    <script src="/Scripts/Admin/admin-override.js?v=2026-10-11" defer></script>
+    <script src="/Scripts/Map/basemap-config.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/Shared/constants.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/Map/viewport-cache.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/UI/line-view/spatial.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/UI/line-view/stop-helpers.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/UI/line-view/ranking.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/UI/line-view/branch-detection.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/UI/line-view/method-main.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/UI/line-view/method-ushape.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/UI/line-view/method-loop.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/UI/line-view/method-auto.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/UI/line-view/stop-ordering.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/Admin/admin-override.js?v=2026-10-15" defer></script>
   </body>
 </html>

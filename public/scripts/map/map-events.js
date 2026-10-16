@@ -42,6 +42,10 @@ function bindMapInteractionEvents(map) {
         if (!line || !lineIsVisible(line) || !candidateLineKey || seenLineKeys.has(candidateLineKey)) {
           continue;
         }
+        // Merged members collapse into their canonical: don't list them here.
+        if (appState.mergeCanonicalByMember instanceof Map && appState.mergeCanonicalByMember.has(candidateLineKey)) {
+          continue;
+        }
 
         seenLineKeys.add(candidateLineKey);
         overlappedLines.push(line);

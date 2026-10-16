@@ -123,6 +123,9 @@ function onRouteHoverMove(event) {
     if (!line || !lineIsVisible(line) || uniqueLines.has(line.lineKey)) {
       continue;
     }
+    if (appState.mergeCanonicalByMember instanceof Map && appState.mergeCanonicalByMember.has(line.lineKey)) {
+      continue;
+    }
     uniqueLines.set(line.lineKey, line);
   }
 
@@ -152,7 +155,10 @@ function onRouteHoverLeave() {
 function initializeMap() {
   appState.map = new maplibregl.Map({
     container: "map",
-    style: createMapStyle(),
+    style:
+      typeof basemapOldRequested === "function" && basemapOldRequested()
+        ? basemapOldStyleUrl(basemapOldTheme())
+        : createMapStyle(),
     center: [-122.335, 47.608],
     zoom: 9.5,
     maxPitch: 80,
@@ -192,14 +198,18 @@ function initializeMap() {
   });
 
   appState.map.on("style.load", () => {
-    appState.map.setProjection({ type: "globe" });
-    appState.map.setFog({
-      color: "#dce4e7",
-      "high-color": "#f5f8ff",
-      "horizon-blend": 0.05,
-      "space-color": "#0f1b22",
-      "star-intensity": 0.03
-    });
+    if (typeof appState.map.setProjection === "function") {
+      appState.map.setProjection({ type: "globe" });
+    }
+    if (typeof appState.map.setFog === "function") {
+      appState.map.setFog({
+        color: "#dce4e7",
+        "high-color": "#f5f8ff",
+        "horizon-blend": 0.05,
+        "space-color": "#0f1b22",
+        "star-intensity": 0.03
+      });
+    }
   });
 
   appState.map.on("load", () => {
@@ -219,6 +229,9 @@ function initializeMap() {
     }
 
     addMapRouteLayers(appState.map);
+    if (typeof basemapOldRequested === "function" && basemapOldRequested() && typeof applyOldBasemapPalette === "function") {
+      applyOldBasemapPalette(appState.map, basemapOldTheme());
+    }
     bindMapInteractionEvents(appState.map);
 
     if (typeof scheduleMetadataLoad === "function") {

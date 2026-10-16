@@ -324,9 +324,16 @@ body[data-theme="dark"] .line-view-card {
   color: var(--muted);
 }
 
-.line-view-stop-list {
+.line-view-scroll {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.line-view-stop-list {
+  flex: 0 0 auto;
   padding-right: 6px;
   display: flex;
   flex-direction: column;
@@ -460,4 +467,88 @@ body.colorblind-mode .line-view-stop-row.is-visited .line-view-stop-dot::after {
     width: min(420px, 46vw);
     min-width: 300px;
   }
+}
+
+/* Suggest changes: footer trigger plus a collapsible inline editor. The [hidden]
+   rule must beat the .suggest-form display rule or the form shows everywhere. */
+.line-view-suggest {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.line-view-suggest-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted, #6b7280);
+}
+
+.line-view-suggest-link {
+  display: inline;
+  width: auto;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.line-view-suggest-link:hover {
+  color: var(--accent, inherit);
+}
+
+.suggest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+}
+
+.suggest-form[hidden] {
+  display: none;
+}
+
+.suggest-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.suggest-form-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+#suggestModalBody .suggest-form {
+  padding: 0;
+  border: none;
+}
+
+/* Suggest form: stack labels above full-width fields (the textarea was inline). */
+.suggest-form label {
+  display: block;
+}
+
+.suggest-form input,
+.suggest-form select,
+.suggest-form textarea {
+  width: 100%;
+}
+
+.suggest-form textarea {
+  min-height: 64px;
+  resize: vertical;
 }

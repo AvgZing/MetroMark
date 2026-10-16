@@ -141,19 +141,7 @@ function lineEligibleForToggleCounts(line, options = {}) {
 }
 
 function getVisibleLineKeys(shownLines) {
-  const keys = new Set(shownLines.map((line) => line.lineKey));
-  // Keep a merged route's member geometry visible even though its row is hidden.
-  const merges = appState.mergeMembersByCanonical instanceof Map ? appState.mergeMembersByCanonical : new Map();
-  for (const canonical of Array.from(keys)) {
-    const members = merges.get(canonical);
-    if (!members) {
-      continue;
-    }
-    for (const member of members) {
-      keys.add(member);
-    }
-  }
-  return keys;
+  return new Set(shownLines.map((line) => line.lineKey));
 }
 
 function updateShowAllStopsUi() {

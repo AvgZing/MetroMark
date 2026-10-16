@@ -1,7 +1,8 @@
-// "Suggest changes": inline in the line view on desktop, modal on portrait mobile.
+// "Suggest changes": inline in the line-view footer on desktop, moved into a
+// modal on portrait mobile. Submissions go to /api/suggestions for review.
+
 let suggestLineKey = "";
 let suggestBaseline = { operatorName: "", color: "", mode: "" };
-let suggestUsingModal = false;
 
 function suggestEl(id) {
   return document.getElementById(id);
@@ -41,17 +42,16 @@ function openSuggest() {
   statusEl.textContent = "";
 
   const form = suggestEl("suggestForm");
-  suggestUsingModal = suggestIsMobile();
-  if (suggestUsingModal) {
-    const modalBody = suggestEl("suggestModalBody");
-    if (modalBody && form.parentElement !== modalBody) {
-      modalBody.appendChild(form);
+  if (suggestIsMobile()) {
+    const body = suggestEl("suggestModalBody");
+    if (body && form.parentElement !== body) {
+      body.appendChild(form);
     }
     suggestEl("suggestModal").hidden = false;
   } else {
-    const slot = suggestEl("lineViewSuggestSlot");
-    if (slot && form.parentElement !== slot) {
-      slot.appendChild(form);
+    const container = document.querySelector(".line-view-suggest");
+    if (container && form.parentElement !== container) {
+      container.insertBefore(form, container.firstChild);
     }
     suggestEl("suggestModal").hidden = true;
   }
@@ -63,16 +63,15 @@ function closeSuggest() {
   const form = suggestEl("suggestForm");
   if (form) {
     form.hidden = true;
-    const slot = suggestEl("lineViewSuggestSlot");
-    if (slot && form.parentElement !== slot) {
-      slot.appendChild(form);
+    const container = document.querySelector(".line-view-suggest");
+    if (container && form.parentElement !== container) {
+      container.insertBefore(form, container.firstChild);
     }
   }
   const modal = suggestEl("suggestModal");
   if (modal) {
     modal.hidden = true;
   }
-  suggestUsingModal = false;
   suggestLineKey = "";
 }
 
@@ -93,10 +92,11 @@ async function submitRouteSuggestion() {
   if (color && color !== suggestBaseline.color) payload.color = color;
   if (mode !== "" && mode !== suggestBaseline.mode) payload.mode = Number(mode);
 
+  const note = suggestEl("suggestNoteInput").value.trim();
   const statusEl = suggestEl("suggestStatus");
-  if (!Object.keys(payload).length) {
+  if (!Object.keys(payload).length && !note) {
     statusEl.hidden = false;
-    statusEl.textContent = "Enter at least one change to suggest.";
+    statusEl.textContent = "Enter a change or a note.";
     return;
   }
 
@@ -112,7 +112,7 @@ async function submitRouteSuggestion() {
         lineKey: suggestLineKey,
         citySlug: appState.activeCitySlug || "",
         payload,
-        note: suggestEl("suggestNoteInput").value.trim()
+        note
       })
     });
     const data = await response.json().catch(() => ({}));
@@ -157,7 +157,8 @@ function initRouteSuggest() {
     });
   }
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && suggestEl("suggestForm") && !suggestEl("suggestForm").hidden) {
+    const form = suggestEl("suggestForm");
+    if (event.key === "Escape" && form && !form.hidden) {
       closeSuggest();
     }
   });

@@ -106,6 +106,11 @@ async function orderStopsForLineView(stopFeatures, lineKey, directionSequences =
   if (mode === 'auto') {
     const autoMode = detectAutoLineViewOrderingMode(uniqueStopFeatures, lineKey, directionSequences, directionPatterns);
 
+    if (autoMode === 'legacy-geometry') {
+      setResolved('legacy-geometry');
+      return sortFeaturesByPrimaryRanking(uniqueStopFeatures, legacyGeometryRankMap, geometryRevisedRankMap);
+    }
+
     if (autoMode === 'fractions') {
       const fractionRankInfo = await buildFractionRankMap(uniqueStopFeatures, lineKey, resolvedRouteLookupKey);
       if (fractionRankInfo.coverage > 0.3) {
