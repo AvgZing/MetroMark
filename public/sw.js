@@ -43,6 +43,10 @@ function isStaticAsset(url) {
   if (url.pathname.startsWith("/api/")) {
     return false;
   }
+  // Never cache the worker's own script, so a version probe reads the deployed file.
+  if (url.pathname === "/sw.js") {
+    return false;
+  }
   if (url.pathname.startsWith("/Styles/") || url.pathname.startsWith("/Scripts/")) {
     return true;
   }

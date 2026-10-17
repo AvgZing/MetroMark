@@ -420,17 +420,14 @@ function monitorServiceWorkerUpdates(registration) {
   window.addEventListener("pageshow", checkForUpdates);
 }
 
-async function showServiceWorkerVersion() {
-  const el = document.getElementById("swVersionText");
-  if (!el) {
-    return;
-  }
+// Ask the active worker for its version; empty when there is none or it is too
+// old to answer.
+function requestActiveWorkerVersion() {
   const target = navigator.serviceWorker.controller;
   if (!target) {
-    el.textContent = "Service worker: not active yet.";
-    return;
+    return Promise.resolve("");
   }
-  const version = await new Promise((resolve) => {
+  return new Promise((resolve) => {
     const onMessage = (event) => {
       if (event.data && event.data.type === "SW_VERSION") {
         window.clearTimeout(timer);
@@ -441,14 +438,42 @@ async function showServiceWorkerVersion() {
     const timer = window.setTimeout(() => {
       navigator.serviceWorker.removeEventListener("message", onMessage);
       resolve("");
-    }, 2000);
+    }, 1200);
     navigator.serviceWorker.addEventListener("message", onMessage);
     target.postMessage({ type: "GET_SW_VERSION" });
   });
+}
+
+// Version of the deployed sw.js — lets the readout show a number even before a
+// worker is active.
+async function fetchDeployedWorkerVersion() {
+  try {
+    const response = await fetch("/sw.js", { cache: "no-store" });
+    if (!response.ok) {
+      return "";
+    }
+    const match = /const\s+VERSION\s*=\s*"([^"]+)"/.exec(await response.text());
+    return match ? match[1] : "";
+  } catch {
+    return "";
+  }
+}
+
+async function showServiceWorkerVersion() {
+  const el = document.getElementById("swVersionText");
+  if (!el) {
+    return;
+  }
   const appVersion = typeof APP_VERSION !== "undefined" ? ` | app v${APP_VERSION}` : "";
-  el.textContent = version
-    ? `Worker v${version}${appVersion}`
-    : `Worker: version unavailable (older worker still running)${appVersion}`;
+  // Prefer the running worker's own version. "(server)" means it came from the
+  // deployed sw.js instead, i.e. the page is not running that worker.
+  let version = await requestActiveWorkerVersion();
+  let source = "";
+  if (!version) {
+    version = await fetchDeployedWorkerVersion();
+    source = version ? " (server)" : "";
+  }
+  el.textContent = `Worker v${version || "?"}${source}${appVersion}`;
 }
 
 async function registerSw() {
@@ -462,6 +487,8 @@ async function registerSw() {
   let hadController = Boolean(navigator.serviceWorker.controller);
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
+    // Keep the readout in step with whichever worker now controls the page.
+    showServiceWorkerVersion();
     if (refreshing) {
       return;
     }
@@ -497,6 +524,7 @@ async function registerSw() {
     showServiceWorkerVersion();
   } catch (error) {
     console.warn("[sw] Service worker registration failed:", error);
+    showServiceWorkerVersion();
   }
 }
 
