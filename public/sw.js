@@ -12,7 +12,7 @@
  * HTTPS or http://localhost.
  */
 
-const VERSION = "56";
+const VERSION = "57";
 const APP_SHELL_CACHE = `metromark-shell-v${VERSION}`;
 const RUNTIME_CACHE = `metromark-runtime-v${VERSION}`;
 const API_CACHE = `metromark-api-v${VERSION}`;
@@ -94,8 +94,14 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SKIP_WAITING") {
+  const data = event.data || {};
+  if (data.type === "SKIP_WAITING") {
     self.skipWaiting();
+    return;
+  }
+  // Report the running worker's version so the app can show which one is active.
+  if (data.type === "GET_SW_VERSION" && event.source) {
+    event.source.postMessage({ type: "SW_VERSION", version: VERSION });
   }
 });
 

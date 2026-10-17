@@ -390,10 +390,13 @@
 
     if (isPortrait()) {
       if (advanced) {
-        const auth = document.getElementById("authPopup");
-        if (auth && advanced.parentElement !== auth) {
-          auth.appendChild(advanced);
+        // Lives in the layers sheet on mobile so it's reachable from the map.
+        const sheetBody = document.querySelector(".layers-sheet-body");
+        const host = sheetBody || document.getElementById("authPopup");
+        if (host && advanced.parentElement !== host) {
+          host.appendChild(advanced);
         }
+        advanced.classList.toggle("is-in-sheet", Boolean(sheetBody));
       }
       if (options) {
         if (streets && streets.parentElement !== options) options.append(streets);
@@ -408,6 +411,7 @@
       }
     } else {
       if (advanced) {
+        advanced.classList.remove("is-in-sheet");
         const sidebar = document.querySelector(".sidebar");
         if (sidebar && advanced.parentElement !== sidebar) {
           sidebar.appendChild(advanced);
@@ -421,24 +425,6 @@
             controls.append(el);
           }
         });
-      }
-    }
-  }
-
-  function applyElementMigration() {
-    const advanced = document.getElementById("advancedInfoPanel");
-    if (!advanced) {
-      return;
-    }
-    if (isPortrait()) {
-      const auth = document.getElementById("authPopup");
-      if (auth && advanced.parentElement !== auth) {
-        auth.appendChild(advanced);
-      }
-    } else {
-      const sidebar = document.querySelector(".sidebar");
-      if (sidebar && advanced.parentElement !== sidebar) {
-        sidebar.appendChild(advanced);
       }
     }
   }

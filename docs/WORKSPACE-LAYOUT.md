@@ -23,7 +23,8 @@
 - `Scripts/Map/` — interactions.js, map-events.js, route-layer-defs.js, transit-loading.js,
   map-sources.js, map-stops.js, stop-style.js, stop-status.js, vector-metadata.js, tile-backfill.js,
   underlay.js, viewport-cache.js, geometry-utils.js, zoom-readout.js, basemap-config.js
-- `Scripts/Admin/` — admin.js, admin-override.js, admin-theme.js
+- `Scripts/Admin/` — admin.js (Console), admin-theme.js
+- `Scripts/Admin/override/` — Map Editor modules: core, map, area-refresh, routes, route-search, map-events, stops, branches, stop-list, saves, operators, boot, cities, app
 - `Scripts/Shared/` — constants.js (values shared by the app and the admin override tool)
 - `Assets/` — images, icons, fonts
 

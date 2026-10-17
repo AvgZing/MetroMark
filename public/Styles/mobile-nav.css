@@ -497,6 +497,43 @@
 }
 
 @media (max-width: 960px) and (orientation: portrait) {
+  /* Keep in-panel gestures from chaining to the page: stops the URL bar sliding
+     in on swipes and the accidental pull-to-refresh reload. */
+  html {
+    overscroll-behavior: none;
+  }
+
+  body * {
+    overscroll-behavior: contain;
+  }
+
+  /* Advanced Information moves into the layers sheet on mobile (see sheet.js). */
+  .layers-sheet .layers-sheet-body .status-panel {
+    display: block;
+  }
+
+  /* Cap the sheet so the expanded Advanced Information is scrollable on short
+     phones instead of overflowing past the top of the screen. */
+  .layers-sheet {
+    max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .status-panel.is-in-sheet {
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    box-shadow: none;
+  }
+
+  .status-panel.is-in-sheet:hover {
+    transform: none;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
   body.route-selected .line-view-panel {
     bottom: env(safe-area-inset-bottom);
   }

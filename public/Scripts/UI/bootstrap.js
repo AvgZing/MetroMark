@@ -420,6 +420,37 @@ function monitorServiceWorkerUpdates(registration) {
   window.addEventListener("pageshow", checkForUpdates);
 }
 
+async function showServiceWorkerVersion() {
+  const el = document.getElementById("swVersionText");
+  if (!el) {
+    return;
+  }
+  const target = navigator.serviceWorker.controller;
+  if (!target) {
+    el.textContent = "Service worker: not active yet.";
+    return;
+  }
+  const version = await new Promise((resolve) => {
+    const onMessage = (event) => {
+      if (event.data && event.data.type === "SW_VERSION") {
+        window.clearTimeout(timer);
+        navigator.serviceWorker.removeEventListener("message", onMessage);
+        resolve(String(event.data.version || ""));
+      }
+    };
+    const timer = window.setTimeout(() => {
+      navigator.serviceWorker.removeEventListener("message", onMessage);
+      resolve("");
+    }, 2000);
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    target.postMessage({ type: "GET_SW_VERSION" });
+  });
+  const appVersion = typeof APP_VERSION !== "undefined" ? ` | app v${APP_VERSION}` : "";
+  el.textContent = version
+    ? `Worker v${version}${appVersion}`
+    : `Worker: version unavailable (older worker still running)${appVersion}`;
+}
+
 async function registerSw() {
   if (!("serviceWorker" in navigator)) {
     return;
@@ -455,6 +486,15 @@ async function registerSw() {
     if (registration.waiting) {
       registration.waiting.postMessage({ type: "SKIP_WAITING" });
     }
+    // Read the version from the active worker so the readout reflects what is
+    // actually controlling this page, not just what is deployed.
+    if (!navigator.serviceWorker.controller) {
+      await new Promise((resolve) => {
+        navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true });
+        window.setTimeout(resolve, 3000);
+      });
+    }
+    showServiceWorkerVersion();
   } catch (error) {
     console.warn("[sw] Service worker registration failed:", error);
   }

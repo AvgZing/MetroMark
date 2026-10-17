@@ -1,5 +1,5 @@
 /** Render the ordered stop list for a line inside the line view panel. */
-function orderByCustomStopKeys(stopFeatures, customStops, lineKey = "") {
+function orderByCustomStopKeys(stopFeatures, customStops, lineKey = "", options = {}) {
   const byKey = new Map();
   for (const feature of stopFeatures || []) {
     const key = String(feature?.properties?.station_key || "").trim();
@@ -40,10 +40,13 @@ function orderByCustomStopKeys(stopFeatures, customStops, lineKey = "") {
     });
   }
 
-  for (const feature of stopFeatures || []) {
-    const key = String(feature?.properties?.station_key || "").trim();
-    if (!seen.has(key)) {
-      ordered.push(feature);
+  // Manual order keeps every stop unless branches hide some (appendUnmatched false).
+  if (options.appendUnmatched !== false) {
+    for (const feature of stopFeatures || []) {
+      const key = String(feature?.properties?.station_key || "").trim();
+      if (!seen.has(key)) {
+        ordered.push(feature);
+      }
     }
   }
 
@@ -298,10 +301,12 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     : [];
   let customStops = rawCustomStops;
   let splitLabels = new Map();
+  let branchConfigured = false;
   if (rawCustomStops) {
     const resolved = resolveBranchStops(rawCustomStops, branchGroups, branchSelectionForLine(lineKey));
     customStops = resolved.stops;
     splitLabels = resolved.splitLabels;
+    branchConfigured = resolved.hasBranches;
   }
 
   // Custom order only drives sequence when the default is Manual.
@@ -311,7 +316,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
   const useManualOrder = Boolean(customStops) && defaultMode === "manual";
 
   const featuresToRender = useManualOrder
-    ? orderByCustomStopKeys(stopFeatures, customStops, lineKey)
+    ? orderByCustomStopKeys(stopFeatures, customStops, lineKey, { appendUnmatched: !branchConfigured })
     : await orderStopsForLineView(
         stopFeatures,
         lineKey,
@@ -461,6 +466,11 @@ function setLineViewEmptyState() {
   if (dom.lineViewDiagnostics) {
     dom.lineViewDiagnostics.hidden = true;
   }
+  // The suggest footer only applies to a real route, so hide it in the empty state.
+  const emptySuggest = document.querySelector(".line-view-suggest");
+  if (emptySuggest) {
+    emptySuggest.hidden = true;
+  }
   const statusCard = document.querySelector(".line-view-card .user-status-card");
   if (statusCard) {
     statusCard.hidden = true;
@@ -541,6 +551,10 @@ function renderLineView(options = {}) {
   const statusCard = document.querySelector(".line-view-card .user-status-card");
   if (statusCard) {
     statusCard.hidden = false;
+  }
+  const selectSuggest = document.querySelector(".line-view-suggest");
+  if (selectSuggest) {
+    selectSuggest.hidden = false;
   }
   if (dom.lineViewDiagnostics) {
     dom.lineViewDiagnostics.hidden = false;

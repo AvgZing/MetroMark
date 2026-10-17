@@ -480,6 +480,10 @@ body.colorblind-mode .line-view-stop-row.is-visited .line-view-stop-dot::after {
   border-top: 1px solid var(--panel-border);
 }
 
+.line-view-suggest[hidden] {
+  display: none;
+}
+
 .line-view-suggest-hint {
   margin: 0;
   font-size: 11px;
