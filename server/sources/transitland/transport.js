@@ -16,14 +16,30 @@ async function transitlandRequest(path, params, options = {}) {
   });
 
   const url = `${TRANSITLAND_BASE_URL}${path}?${searchParams.toString()}`;
-  const retries = Math.max(0, Number(config.TRANSITLAND_REQUEST_RETRIES || 0));
+  const source = String(options.requestSource || "").trim().toLowerCase();
+  const configuredRetries = Math.max(0, Number(config.TRANSITLAND_REQUEST_RETRIES || 0));
+  // One retry is enough for bulk backfill pages; a timeout storm stalls the run.
+  const retries = source === "backfill" ? Math.min(1, configuredRetries) : configuredRetries;
 
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     const controller = new AbortController();
     const configuredTimeout = Number(config.TRANSITLAND_REQUEST_TIMEOUT_MS || 15000);
     // Harvest requests cap at 30s so one hung route can't stall the backfill.
-    const isHarvest = String(options.requestSource || "").trim().toLowerCase().startsWith("harvest");
-    const timeoutMs = Math.max(1500, isHarvest ? Math.min(configuredTimeout, 30000) : configuredTimeout);
+    const isHarvest = source.startsWith("harvest");
+    // Backfill pages are metadata-only and should be quick; reharvest still
+    // loads geometry in bulk and needs longer.
+    const isBackfill = source === "backfill";
+    const isReharvest = source === "reharvest";
+    const timeoutMs = Math.max(
+      1500,
+      isBackfill
+        ? 30000
+        : isReharvest
+          ? Math.max(configuredTimeout, 180000)
+          : isHarvest
+            ? Math.min(configuredTimeout, 30000)
+            : configuredTimeout
+    );
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
     await enforceDailyUsageCapsIfNeeded("rest", options);

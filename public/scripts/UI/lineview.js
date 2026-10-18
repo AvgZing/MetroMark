@@ -361,6 +361,18 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     branchConfigured = resolved.hasBranches;
   }
 
+  // Admin-deleted stops stay removed even if the feed still returns them.
+  const removedStopSet = new Set(
+    Array.isArray(routeOverride?.payload?.removedStops)
+      ? routeOverride.payload.removedStops.map(String)
+      : []
+  );
+  const availableStops = removedStopSet.size
+    ? stopFeatures.filter(
+        (feature) => !removedStopSet.has(String(feature?.properties?.station_key || ""))
+      )
+    : stopFeatures;
+
   // Custom order only drives sequence when the default is Manual.
   const defaultMode = typeof lineViewOrderingDefaultModeForLine === "function"
     ? lineViewOrderingDefaultModeForLine(lineKey)
@@ -368,9 +380,9 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
   const useManualOrder = Boolean(customStops) && defaultMode === "manual";
 
   const featuresToRender = useManualOrder
-    ? orderByCustomStopKeys(stopFeatures, customStops, lineKey, { appendUnmatched: !branchConfigured })
+    ? orderByCustomStopKeys(availableStops, customStops, lineKey, { appendUnmatched: !branchConfigured })
     : await orderStopsForLineView(
-        stopFeatures,
+        availableStops,
         lineKey,
         directionSequences,
         orderingMode,

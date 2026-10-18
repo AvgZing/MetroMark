@@ -1,6 +1,6 @@
 // MetroMark SW: shell precache, PMTiles passthrough, SWR assets, network-first API.
 
-const VERSION = "63";
+const VERSION = "70";
 const APP_SHELL_CACHE = `metromark-shell-v${VERSION}`;
 const RUNTIME_CACHE = `metromark-runtime-v${VERSION}`;
 const API_CACHE = `metromark-api-v${VERSION}`;

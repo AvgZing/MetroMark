@@ -39,6 +39,7 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
 
   appState.inFlightLineStopKeys.add(cacheKey);
   updateLoadingStatus();
+  let stopFetchFailed = false;
 
   if (!requestOptions.silent) {
     setStatus(`Loading stops for ${lineLabel}...`, "ok", "Using route membership from Transitland.");
@@ -58,9 +59,17 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
       params.set("refresh", "1");
     }
 
-    const payload = await apiRequest(`/api/transit/route-stops?${params.toString()}`, {
-      method: "GET"
-    });
+    const controller = new AbortController();
+    const abortTimer = window.setTimeout(() => controller.abort(), 30000);
+    let payload;
+    try {
+      payload = await apiRequest(`/api/transit/route-stops?${params.toString()}`, {
+        method: "GET",
+        signal: controller.signal
+      });
+    } finally {
+      window.clearTimeout(abortTimer);
+    }
 
     const hasStopPayload = Array.isArray(payload?.stopsGeoJson?.features);
     if (!hasStopPayload) {
@@ -98,6 +107,7 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
 
     return true;
   } catch (error) {
+    stopFetchFailed = true;
     setBackendStatus(`Route stop fetch failed for ${lineLabel}: ${error.message}`);
     if (!requestOptions.silent) {
       setStatus(`Could not load stops for ${lineLabel}.`, "error", error.message);
@@ -106,6 +116,9 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
   } finally {
     appState.inFlightLineStopKeys.delete(cacheKey);
     updateLoadingStatus();
+    if (stopFetchFailed && typeof refreshRouteStopDependentUi === "function") {
+      refreshRouteStopDependentUi({ forceStopRefresh: true });
+    }
   }
 }
 
@@ -379,6 +392,9 @@ async function loadVisibleRouteStops() {
   if (!appState.map || !appState.mapReady) {
     return false;
   }
+  if (appState.tileBackfillInFlight || String(appState.backfillStage || "") === "rebuilding") {
+    return false;
+  }
 
   const zoom = Number(appState.map.getZoom() || 0);
   const minZoom = typeof BACKFILL_MIN_ZOOM !== "undefined" ? BACKFILL_MIN_ZOOM : 8;
@@ -419,27 +435,26 @@ async function loadVisibleRouteStops() {
   }
 
   stopsPrefetchInFlight = true;
-  const MAX_PREFETCH = 20;
+  const MAX_PREFETCH = 8;
+  const CONCURRENCY = 3;
   const batch = candidates.slice(0, MAX_PREFETCH);
   for (const lineKey of batch) {
     appState.stopPrefetchAttempted.add(routeStopCacheKey(lineKey));
   }
-  if (batch.length > 0) {
-    setStatus(
-      `Loading route stops…`,
-      "neutral",
-      "Prefetching stops so they appear without clicking."
-    );
-  }
 
-  const results = await Promise.allSettled(
-    batch.map((lineKey) =>
-      ensureLineStopsLoaded(lineKey, {
-        silent: true,
-        cacheOnly: false
-      })
-    )
-  );
+  const results = [];
+  for (let i = 0; i < batch.length; i += CONCURRENCY) {
+    const chunk = batch.slice(i, i + CONCURRENCY);
+    const chunkResults = await Promise.allSettled(
+      chunk.map((lineKey) =>
+        ensureLineStopsLoaded(lineKey, {
+          silent: true,
+          cacheOnly: false
+        })
+      )
+    );
+    results.push(...chunkResults);
+  }
 
   stopsPrefetchInFlight = false;
   results.forEach((result, index) => {

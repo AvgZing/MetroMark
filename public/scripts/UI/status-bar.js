@@ -70,14 +70,22 @@ function setMapNotice(title, meta = "", kind = "neutral", placement = "center", 
   dom.mapNotice.hidden = false;
 }
 
-function showMapLoadingBadge() {
+function showMapLoadingBadge(message = "") {
   if (!dom.mapLoadingBadge) return;
   dom.mapLoadingBadge.hidden = false;
+  const text = document.getElementById("mapLoadingBadgeText");
+  if (text) {
+    text.textContent = String(message || "").trim();
+  }
 }
 
 function hideMapLoadingBadge() {
   if (!dom.mapLoadingBadge) return;
   dom.mapLoadingBadge.hidden = true;
+  const text = document.getElementById("mapLoadingBadgeText");
+  if (text) {
+    text.textContent = "";
+  }
 }
 
 function renderApiCounter() {

@@ -76,7 +76,10 @@ body.line-view-open .map-overlay-controls {
   z-index: 7;
   left: 14px;
   bottom: 14px;
-  min-width: 94px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   min-height: 34px;
   padding: 0 12px;
   border-radius: 6px;
@@ -92,6 +95,15 @@ body.line-view-open .map-overlay-controls {
 }
 
 /* Explicitly hide when hidden attribute or class is present */
+.map-loading-badge-text {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .map-loading-badge[hidden],
 .map-loading-badge.hidden {
   display: none !important;

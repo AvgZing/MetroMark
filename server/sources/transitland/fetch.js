@@ -49,8 +49,8 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
   // the 10,000/month quota).
   const fetchedRoutes = [];
   let afterCursor = null;
-  const pageLimit = Math.max(40, Math.min(routeLimit, 500));
-  const MAX_PAGES = 20;
+  const pageLimit = Math.max(40, Math.min(routeLimit, 100));
+  const MAX_PAGES = 30;
   let pagesFetched = 0;
 
   while (pagesFetched < MAX_PAGES) {
@@ -138,6 +138,83 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
   };
 }
 
+// Metadata-only bbox catalog. Small cells mirror the harvester grid: Transitland
+// cursor pagination repeats routes on large bbox pages, so cells keep it reliable.
+async function fetchRouteCatalogForBbox(bboxArray, options = {}) {
+  const [west, south, east, north] = bboxArray.map((value) => Number(value));
+  const lonSpan = Math.max(0, east - west);
+  const latSpan = Math.max(0, north - south);
+  const MAX_CELLS = 36;
+  let cellSpan = 0.12;
+  while (Math.ceil(lonSpan / cellSpan) * Math.ceil(latSpan / cellSpan) > MAX_CELLS) {
+    cellSpan *= 1.4;
+  }
+  const cols = Math.max(1, Math.ceil(lonSpan / cellSpan));
+  const rows = Math.max(1, Math.ceil(latSpan / cellSpan));
+  const cells = [];
+  for (let col = 0; col < cols; col += 1) {
+    for (let row = 0; row < rows; row += 1) {
+      cells.push([
+        west + (lonSpan * col) / cols,
+        south + (latSpan * row) / rows,
+        west + (lonSpan * (col + 1)) / cols,
+        south + (latSpan * (row + 1)) / rows
+      ]);
+    }
+  }
+
+  const routes = [];
+  const seen = new Set();
+  let pagesFetched = 0;
+
+  const failedCells = [];
+  for (let cellIndex = 0; cellIndex < cells.length; cellIndex += 1) {
+    let afterCursor = null;
+    try {
+      for (let page = 0; page < 80; page += 1) {
+        const params = { bbox: toBboxString(cells[cellIndex]), limit: "50" };
+        if (afterCursor !== null) {
+          params.after = String(afterCursor);
+        }
+        const response = await transitlandRequest("/routes", params, {
+          enforceDailyCap: Boolean(options.enforceDailyCap),
+          requestSource: options.requestSource
+        });
+        const pageRoutes = Array.isArray(response.routes) ? response.routes : [];
+        for (const route of pageRoutes) {
+          const id = String(route?.onestop_id || route?.id || "").trim();
+          if (id && !seen.has(id)) {
+            seen.add(id);
+            routes.push(route);
+          }
+        }
+        pagesFetched += 1;
+        if (typeof options.onProgress === "function") {
+          options.onProgress({
+            cell: cellIndex + 1,
+            cells: cells.length,
+            routes: routes.length,
+            pages: pagesFetched
+          });
+        }
+        const nextAfter = Number(response?.meta?.after);
+        if (!response?.meta?.next || !Number.isFinite(nextAfter) || pageRoutes.length === 0) {
+          break;
+        }
+        afterCursor = nextAfter;
+      }
+    } catch (error) {
+      // Skip a bad cell instead of aborting the whole area fill.
+      failedCells.push({
+        cell: cellIndex + 1,
+        error: String(error?.message || error)
+      });
+    }
+  }
+
+  return { routes, pagesFetched, cells: cells.length, failedCells };
+}
+
 async function fetchRouteByLineKey(lineKey, options = {}) {
   const response = await transitlandRequest("/routes", {
     onestop_id: lineKey,
@@ -221,6 +298,7 @@ async function fetchStopsForRoute(lineKey, options = {}) {
 
 module.exports = {
   fetchRoutesAndStopsForBbox,
+  fetchRouteCatalogForBbox,
   fetchRouteByLineKey,
   fetchStopsForRoute
 };

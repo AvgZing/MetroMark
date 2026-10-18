@@ -3,7 +3,6 @@ const express = require("express");
 const { runBackfill, getBackfillStats, totalRoutesInArchive } = require("../sources/transitland/backfill");
 const { getTilesStats } = require("./tiles");
 const { getTransitlandMetrics } = require("../sources/transitland/metrics");
-const { withTransitlandMetrics } = require("./helpers");
 
 const router = express.Router();
 
@@ -22,30 +21,24 @@ function parseBbox(raw) {
 }
 
 router.post("/tiles/backfill", async (req, res) => {
-  const requestStart = Date.now();
   const bbox = parseBbox(req.body?.bbox);
 
   if (!bbox) {
     return res.status(400).json({ error: "A valid bbox (west,south,east,north) is required." });
   }
 
-  try {
-    const summary = await runBackfill(bbox, {
-      forceRefresh: Boolean(req.body?.forceRefresh),
-      zoom: Number(req.body?.zoom)
-    });
-
-    return res.json(withTransitlandMetrics({
-      ...summary,
-      serverTimingMs: Date.now() - requestStart
-    }));
-  } catch (error) {
-    const detail = String(error?.message || error);
-    return res.status(400).json({
-      error: `Tile backfill failed: ${detail}`,
-      serverTimingMs: Date.now() - requestStart
-    });
+  if (getBackfillStats().current) {
+    return res.status(202).json({ started: false, inFlight: true });
   }
+
+  // Run in the background; clients follow /tiles/backfill/status. Holding the
+  // HTTP request for the whole catalog + rebuild is fragile on long city fills.
+  runBackfill(bbox, {
+    forceRefresh: Boolean(req.body?.forceRefresh),
+    zoom: Number(req.body?.zoom)
+  }).catch(() => {});
+
+  return res.status(202).json({ started: true, inFlight: true });
 });
 
 router.get("/tiles/backfill/status", (req, res) => {
@@ -57,7 +50,8 @@ router.get("/tiles/backfill/status", (req, res) => {
     fetchedRoutes: stats.current?.fetchedRoutes || 0,
     addedRoutes: stats.current?.addedRoutes || 0,
     startedAt: stats.current?.startedAt || null,
-    lastError: stats.lastError || null
+    lastError: stats.lastError || null,
+    lastResult: stats.lastResult || null
   });
 });
 

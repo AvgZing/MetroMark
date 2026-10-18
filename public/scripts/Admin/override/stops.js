@@ -115,8 +115,12 @@ async function loadStopsForRoute(lineKey) {
       .map((stop) => adminCustomStopFeature(stop, lineKey))
       .filter(Boolean);
     if (optimistic.length) {
-      source.setData({ type: "FeatureCollection", features: optimistic });
-      state.currentRouteStops = optimistic.slice();
+      const removed = state.removedStopKeys instanceof Set ? state.removedStopKeys : null;
+      const visible = removed
+        ? optimistic.filter((feature) => !removed.has(String(feature?.properties?.station_key || "")))
+        : optimistic;
+      source.setData({ type: "FeatureCollection", features: visible });
+      state.currentRouteStops = visible.slice();
       renderStopsOrderList();
     }
   }
@@ -126,6 +130,12 @@ async function loadStopsForRoute(lineKey) {
     if (Array.isArray(payload?.stopsGeoJson?.features)) {
       // Dedupe by station key, then apply the saved custom order.
       let stops = dedupeAdminStopFeatures(payload.stopsGeoJson.features);
+      const removedKeys = state.removedStopKeys instanceof Set ? state.removedStopKeys : null;
+      if (removedKeys && removedKeys.size) {
+        stops = stops.filter(
+          (feature) => !removedKeys.has(String(feature?.properties?.station_key || ""))
+        );
+      }
       if (state.selectedRouteOverride && Array.isArray(state.selectedRouteOverride.payload?.stops)) {
         stops = orderAdminStopsByCustomOrder(
           stops,

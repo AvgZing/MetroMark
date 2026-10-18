@@ -45,6 +45,52 @@ async function getRouteMetadatasByLineKeys(lineKeys) {
   return metadataByLineKey;
 }
 
+async function searchRouteMetadatas(query, limit = 20) {
+  assertLocalConfigured();
+  const term = String(query || "").trim();
+  if (!term) {
+    return [];
+  }
+  const like = `%${term}%`;
+  const { rows } = await localQuery(
+    `select m.line_key, m.route_onestop_id, m.line_name, m.line_short_name, m.line_long_name,
+            m.operator_name, m.mode, m.route_type, m.color, m.stop_count,
+            ST_XMin(ext) as min_lon, ST_YMin(ext) as min_lat,
+            ST_XMax(ext) as max_lon, ST_YMax(ext) as max_lat
+     from public.route_metadata m
+     left join lateral (
+       select ST_Extent(g.geometry) as ext
+       from public.route_geometry_lod g
+       where g.line_key = m.line_key
+     ) geo on true
+     where m.line_key ilike $1 or m.line_name ilike $1 or m.line_short_name ilike $1
+        or m.line_long_name ilike $1 or m.operator_name ilike $1
+     order by (lower(m.line_name) = lower($3)) desc, (m.line_name ilike $1) desc, m.line_name asc
+     limit $2`,
+    [like, Math.max(1, Math.min(50, Number(limit) || 20)), term]
+  );
+
+  return (rows || []).map((row) => {
+    const bbox =
+      row.min_lon != null && row.max_lon != null
+        ? [Number(row.min_lon), Number(row.min_lat), Number(row.max_lon), Number(row.max_lat)]
+        : null;
+    return {
+      lineKey: normalizeText(row.line_key),
+      routeOnestopId: normalizeText(row.route_onestop_id),
+      lineName: normalizeText(row.line_name),
+      lineShortName: normalizeText(row.line_short_name),
+      lineLongName: normalizeText(row.line_long_name),
+      operatorName: normalizeText(row.operator_name),
+      mode: normalizeText(row.mode),
+      routeType: Number.isFinite(Number(row.route_type)) ? Number(row.route_type) : null,
+      color: normalizeText(row.color),
+      stopCount: Number(row.stop_count) || 0,
+      bbox
+    };
+  });
+}
+
 async function setRouteMetadata(lineKey, metadata) {
   assertLocalConfigured();
 
@@ -160,6 +206,7 @@ async function deleteRouteMetadata(lineKey) {
 
 module.exports = {
   getRouteMetadatasByLineKeys,
+  searchRouteMetadatas,
   setRouteMetadata,
   deleteRouteMetadata,
   getRouteMetadataCoverageStats

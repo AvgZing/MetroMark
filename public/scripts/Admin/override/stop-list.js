@@ -198,7 +198,16 @@ function renderStopsOrderList() {
     remove.setAttribute("aria-label", "Delete this stop");
     remove.disabled = !manual;
     remove.addEventListener("click", () => {
+      const key = String(p?.station_key || "").trim();
+      if (key) {
+        state.removedStopKeys = state.removedStopKeys instanceof Set ? state.removedStopKeys : new Set();
+        state.removedStopKeys.add(key);
+      }
       state.currentRouteStops.splice(index, 1);
+      const source = state.map && state.map.getSource("stops");
+      if (source && typeof source.setData === "function") {
+        source.setData({ type: "FeatureCollection", features: state.currentRouteStops.slice() });
+      }
       renderStopsOrderList();
     });
 
@@ -344,6 +353,12 @@ async function saveStopOrderNow() {
     // new override
   }
   payload = { ...payload, stops };
+  const removedStops = Array.from(state.removedStopKeys || []).filter(Boolean);
+  if (removedStops.length) {
+    payload.removedStops = removedStops;
+  } else {
+    delete payload.removedStops;
+  }
   // Persist the ordering selection so a manual reorder applies on the frontend.
   const orderingValue = String(els.routeOrdering?.value || "").trim();
   if (orderingValue) {
@@ -389,6 +404,9 @@ async function clearStopChanges() {
   state.selectedBranchGroups = Array.isArray(payload.branchGroups)
     ? JSON.parse(JSON.stringify(payload.branchGroups))
     : [];
+  state.removedStopKeys = new Set(
+    Array.isArray(payload.removedStops) ? payload.removedStops.map(String) : []
+  );
   if (els.routeOrdering) {
     const savedOrdering = String(payload.orderingMode || "");
     els.routeOrdering.value =
@@ -415,6 +433,7 @@ async function clearStopOrder() {
   delete payload.stops;
   delete payload.orderingMode;
   delete payload.branchGroups;
+  delete payload.removedStops;
 
   try {
     await apiRequest("/api/admin/overrides/route", {
@@ -425,6 +444,7 @@ async function clearStopOrder() {
       els.routeOrdering.value = "";
     }
     state.selectedBranchGroups = [];
+    state.removedStopKeys = new Set();
     renderBranchGroupsEditor();
     setEditStatus(els.stopOrderStatus, "Stop order reset to automatic.");
     recordManualEdit("route", `${lineKey} · stop order`, "reset all stop-order changes");
@@ -473,6 +493,7 @@ async function selectRouteFromFeature(feature) {
   if (els.routeFrequency) els.routeFrequency.value = "";
   if (els.routeFrequencyMinutes) els.routeFrequencyMinutes.value = "";
   state.selectedBranchGroups = [];
+  state.removedStopKeys = new Set();
   renderBranchGroupsEditor();
   state.selectedMergedKeys = [];
   renderMergeRoutesList();
@@ -529,6 +550,9 @@ async function selectRouteFromFeature(feature) {
       state.selectedBranchGroups = Array.isArray(payload.branchGroups)
         ? JSON.parse(JSON.stringify(payload.branchGroups))
         : [];
+      state.removedStopKeys = new Set(
+        Array.isArray(payload.removedStops) ? payload.removedStops.map(String) : []
+      );
       state.selectedMergedKeys = Array.isArray(payload.mergedLineKeys)
         ? payload.mergedLineKeys.map((key) => String(key || "").trim()).filter(Boolean)
         : [];

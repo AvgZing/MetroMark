@@ -37,9 +37,16 @@ router.get("/tiles/routes.pmtiles", (req, res) => {
   }
 
   const start = Date.now();
-  const range = String(req.headers.range || "");
-  const byteStart = range ? Number((range.match(/bytes=(\d+)-/) || [])[1] || 0) : 0;
+  const range = String(req.headers.range || "").trim();
+  const rangeMatch = /^bytes=(\d*)-(\d*)$/.exec(range);
   const fileSize = fs.statSync(TILES_FILE).size;
+  let responseBytes = fileSize;
+  if (rangeMatch) {
+    const [, startText, endText] = rangeMatch;
+    const startByte = startText === "" ? Math.max(0, fileSize - Number(endText || 0)) : Number(startText);
+    const endByte = endText === "" ? fileSize - 1 : Math.min(Number(endText), fileSize - 1);
+    responseBytes = Math.max(0, endByte - startByte + 1);
+  }
 
   res.type("application/x-protobuf");
   return res.sendFile(TILES_FILE, { acceptRanges: true, maxAge: "1d" }, (err) => {
@@ -51,7 +58,7 @@ router.get("/tiles/routes.pmtiles", (req, res) => {
     }
     if (!err) {
       tilesStats.requests += 1;
-      tilesStats.bytesServed += Math.max(0, fileSize - byteStart);
+      tilesStats.bytesServed += responseBytes;
       tilesStats.totalMs += Date.now() - start;
       tilesStats.lastAt = new Date().toISOString();
     }

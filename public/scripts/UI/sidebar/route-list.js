@@ -49,6 +49,18 @@ function getRouteListLines() {
     return lineDisplayName(a).localeCompare(lineDisplayName(b));
   });
 
+  // Global DB matches come last: visible matches first, then viewport matches,
+  // then routes elsewhere in the archive.
+  if (hasQuery && Array.isArray(appState.globalSearchLines)) {
+    const knownKeys = new Set(listed.map((line) => line.lineKey));
+    for (const line of appState.globalSearchLines) {
+      if (line?.lineKey && !knownKeys.has(line.lineKey) && lineSearchText(line).includes(query)) {
+        knownKeys.add(line.lineKey);
+        listed.push(line);
+      }
+    }
+  }
+
   return listed;
 }
 
@@ -105,6 +117,7 @@ function renderLineList() {
     const faded = appState.focusedLineKey && appState.focusedLineKey !== line.lineKey;
     const override = lineVisibilityOverride(line.lineKey);
     const visible = lineIsVisible(line);
+    const isGlobal = Boolean(line.isGlobalSearchResult);
 
     if (focused) {
       row.classList.add("is-focused");
@@ -112,7 +125,7 @@ function renderLineList() {
     if (faded) {
       row.classList.add("is-faded");
     }
-    if (!visible) {
+    if (!visible && !isGlobal) {
       row.classList.add("is-hidden");
     }
     if (override === "on") {
@@ -133,6 +146,18 @@ function renderLineList() {
     name.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (line.isGlobalSearchResult) {
+        if (Array.isArray(line._geometryBbox) && typeof fitMapToBbox === "function") {
+          fitMapToBbox(line._geometryBbox, { extraPadding: 40, duration: 650, maxZoom: 12.5 });
+        }
+        if (!appState.lineSummaries.some((entry) => entry.lineKey === line.lineKey)) {
+          appState.lineSummaries.push(line);
+        }
+        if (typeof openLineView === "function") {
+          openLineView(line.lineKey, { zoom: false });
+        }
+        return;
+      }
       if (typeof openLineView === "function") {
         openLineView(line.lineKey, { zoom: true });
       }
@@ -140,9 +165,9 @@ function renderLineList() {
 
     const meta = document.createElement("p");
     meta.className = "line-meta";
-    meta.textContent = `${lineMode(line)} - ${lineOperatorLabel(line)} - ${lineHeadwayLabel(line)}`;
+    meta.textContent = `${lineMode(line)} - ${lineOperatorLabel(line)} - ${lineHeadwayLabel(line)}${line.isGlobalSearchResult ? " - Not in view" : ""}`;
 
-    if (!visible && !override) {
+    if (!visible && !override && !isGlobal) {
       meta.textContent = `${meta.textContent} - Hidden by filters`;
     }
 
@@ -222,6 +247,13 @@ function renderLineList() {
       stopCount.className = "line-stop-count";
       stopCount.textContent = `${routeStopsCount} stops`;
       sideTop.append(stopCount);
+    } else if (isGlobal) {
+      if (Number(line.stopCount) > 0) {
+        const stopCount = document.createElement("span");
+        stopCount.className = "line-stop-count";
+        stopCount.textContent = `${Number(line.stopCount)} stops`;
+        sideTop.append(stopCount);
+      }
     } else if (shouldShowLoadingStops) {
       const loading = document.createElement("span");
       loading.className = "line-stop-count";
@@ -307,7 +339,12 @@ function renderLineList() {
 
     controls.append(onButton, defaultButton, offButton);
 
-    row.append(dot, name, meta, sideTop, controls);
+    row.append(dot, name, meta, sideTop);
+    if (!isGlobal) {
+      row.append(controls);
+    } else {
+      row.classList.add("is-global-result");
+    }
 
     fragment.append(row);
   });

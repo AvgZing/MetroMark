@@ -47,6 +47,7 @@ const appState = {
   showProblematicGeometries: parseBooleanFromStorage("metromark_show_problematic_geometries", false),
   colorblindMode: parseBooleanFromStorage("metromark_colorblind_mode", false),
   lineSearchQuery: "",
+  globalSearchLines: [],
   initialCitySlug: localStorage.getItem("metromark_initial_city_slug") || "seattle",
   // Active city mode; "" = Globe View. Separate from initialCitySlug.
   activeCitySlug: localStorage.getItem("metromark_active_city_slug") || "",

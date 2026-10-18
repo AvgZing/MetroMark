@@ -1,4 +1,4 @@
-const { buildPmtiles } = require("../scripts/build/build-pmtiles");
+const { runArchiveBuild } = require("./archive-build");
 const { createLogger } = require("./logger");
 
 const log = createLogger("rebuild-job");
@@ -24,7 +24,7 @@ async function runRebuildLoop() {
     state.startedAt = Date.now();
     state.error = null;
     try {
-      await buildPmtiles({ log: { log: () => {} } });
+      await runArchiveBuild();
     } catch (error) {
       state.error = String(error?.message || error);
       log.error("Background tile rebuild failed", { error: state.error });

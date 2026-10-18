@@ -37,13 +37,23 @@ function updateLoadingStatus() {
   // badge, never a modal over the map the user is reading.
   if (hasRoutes) {
     if (routeStopLoadingCount > 0 || backfillInFlight) {
-      showMapLoadingBadge();
+      const message = backfillInFlight
+        ? String(appState.backfillMessage || "").trim() || "Fetching routes…"
+        : "Loading route stops…";
+      showMapLoadingBadge(message);
+      if (dom.mapLoadingBadge && backfillInFlight) {
+        dom.mapLoadingBadge.title = message;
+      }
     } else {
       hideMapLoadingBadge();
     }
     clearMapNotice();
     const focusLabel = appState.focusedLineKey ? "Focused route stop view." : "Select a route to load stops.";
-    setBackendStatus(backfillInFlight ? "Fetching routes for this viewport from Transitland…" : focusLabel);
+    setBackendStatus(
+      backfillInFlight
+        ? String(appState.backfillMessage || "").trim() || "Fetching routes for this viewport from Transitland…"
+        : focusLabel
+    );
     return;
   }
 
@@ -56,18 +66,21 @@ function updateLoadingStatus() {
 
   if (backfillInFlight) {
     hideMapLoadingBadge();
+    const stage = String(appState.backfillStage || "");
+    const detail = String(appState.backfillMessage || "").trim() ||
+      "Fetching from Transitland and rebuilding tiles. This may take a moment.";
     setMapNotice(
-      "Loading new routes for this area…",
-      "Fetching from Transitland and rebuilding tiles. This may take a moment.",
+      stage === "rebuilding" ? "Rebuilding map tiles…" : "Loading new routes for this area…",
+      detail,
       "neutral",
       "center"
     );
     const notice = document.getElementById("mapNotice");
     const fill = notice ? notice.querySelector(".map-notice-progress-fill") : null;
     if (fill) {
-      fill.style.width = appState.backfillStage === "rebuilding" ? "82%" : "38%";
+      fill.style.width = stage === "rebuilding" ? "82%" : "38%";
     }
-    setBackendStatus("Fetching routes for this viewport from Transitland…");
+    setBackendStatus(detail);
     return;
   }
 
@@ -86,7 +99,7 @@ function updateLoadingStatus() {
     hideMapLoadingBadge();
     setMapNotice(
       "Zoom in to load routes",
-      "Routes load automatically at zoom level 8 and higher.",
+      `Routes load automatically at zoom level ${typeof BACKFILL_MIN_ZOOM !== "undefined" ? BACKFILL_MIN_ZOOM : 8} and higher.`,
       "neutral",
       "center"
     );

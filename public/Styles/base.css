@@ -651,7 +651,7 @@ body[data-theme="dark"] .line-list {
 .line-item.is-manual-off::before {
   content: "";
   position: absolute;
-  left: -6px;
+  left: 2px;
   top: 6px;
   bottom: 6px;
   width: 2px;

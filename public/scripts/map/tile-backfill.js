@@ -16,7 +16,6 @@ var BACKFILL_SETTLE_MS = 1500;
 var BACKFILL_SETTLE_RETRY_MS = 1200;
 var BACKFILL_SETTLE_MAX_RETRIES = 4;
 var backfillCheckTimer = null;
-var backfillProgressTimer = null;
 
 function distinctLineKeys(features) {
   const keys = new Set();
@@ -71,10 +70,8 @@ function routesLayersReady() {
   return Boolean(appState.map && appState.mapReady && appState.map.getLayer && appState.map.getLayer("routes-main-vector"));
 }
 
-// An area needs fetching only when Transitland has routes here and the archive
-// has none at all. Counts are never compared: the coverage probe samples a few
-// centre tiles in Transitland's id space, while the archive is queried in ours,
-// so only presence is meaningful.
+// The coverage sample is a subset of the area, so a coverage count above the
+// archive count proves routes are missing. Zero archived routes is always a gap.
 function hasIncompleteCoverage() {
   if (coverageLineCount() <= 0) {
     return false;
@@ -86,7 +83,7 @@ function hasIncompleteCoverage() {
   if (!archiveKeys) {
     return false;
   }
-  return archiveKeys.size === 0;
+  return archiveKeys.size === 0 || coverageLineCount() > archiveKeys.size;
 }
 
 function coarseBboxKey(bbox) {
@@ -165,38 +162,9 @@ async function maybeBackfillViewport() {
   appState.tileBackfillBboxes.add(key);
   const result = await requestBackfill(bbox, { forceRefresh: false });
   if (!result) {
-    // Failed attempt: allow a later retry for this area.
-    appState.tileBackfillBboxes.delete(key);
-  }
-}
-
-async function pollBackfillProgress() {
-  try {
-    const payload = await apiRequest("/api/tiles/backfill/status", { method: "GET" });
-    if (payload && payload.inFlight) {
-      appState.backfillStage = String(payload.stage || "");
-      appState.backfillMessage = String(payload.message || "");
-      // Presentation is decided in one place: card when nothing is on screen,
-      // badge when the map already has routes.
-      if (typeof updateLoadingStatus === "function") {
-        updateLoadingStatus();
-      }
-    }
-  } catch {
-    // Non-critical — polling is best-effort
-  }
-}
-
-function startBackfillProgressPolling() {
-  stopBackfillProgressPolling();
-  pollBackfillProgress().catch(() => {});
-  backfillProgressTimer = setInterval(() => pollBackfillProgress().catch(() => {}), 2000);
-}
-
-function stopBackfillProgressPolling() {
-  if (backfillProgressTimer) {
-    clearInterval(backfillProgressTimer);
-    backfillProgressTimer = null;
+    // Don't hammer the same area after a failure; require a new viewport or a
+    // manual retry once the cooldown passes.
+    appState.tileBackfillCooldownUntil = Date.now() + 10 * 60 * 1000;
   }
 }
 
@@ -214,10 +182,8 @@ async function requestBackfill(bbox, options = {}) {
     setBackendStatus("Fetching routes for this viewport from Transitland…");
   }
 
-  startBackfillProgressPolling();
-
   try {
-    const payload = await apiRequest("/api/tiles/backfill", {
+    const start = await apiRequest("/api/tiles/backfill", {
       method: "POST",
       body: JSON.stringify({
         bbox,
@@ -225,12 +191,37 @@ async function requestBackfill(bbox, options = {}) {
         forceRefresh: Boolean(options.forceRefresh)
       })
     });
+    if (start?.error) {
+      throw new Error(start.error);
+    }
+
+    // The server runs the fill in the background; follow the status endpoint.
+    let status = null;
+    const deadline = Date.now() + 30 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      status = await apiRequest("/api/tiles/backfill/status", { method: "GET" });
+      if (!status?.inFlight) {
+        break;
+      }
+      appState.backfillStage = String(status.stage || "");
+      appState.backfillMessage = String(status.message || "");
+      if (typeof updateLoadingStatus === "function") {
+        updateLoadingStatus();
+      }
+    }
+    if (status?.lastError) {
+      throw new Error(status.lastError);
+    }
+    const payload = status?.lastResult || {};
 
     appState.tileBackfillCount += 1;
     appState.tileBackfillTotalMs += performance.now() - t0;
     appState.tileBackfillAddedRoutes += Number(payload?.addedRoutes || 0);
 
-    const changed = (Number(payload?.addedRoutes || 0) + Number(payload?.updatedRoutes || 0)) > 0;
+    const changed =
+      Number(payload?.addedRoutes || 0) + Number(payload?.updatedRoutes || 0) > 0 ||
+      Boolean(payload?.rebuilt);
     if (changed) {
       // The server rebuilt the archive, so its build stamp changed: adopting it
       // both gives the new URL and reloads the source.
@@ -244,7 +235,6 @@ async function requestBackfill(bbox, options = {}) {
       }
     }
 
-    stopBackfillProgressPolling();
     if (typeof setStatus === "function") {
       const added = Number(payload?.addedRoutes || 0);
       const updated = Number(payload?.updatedRoutes || 0);
@@ -268,7 +258,8 @@ async function requestBackfill(bbox, options = {}) {
     return payload;
   } catch (error) {
     appState.tileBackfillLastError = String(error?.message || error);
-    stopBackfillProgressPolling();
+    appState.backfillStage = "";
+    appState.backfillMessage = "";
     if (typeof setStatus === "function") {
       setStatus("Couldn't load routes for this area.", "error", String(error?.message || error));
     }
@@ -283,6 +274,11 @@ async function requestBackfill(bbox, options = {}) {
     // may still be empty (empty state / zoom hint then take over).
     if (typeof updateLoadingStatus === "function") {
       updateLoadingStatus();
+    }
+    // The user may have moved while this ran; check the new viewport after the
+    // cooldown so a queued area still loads.
+    if (typeof scheduleBackfillCheck === "function") {
+      scheduleBackfillCheck(BACKFILL_COOLDOWN_MS + 500);
     }
   }
 }

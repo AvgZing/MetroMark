@@ -239,8 +239,9 @@
         </div>
         <div id="map"></div>
         <div id="mapNotice" class="map-notice" hidden></div>
-        <div id="mapLoadingBadge" class="map-loading-badge" hidden aria-hidden="true">
-          <img class="map-loading-logo" src="/Assets/icons/apple-touch-icon.png" alt="" aria-hidden="true" />
+        <div id="mapLoadingBadge" class="map-loading-badge" hidden role="status" aria-live="polite">
+          <span class="map-loading-spinner" aria-hidden="true"></span>
+          <span id="mapLoadingBadgeText" class="map-loading-badge-text"></span>
         </div>
         <div id="routeSelectPanel" class="route-select-panel" hidden></div>
         <div class="map-corner-brand" aria-hidden="true">MetroMark</div>
@@ -348,9 +349,10 @@
                   Stop order
                   <select id="suggestOrderingInput">
                     <option value="">No Suggestion</option>
-                    <option value="geometry-revised">Geometry-revised</option>
-                    <option value="legacy-geometry">Legacy geometry</option>
-                    <option value="fractions">Fractions</option>
+                    <option value="auto">Auto</option>
+                    <option value="geometry-revised">Main</option>
+                    <option value="legacy-geometry">U-Shape</option>
+                    <option value="fractions">Loop</option>
                     <option value="manual">Request Manual Review</option>
                   </select>
                 </label>

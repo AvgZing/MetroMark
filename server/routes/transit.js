@@ -139,6 +139,22 @@ router.post("/transit/stop-fractions", async (req, res) => {
   }
 });
 
+router.get("/transit/routes/search", async (req, res) => {
+  const query = String(req.query.q || "").trim();
+  if (!query) {
+    return res.json({ routes: [] });
+  }
+  try {
+    const routes = await db.searchRouteMetadatas(query, 30);
+    return res.json({ routes });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Route search failed.",
+      detail: error.message
+    });
+  }
+});
+
 router.get("/transit/overrides", async (req, res) => {
   try {
     const routeOverrides = await db.listRouteOverrides();

@@ -182,6 +182,11 @@ textarea:focus {
   background: transparent;
 }
 
+.line-list > .line-item.is-manual-on,
+.line-list > .line-item.is-manual-off {
+  padding-left: 12px;
+}
+
 .line-list > li:last-child,
 .line-list > .line-item:last-child {
   border-bottom: none;

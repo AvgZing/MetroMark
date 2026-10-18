@@ -279,6 +279,7 @@ function bindEvents() {
     });
   }
 
+  let globalRouteSearchTimer = null;
   dom.lineSearch.addEventListener("input", () => {
     appState.lineSearchQuery = String(dom.lineSearch.value || "").trim().toLowerCase();
     clearStatusPin();
@@ -293,6 +294,30 @@ function bindEvents() {
     renderMapData();
     renderProgress();
     restoreUserStatusFromFocus();
+
+    if (globalRouteSearchTimer) {
+      window.clearTimeout(globalRouteSearchTimer);
+      globalRouteSearchTimer = null;
+    }
+    const searchQuery = appState.lineSearchQuery;
+    if (!searchQuery) {
+      appState.globalSearchLines = [];
+      renderLineList();
+      return;
+    }
+    globalRouteSearchTimer = window.setTimeout(async () => {
+      try {
+        const payload = await apiRequest(`/api/transit/routes/search?q=${encodeURIComponent(searchQuery)}`);
+        appState.globalSearchLines = (payload.routes || []).map((route) => ({
+          ...route,
+          _geometryBbox: route.bbox,
+          isGlobalSearchResult: true
+        }));
+      } catch {
+        appState.globalSearchLines = [];
+      }
+      renderLineList();
+    }, 300);
   });
 
   dom.loginForm.addEventListener("submit", async (event) => {

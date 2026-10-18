@@ -178,6 +178,7 @@ const state = {
   routeOverlapPopup: null,
   operatorsByCity: new Map(),
   currentRouteStops: [],
+  removedStopKeys: new Set(),
   currentRouteDirectionSequences: null,
   currentRouteDirectionPatterns: null,
   selectedRouteOnestopId: "",

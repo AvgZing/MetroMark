@@ -113,8 +113,17 @@ function onRouteHoverMove(event) {
     appState.hoverPopup.remove();
   }
 
+  const hoverLayers = [
+    "routes-main-vector",
+    "routes-background-main-vector",
+    "city-routes-main",
+    "city-routes-background-main"
+  ].filter((layerId) => appState.map.getLayer(layerId));
+  if (!hoverLayers.length) {
+    return;
+  }
   const features = appState.map.queryRenderedFeatures(event.point, {
-    layers: ["routes-main-vector", "routes-background-main-vector", "city-routes-main", "city-routes-background-main"]
+    layers: hoverLayers
   });
 
   const uniqueLines = new Map();

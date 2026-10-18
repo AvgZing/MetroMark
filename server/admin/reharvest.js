@@ -7,7 +7,7 @@ const { routeToFeature } = require("../sources/transitland/route-features");
 const { getRouteHeadway } = require("../sources/transitland/route-headway");
 const { getRouteStopsTransit } = require("../sources/transitland/route-stops");
 const { mergeBackfillFeatures, removeFeaturesFromArchive, listArchiveLineKeysInBbox, totalRoutesInArchive } = require("../sources/transitland/backfill");
-const { buildPmtiles } = require("../scripts/build/build-pmtiles");
+const { runArchiveBuild } = require("./archive-build");
 
 const log = createLogger("reharvest");
 
@@ -265,7 +265,7 @@ async function runReharvest(bboxArray, options = {}) {
         processed: 1,
         total: 1
       };
-      built = await buildPmtiles({ log: { log: () => {} } });
+      built = await runArchiveBuild();
     }
 
     report.tileCount = built ? built.tileCount : null;

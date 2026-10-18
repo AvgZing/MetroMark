@@ -277,6 +277,35 @@ function emptyCoverageResponse(includeGeometry) {
   return response;
 }
 
+// Enumerate every route key in a bbox from the coverage tiles (no REST
+// pagination). Used by the backfill to decide which routes are missing.
+async function getCoverageLineKeysForBbox(bboxArray, zoom = 10, options = {}) {
+  if (!Array.isArray(bboxArray) || bboxArray.length !== 4) {
+    return { lineKeys: [], tileCount: 0, tileZoom: 0 };
+  }
+  const [minLon, minLat, maxLon, maxLat] = bboxArray.map((value) => Number(value));
+  const tileZoom = Math.max(5, Math.min(12, Math.round(Number(zoom) || 10)));
+  let tiles = coveringTiles(minLon, minLat, maxLon, maxLat, tileZoom);
+  const maxTiles = Math.max(1, Number(options.maxTiles || 40));
+  if (tiles.length > maxTiles) {
+    // Coarser zoom covers the same area with fewer tiles.
+    const fallbackZoom = Math.max(5, tileZoom - 1);
+    tiles = coveringTiles(minLon, minLat, maxLon, maxLat, fallbackZoom);
+  }
+  const keys = new Set();
+  for (const { z, x, y } of tiles) {
+    const data = await fetchTileData(z, x, y, options);
+    if (!data) {
+      continue;
+    }
+    for (const key of extractTileLineKeys(data)) {
+      keys.add(key);
+    }
+  }
+  return { lineKeys: Array.from(keys), tileCount: tiles.length, tileZoom };
+}
+
 module.exports = {
-  getTransitCoverageForBbox
+  getTransitCoverageForBbox,
+  getCoverageLineKeysForBbox
 };

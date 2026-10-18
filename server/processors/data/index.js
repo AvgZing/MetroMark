@@ -35,6 +35,7 @@ module.exports = {
   upsertRouteGeometryLod: geometry.upsertRouteGeometryLod,
   deleteRouteGeometryLod: geometry.deleteRouteGeometryLod,
   getRouteMetadatasByLineKeys: metadata.getRouteMetadatasByLineKeys,
+  searchRouteMetadatas: metadata.searchRouteMetadatas,
   setRouteMetadata: metadata.setRouteMetadata,
   deleteRouteMetadata: metadata.deleteRouteMetadata,
   getRouteMetadataCoverageStats: metadata.getRouteMetadataCoverageStats,

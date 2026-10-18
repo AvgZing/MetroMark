@@ -1,10 +1,12 @@
 const fs = require("fs");
 const path = require("path");
 
-const { fetchRoutesAndStopsForBbox } = require("./fetch");
+const { fetchRouteCatalogForBbox, fetchRouteByLineKey } = require("./fetch");
+const { getCoverageLineKeysForBbox } = require("./coverage");
 const { normalizeRoutes } = require("./routes");
 const { routeToFeature } = require("./route-features");
-const { buildPmtiles, listNdjsonFiles, GEO_DIR } = require("../../scripts/build/build-pmtiles");
+const { listNdjsonFiles, GEO_DIR } = require("../../scripts/build/build-pmtiles");
+const { runArchiveBuild } = require("../../admin/archive-build");
 
 const BACKFILL_FILE = path.join(GEO_DIR, "routes-feed.ndjson");
 
@@ -106,6 +108,7 @@ const backfillStats = {
   lastAt: null,
   lastBbox: null,
   lastError: null,
+  lastResult: null,
   current: null
 };
 
@@ -478,16 +481,49 @@ async function runBackfill(bboxArray, options = {}) {
     addedRoutes: 0,
     startedAt: new Date().toISOString()
   };
+  backfillStats.lastError = null;
+  backfillStats.lastResult = null;
 
   try {
-    const result = await fetchRoutesAndStopsForBbox(bbox, {
-      includeAllTypes: true,
-      routeTypes: [],
-      forceRefresh,
-      requestSource: "backfill"
-    });
+    if (backfillStats.current) {
+      backfillStats.current.message = "Scanning coverage tiles…";
+    }
+    const coverage = await getCoverageLineKeysForBbox(bbox, 10, { maxTiles: 40 });
+    let candidateKeys = coverage.lineKeys;
+    let usedCatalogFallback = false;
+    if (!candidateKeys.length) {
+      // Tiles unavailable: fall back to the metadata catalog.
+      usedCatalogFallback = true;
+      const catalog = await fetchRouteCatalogForBbox(bbox, { requestSource: "backfill" });
+      candidateKeys = (catalog.routes || [])
+        .map((route) => String(route?.onestop_id || route?.id || "").trim())
+        .filter(Boolean);
+    }
+    const existingKeys = await listArchiveLineKeysInBbox(bbox);
+    const missingKeys = Array.from(new Set(candidateKeys)).filter(
+      (id) => id && (forceRefresh || !existingKeys.has(id))
+    );
 
-    const normalized = normalizeRoutes(Array.isArray(result.routes) ? result.routes : []);
+    // Geometry is only fetched for routes the archive lacks; the bulk
+    // include_geometry bbox endpoint is far too slow to page.
+    const normalized = [];
+    const FETCH_CONCURRENCY = 4;
+    for (let i = 0; i < missingKeys.length; i += FETCH_CONCURRENCY) {
+      const batch = missingKeys.slice(i, i + FETCH_CONCURRENCY);
+      const fetched = await Promise.allSettled(
+        batch.map((lineKey) => fetchRouteByLineKey(lineKey, { requestSource: "backfill" }))
+      );
+      for (const result of fetched) {
+        if (result.status === "fulfilled" && result.value) {
+          normalized.push(result.value);
+        }
+      }
+      if (backfillStats.current) {
+        backfillStats.current.message =
+          `Fetching route geometry (${Math.min(i + FETCH_CONCURRENCY, missingKeys.length)}/${missingKeys.length})…`;
+      }
+    }
+
     const features = normalized.map(routeToFeature).filter(Boolean);
     const merged = await mergeBackfillFeatures(features, { overwrite: forceRefresh });
 
@@ -500,10 +536,10 @@ async function runBackfill(bboxArray, options = {}) {
     };
 
     let built = null;
-    // Always rebuild when anything was fetched so the archive version changes
-    // and the client stops retrying against a stale source.
+    // Rebuild whenever anything was fetched: the NDJSON store can already hold
+    // routes that the current archive lacks (e.g. after an interrupted build).
     if (features.length > 0 || totalRoutesInArchive() === 0) {
-      built = await buildPmtiles({ log: { log: () => {} } });
+      built = await runArchiveBuild();
     }
 
     backfillStats.current = null;
@@ -516,17 +552,26 @@ async function runBackfill(bboxArray, options = {}) {
     backfillStats.lastAt = new Date().toISOString();
     backfillStats.lastBbox = bboxArray;
 
-    return {
+    const summary = {
       addedRoutes: merged.added,
       updatedRoutes: merged.updated,
       skippedRoutes: merged.skipped,
       fetchedRoutes: features.length,
       totalRoutesInArchive: totalRoutesInArchive(),
+      rebuilt: Boolean(built),
       tileCount: built ? built.tileCount : null,
       sizeBytes: built ? built.sizeBytes : null,
       elapsedMs,
-      diagnostics: result.diagnostics || null
+      diagnostics: {
+        coverageKeys: coverage.lineKeys.length,
+        coverageTiles: coverage.tileCount,
+        catalogFallback: usedCatalogFallback,
+        missingRoutes: missingKeys.length,
+        fetchedRoutes: features.length
+      }
     };
+    backfillStats.lastResult = summary;
+    return summary;
   } catch (error) {
     backfillStats.lastError = String(error?.message || error);
     backfillStats.current = null;
