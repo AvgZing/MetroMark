@@ -488,13 +488,20 @@ async function runBackfill(bboxArray, options = {}) {
     if (backfillStats.current) {
       backfillStats.current.message = "Scanning coverage tiles…";
     }
-    const coverage = await getCoverageLineKeysForBbox(bbox, 10, { maxTiles: 40 });
+    const coverage = await getCoverageLineKeysForBbox(bbox, 10, {
+      maxTiles: 40,
+      requestSource: options.requestSource || "backfill",
+      enforceDailyCap: Boolean(options.enforceDailyCap)
+    });
     let candidateKeys = coverage.lineKeys;
     let usedCatalogFallback = false;
     if (!candidateKeys.length) {
       // Tiles unavailable: fall back to the metadata catalog.
       usedCatalogFallback = true;
-      const catalog = await fetchRouteCatalogForBbox(bbox, { requestSource: "backfill" });
+      const catalog = await fetchRouteCatalogForBbox(bbox, {
+        requestSource: options.requestSource || "backfill",
+        enforceDailyCap: Boolean(options.enforceDailyCap)
+      });
       candidateKeys = (catalog.routes || [])
         .map((route) => String(route?.onestop_id || route?.id || "").trim())
         .filter(Boolean);
@@ -507,15 +514,26 @@ async function runBackfill(bboxArray, options = {}) {
     // Geometry is only fetched for routes the archive lacks; the bulk
     // include_geometry bbox endpoint is far too slow to page.
     const normalized = [];
+    let unavailableRoutes = 0;
+    let failedFetch = 0;
     const FETCH_CONCURRENCY = 4;
     for (let i = 0; i < missingKeys.length; i += FETCH_CONCURRENCY) {
       const batch = missingKeys.slice(i, i + FETCH_CONCURRENCY);
       const fetched = await Promise.allSettled(
-        batch.map((lineKey) => fetchRouteByLineKey(lineKey, { requestSource: "backfill" }))
+        batch.map((lineKey) =>
+          fetchRouteByLineKey(lineKey, {
+            requestSource: options.requestSource || "backfill",
+            enforceDailyCap: Boolean(options.enforceDailyCap)
+          })
+        )
       );
       for (const result of fetched) {
         if (result.status === "fulfilled" && result.value) {
           normalized.push(result.value);
+        } else if (result.status === "fulfilled") {
+          unavailableRoutes += 1;
+        } else {
+          failedFetch += 1;
         }
       }
       if (backfillStats.current) {
@@ -525,6 +543,30 @@ async function runBackfill(bboxArray, options = {}) {
     }
 
     const features = normalized.map(routeToFeature).filter(Boolean);
+    const diagnostics = {
+      coverageKeys: coverage.lineKeys.length,
+      coverageTiles: coverage.tileCount,
+      catalogFallback: usedCatalogFallback,
+      missingRoutes: missingKeys.length,
+      fetchedRoutes: features.length,
+      unavailableRoutes,
+      failedFetch
+    };
+
+    if (options.collectOnly) {
+      backfillStats.current = null;
+      return {
+        addedRoutes: 0,
+        updatedRoutes: 0,
+        skippedRoutes: 0,
+        fetchedRoutes: features.length,
+        totalRoutesInArchive: totalRoutesInArchive(),
+        rebuilt: false,
+        features,
+        diagnostics
+      };
+    }
+
     const merged = await mergeBackfillFeatures(features, { overwrite: forceRefresh });
 
     backfillStats.current = {
@@ -562,13 +604,7 @@ async function runBackfill(bboxArray, options = {}) {
       tileCount: built ? built.tileCount : null,
       sizeBytes: built ? built.sizeBytes : null,
       elapsedMs,
-      diagnostics: {
-        coverageKeys: coverage.lineKeys.length,
-        coverageTiles: coverage.tileCount,
-        catalogFallback: usedCatalogFallback,
-        missingRoutes: missingKeys.length,
-        fetchedRoutes: features.length
-      }
+      diagnostics
     };
     backfillStats.lastResult = summary;
     return summary;

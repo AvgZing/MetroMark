@@ -1,4 +1,5 @@
 const { fetchRoutesAndStopsForBbox } = require("../../server/sources/transitland/fetch");
+const { runBackfill } = require("../../server/sources/transitland/backfill");
 const { normalizeRoutes } = require("../../server/sources/transitland/routes");
 const budget = require("../../server/sources/transitland/harvest-budget");
 const WORLD_CITIES = require("./world-cities");
@@ -24,29 +25,64 @@ async function harvestCities(state, newFeatures) {
 
     const city = WORLD_CITIES[state.cityIndex];
     try {
-      const result = await fetchRoutesAndStopsForBbox(cityBbox(city), {
-        enforceDailyCap: true,
-        requestSource: "harvest-world"
+      // v2: coverage-key diff. Only routes missing from the archive are
+      // fetched, and the city is done only when none remain unanswered.
+      const result = await runBackfill(cityBbox(city), {
+        forceRefresh: false,
+        zoom: 10,
+        collectOnly: true,
+        requestSource: "harvest-geometry",
+        enforceDailyCap: true
       });
-      const routes = normalizeRoutes(Array.isArray(result.routes) ? result.routes : []);
+      const diagnostics = result.diagnostics || {};
+      for (const feature of result.features || []) {
+        newFeatures.push(feature);
+      }
       processed += 1;
-      accumulateRoutes(routes, newFeatures);
-      state.cityIndex += 1;
-      log(`City ${state.cityIndex}/${WORLD_CITIES.length}: ${city.name} (${routes.length} routes)`);
-    } catch (error) {
-      if (error?.code === "DAILY_USAGE_LIMIT_REACHED" || error?.code === "TRANSITLAND_DAILY_CAP_REACHED") {
-        log(`Daily geometry budget reached mid-city (${city.name}).`, budget.getSummary());
+
+      const missing = Number(diagnostics.missingRoutes || 0);
+      const fetched = Number(diagnostics.fetchedRoutes || 0);
+      const unavailable = Number(diagnostics.unavailableRoutes || 0);
+      const failed = Number(diagnostics.failedFetch || 0);
+      const complete = missing === 0 || fetched + unavailable >= missing;
+
+      if (complete) {
+        state.cityIndex += 1;
+        delete state.cityAttempts[city.name];
+        log(
+          `City ${state.cityIndex}/${WORLD_CITIES.length}: ${city.name} v2 complete (${fetched} fetched, ${unavailable} unavailable).`
+        );
+      } else {
+        const attempts = Number(state.cityAttempts[city.name] || 0) + 1;
+        state.cityAttempts[city.name] = attempts;
+        log(
+          `City ${city.name} incomplete (${fetched}/${missing} fetched, ${failed} failed) — attempt ${attempts}; will retry.`
+        );
+        // Keep the city queued and pause this pass; the next pass resumes it.
         break;
       }
-      state.cityIndex += 1;
-      log(`City ${city.name} failed: ${error?.message || error}`);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } catch (error) {
+      if (error?.code === "DAILY_USAGE_LIMIT_REACHED" || error?.code === "TRANSITLAND_DAILY_CAP_REACHED") {
+        log(`Daily budget reached mid-city (${city.name}).`, budget.getSummary());
+        break;
+      }
+      const attempts = Number(state.cityAttempts[city.name] || 0) + 1;
+      state.cityAttempts[city.name] = attempts;
+      log(`City ${city.name} failed (attempt ${attempts}): ${error?.message || error}`);
+      if (attempts >= 5) {
+        state.cityIndex += 1;
+        delete state.cityAttempts[city.name];
+        log(`City ${city.name} skipped after ${attempts} failed attempts.`);
+      }
+      break;
     }
   }
 
   if (state.cityIndex >= WORLD_CITIES.length && state.phase === "cities") {
     state.phase = "gaps";
-    state.queue = seedQuadTree();
+    if (!state.gapsCompleted && state.queue.length === 0) {
+      state.queue = seedQuadTree();
+    }
     log("All default cities harvested — moving to gap-filling (quadtree).");
   }
 
@@ -54,6 +90,9 @@ async function harvestCities(state, newFeatures) {
 }
 
 async function harvestGaps(state, newFeatures) {
+  if (state.gapsCompleted) {
+    return 0;
+  }
   let processed = 0;
 
   while (state.queue.length > 0) {
@@ -105,6 +144,11 @@ async function harvestGaps(state, newFeatures) {
       log(`Cell ${cellKey} failed (attempt ${state.failures[cellKey]}): ${error?.message || error}`);
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
+  }
+
+  if (state.queue.length === 0) {
+    state.gapsCompleted = true;
+    log("Gap-filling complete for this world pass.");
   }
 
   return processed;

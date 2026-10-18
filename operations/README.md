@@ -38,8 +38,13 @@ operations/
      (360+ major cities, ordered by population and transit-network relevance,
      with the most comprehensive coverage for North America and Europe;
      includes Hong Kong; mainland China excluded pending a future
-     non-Transitland source). Each city is harvested at full detail (all routes
-     + headway + metadata).
+     non-Transitland source). Each city is checked against the **coverage
+     tiles**: every route key in the city bbox is compared with the archive,
+     and only the missing routes are fetched. A city is done only when none
+     remain unanswered (or a route has no geometry upstream); otherwise it
+     stays queued and retries on the next pass. `completionVersion: 2` in
+     `world-harvest.json` forces a one-time re-check of every city (v1 states
+     reset to city 0). Gap-phase progress is preserved across that reset.
   2. **Gap-fill**: once every default city is done, it walks a coarse-to-fine
      quadtree over the whole globe, subdividing only cells that contain transit
      (covers intercity corridors + rural areas).
