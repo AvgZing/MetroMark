@@ -3,7 +3,7 @@
 // Map
 // ---------------------------------------------------------------------------
 
-// Full-world fill that darkens everything but the surfaced route (app parity).
+// Full-world dim fill.
 function adminFocusMask(active) {
   return {
     type: "FeatureCollection",
@@ -42,8 +42,7 @@ function mapStyle() {
     },
     layers: [
       ...base.layers,
-      // Match the app: non-focused routes sit under a dim mask, the selected
-      // route is drawn on top with casing so it stays surfaced.
+      // Non-focused routes dim; the selected route draws on top.
       {
         id: "routes-base-main",
         type: "line",
@@ -215,8 +214,7 @@ async function initMap() {
     scheduleMergeDetection();
   });
 
-  // Deep links fit the map before its tiles load, so re-apply focus once the
-  // selected route is actually in the tiles.
+  // Re-apply focus once the deep-linked route is in the tiles.
   state.map.on("sourcedata", (event) => {
     if (state.adminFocusActive || !state.selectedLineKey || event.sourceId !== "routes-vector") {
       return;

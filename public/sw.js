@@ -1,16 +1,4 @@
-/*
- * MetroMark service worker
- *
- * 1. Precache the app shell (index.html, CSS, JS) on install.
- * 2. Pass the PMTiles archive (/api/tiles/routes.pmtiles) straight through:
- *    PMTiles drives its own HTTP range requests and the browser HTTP cache
- *    handles them. The SW must not intercept, cache, or reshape those bytes.
- * 3. Stale-while-revalidate for static assets; network-first for API routes.
- * 4. skipWaiting() on install; clients.claim() on activate.
- *
- * Note: service workers require a secure context. Registration only works on
- * HTTPS or http://localhost.
- */
+// MetroMark SW: shell precache, PMTiles passthrough, SWR assets, network-first API.
 
 const VERSION = "57";
 const APP_SHELL_CACHE = `metromark-shell-v${VERSION}`;
@@ -43,7 +31,7 @@ function isStaticAsset(url) {
   if (url.pathname.startsWith("/api/")) {
     return false;
   }
-  // Never cache the worker's own script, so a version probe reads the deployed file.
+  // Keep the worker script uncached for version probes.
   if (url.pathname === "/sw.js") {
     return false;
   }
@@ -103,7 +91,7 @@ self.addEventListener("message", (event) => {
     self.skipWaiting();
     return;
   }
-  // Report the running worker's version so the app can show which one is active.
+  // Report the running worker's version.
   if (data.type === "GET_SW_VERSION" && event.source) {
     event.source.postMessage({ type: "SW_VERSION", version: VERSION });
   }
@@ -211,8 +199,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.pathname === TILES_PATHNAME) {
-    // Let PMTiles drive its own range requests + HTTP caching. Do not respondWith,
-    // cache, or otherwise reshape the archive bytes.
+    // PMTiles owns its range requests; never intercept or cache the archive.
     return;
   }
 

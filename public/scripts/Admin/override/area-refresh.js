@@ -145,7 +145,7 @@ async function reloadVectorSource() {
   for (const layer of layerDefs) {
     map.addLayer(layer, beforeId);
   }
-  // The focus mask is not from this source; keep it between base and focus routes.
+  // Keep the focus mask between base and focus routes.
   if (map.getLayer("focus-dim-layer") && map.getLayer("routes-casing")) {
     map.moveLayer("focus-dim-layer", "routes-casing");
   }

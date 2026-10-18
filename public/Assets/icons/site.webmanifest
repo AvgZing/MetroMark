@@ -3,7 +3,7 @@
   "name": "MetroMark",
   "short_name": "MetroMark",
   "description": "Transit Exploration Tracker",
-  "start_url": ".",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],

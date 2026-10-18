@@ -58,7 +58,7 @@ function orderAdminStopsByCustomOrder(features, customStops, lineKey = "") {
     seen.add(key);
     const feature = byKey.get(key);
     if (feature) {
-      // Restore the saved branch tag so the editor reflects what was authored.
+      // Restore the saved branch tag.
       const branch = String(stop?.branch || "").trim();
       if (feature.properties) {
         if (branch) {

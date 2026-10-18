@@ -497,8 +497,7 @@
 }
 
 @media (max-width: 960px) and (orientation: portrait) {
-  /* Keep in-panel gestures from chaining to the page: stops the URL bar sliding
-     in on swipes and the accidental pull-to-refresh reload. */
+  /* Contain in-panel scroll so swipes don't move the page. */
   html {
     overscroll-behavior: none;
   }
@@ -507,13 +506,12 @@
     overscroll-behavior: contain;
   }
 
-  /* Advanced Information moves into the layers sheet on mobile (see sheet.js). */
+  /* Advanced Information lives in the layers sheet on mobile. */
   .layers-sheet .layers-sheet-body .status-panel {
     display: block;
   }
 
-  /* Cap the sheet so the expanded Advanced Information is scrollable on short
-     phones instead of overflowing past the top of the screen. */
+  /* Cap height so expanded content scrolls on short screens. */
   .layers-sheet {
     max-height: calc(100dvh - env(safe-area-inset-top) - 12px);
     overflow-y: auto;
@@ -562,6 +560,7 @@
   .filters-panel-header,
   .line-view-header {
     padding-top: 0;
+    touch-action: none;
   }
 
   .sidebar-quickfilter {

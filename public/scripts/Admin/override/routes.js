@@ -51,8 +51,7 @@ function focusRouteFeature(feature) {
   selectRouteFromFeature(feature);
 }
 
-// Dim every route except the focused one (and its merge members) and darken the
-// surrounding map, so the selected route stays surfaced like in the app.
+// Dim all but the focused route (and merge members), like the app.
 function setAdminFocusState(focusedKey) {
   if (!state.map || typeof state.map.querySourceFeatures !== "function") {
     return;
@@ -75,8 +74,7 @@ function setAdminFocusState(focusedKey) {
       present.add(lineKey);
     }
   }
-  // Focus only applies while the route is in the loaded tiles, so panning away
-  // shows the normal map instead of an all-dimmed one.
+  // Focus only while the route is in the loaded tiles.
   const hasFocus = Boolean(key) && Array.from(group).some((candidate) => present.has(candidate));
   for (const lineKey of present) {
     try {

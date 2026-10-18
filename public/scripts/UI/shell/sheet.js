@@ -26,6 +26,9 @@
     if (el.id === "lineViewPanel" && state !== "peek" && typeof appState !== "undefined") {
       appState.lineViewPeekPinned = false;
     }
+    if (typeof window.updateLineViewSuggestVisibility === "function") {
+      window.updateLineViewSuggestVisibility();
+    }
     updateChromeVisibility();
   }
 
@@ -169,14 +172,11 @@
       }
 
       const state = stateOf(el);
-      if (dy < -50) {
+      if (dy < -30) {
         applyState(el, "full");
-      } else if (dy > 80) {
-        if (Math.abs(measured - window.innerHeight * 0.52) <= window.innerHeight * 0.12) {
-          applyState(el, "half");
-        } else {
-          applyState(el, "peek");
-        }
+      } else if (dy > 45) {
+        const stayHalf = measured > window.innerHeight * 0.32;
+        applyState(el, state === "full" && stayHalf ? "half" : "peek");
       } else {
         applyState(el, state);
       }
@@ -390,7 +390,7 @@
 
     if (isPortrait()) {
       if (advanced) {
-        // Lives in the layers sheet on mobile so it's reachable from the map.
+        // Move into the layers sheet on mobile.
         const sheetBody = document.querySelector(".layers-sheet-body");
         const host = sheetBody || document.getElementById("authPopup");
         if (host && advanced.parentElement !== host) {

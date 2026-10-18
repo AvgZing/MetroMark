@@ -351,7 +351,7 @@ async function clearStopOrder() {
     setEditStatus(els.routeEditStatus, "Stop order reset to automatic.");
     recordManualEdit("route", `${lineKey} · stop order`, "reset all stop-order changes");
     await loadStopsForRoute(lineKey);
-    // Render from state even if the stop refetch did not land, so the reset sticks.
+    // Re-render in case the stop refetch did not land.
     for (const feature of state.currentRouteStops || []) {
       if (feature.properties) {
         delete feature.properties.branch;

@@ -420,8 +420,7 @@ function monitorServiceWorkerUpdates(registration) {
   window.addEventListener("pageshow", checkForUpdates);
 }
 
-// Ask the active worker for its version; empty when there is none or it is too
-// old to answer.
+// Empty when no worker answers (none, or too old).
 function requestActiveWorkerVersion() {
   const target = navigator.serviceWorker.controller;
   if (!target) {
@@ -444,8 +443,7 @@ function requestActiveWorkerVersion() {
   });
 }
 
-// Version of the deployed sw.js — lets the readout show a number even before a
-// worker is active.
+// Deployed sw.js version.
 async function fetchDeployedWorkerVersion() {
   try {
     const response = await fetch("/sw.js", { cache: "no-store" });
@@ -465,8 +463,7 @@ async function showServiceWorkerVersion() {
     return;
   }
   const appVersion = typeof APP_VERSION !== "undefined" ? ` | app v${APP_VERSION}` : "";
-  // Prefer the running worker's own version. "(server)" means it came from the
-  // deployed sw.js instead, i.e. the page is not running that worker.
+  // "(server)" = deployed version, not the running worker.
   let version = await requestActiveWorkerVersion();
   let source = "";
   if (!version) {
@@ -487,7 +484,7 @@ async function registerSw() {
   let hadController = Boolean(navigator.serviceWorker.controller);
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    // Keep the readout in step with whichever worker now controls the page.
+    // Refresh when control changes.
     showServiceWorkerVersion();
     if (refreshing) {
       return;
@@ -513,8 +510,7 @@ async function registerSw() {
     if (registration.waiting) {
       registration.waiting.postMessage({ type: "SKIP_WAITING" });
     }
-    // Read the version from the active worker so the readout reflects what is
-    // actually controlling this page, not just what is deployed.
+    // Read the version from whichever worker now controls the page.
     if (!navigator.serviceWorker.controller) {
       await new Promise((resolve) => {
         navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true });

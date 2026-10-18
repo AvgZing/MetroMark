@@ -40,7 +40,7 @@ function orderByCustomStopKeys(stopFeatures, customStops, lineKey = "", options 
     });
   }
 
-  // Manual order keeps every stop unless branches hide some (appendUnmatched false).
+  // appendUnmatched=false when branches filter stops.
   if (options.appendUnmatched !== false) {
     for (const feature of stopFeatures || []) {
       const key = String(feature?.properties?.station_key || "").trim();
@@ -228,6 +228,7 @@ function renderLineViewBranchSelector(lineKey, branchGroups) {
 
 // Guards against overlapping async renders stacking duplicate stop rows.
 let lineViewStopsRenderToken = 0;
+let lineViewSheetLineKey = "";
 
 async function renderLineViewStops(lineKey, lineColor, options = {}) {
   if (!dom.lineViewStops) {
@@ -255,6 +256,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     empty.className = "microcopy";
     empty.textContent = isLoading ? "Loading stops..." : "Stops are not loaded yet.";
     dom.lineViewStops.append(empty);
+    updateLineViewSuggestVisibility();
     return;
   }
 
@@ -436,6 +438,19 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
   });
 
   createLineConnector(lineColor);
+  updateLineViewSuggestVisibility();
+}
+
+// Show the suggest footer only for a loaded route, outside peek.
+function updateLineViewSuggestVisibility() {
+  const footer = document.querySelector(".line-view-suggest");
+  if (!footer) {
+    return;
+  }
+  const lineKey = String(appState.lineViewLineKey || appState.focusedLineKey || "").trim();
+  const state = dom.lineViewPanel?.dataset.sheetState || "peek";
+  const hasStops = Boolean(dom.lineViewStops?.querySelector(".line-view-stop-row"));
+  footer.hidden = !lineKey || !hasStops || state === "peek";
 }
 
 /** Render or update the line view panel with the focused line's metadata and progress. */
@@ -466,11 +481,12 @@ function setLineViewEmptyState() {
   if (dom.lineViewDiagnostics) {
     dom.lineViewDiagnostics.hidden = true;
   }
-  // The suggest footer only applies to a real route, so hide it in the empty state.
+  // Hide the suggest footer when no route is selected.
   const emptySuggest = document.querySelector(".line-view-suggest");
   if (emptySuggest) {
     emptySuggest.hidden = true;
   }
+  lineViewSheetLineKey = "";
   const statusCard = document.querySelector(".line-view-card .user-status-card");
   if (statusCard) {
     statusCard.hidden = true;
@@ -552,10 +568,6 @@ function renderLineView(options = {}) {
   if (statusCard) {
     statusCard.hidden = false;
   }
-  const selectSuggest = document.querySelector(".line-view-suggest");
-  if (selectSuggest) {
-    selectSuggest.hidden = false;
-  }
   if (dom.lineViewDiagnostics) {
     dom.lineViewDiagnostics.hidden = false;
   }
@@ -564,7 +576,9 @@ function renderLineView(options = {}) {
   }
   if (isPortraitMobileLayout()) {
     document.body.classList.add("route-selected");
-    if (typeof window.setMobileSheetState === "function") {
+    // Set the opening height once per route; later renders must not reset it.
+    if (typeof window.setMobileSheetState === "function" && lineViewSheetLineKey !== lineKey) {
+      lineViewSheetLineKey = lineKey;
       window.setMobileSheetState(appState.lineViewPeekPinned ? "peek" : "half");
     }
   }
@@ -655,6 +669,7 @@ function renderLineView(options = {}) {
 
   // renderLineViewStops will manage dataset.lineKey itself to detect line changes
   renderLineViewStops(lineKey, lineColor, { forceRefresh: forceStopRefresh }).catch(() => {});
+  updateLineViewSuggestVisibility();
 }
 
 /** Open the line view panel for a given line, saving prior map/focus state for restoration.
