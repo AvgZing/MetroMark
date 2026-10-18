@@ -44,8 +44,7 @@ function loadState() {
     };
 
     if (state.completionVersion < COMPLETION_VERSION) {
-      // v2 re-checks every city with the coverage-key diff, so a v1 "done"
-      // city (which only meant "one fetch succeeded") starts over.
+      // v2 re-checks every city (v1 "done" only meant one fetch succeeded).
       state.completionVersion = COMPLETION_VERSION;
       state.phase = "cities";
       state.cityIndex = 0;

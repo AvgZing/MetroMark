@@ -25,8 +25,7 @@ async function harvestCities(state, newFeatures) {
 
     const city = WORLD_CITIES[state.cityIndex];
     try {
-      // v2: coverage-key diff. Only routes missing from the archive are
-      // fetched, and the city is done only when none remain unanswered.
+      // v2: fetch only missing routes; complete = none unanswered.
       const result = await runBackfill(cityBbox(city), {
         forceRefresh: false,
         zoom: 10,

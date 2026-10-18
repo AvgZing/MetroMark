@@ -105,19 +105,6 @@ function bindEvents() {
       scheduleUnderlayRefresh();
     });
   }
-  if (els.routeModeFilterSelect) {
-    els.routeModeFilterSelect.addEventListener("change", () => {
-      state.routeModeFilter = String(els.routeModeFilterSelect.value || "").trim();
-      applyUnderlaySearchFilter();
-    });
-  }
-  if (els.routeFrequencyFilterSelect) {
-    els.routeFrequencyFilterSelect.addEventListener("change", () => {
-      state.routeFrequencyFilter = String(els.routeFrequencyFilterSelect.value || "").trim();
-      applyUnderlaySearchFilter();
-    });
-  }
-
   if (els.refreshSelectedRoutesBtn) {
     els.refreshSelectedRoutesBtn.addEventListener("click", () => {
       refreshSelectedRoutes().catch((error) => {

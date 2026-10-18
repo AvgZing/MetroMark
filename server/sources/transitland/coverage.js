@@ -5,12 +5,7 @@ const { TRANSITLAND_VECTOR_BASE_URL, transitlandMetrics } = require("./metrics")
 const { enforceDailyUsageCapsIfNeeded, recordUsage } = require("./network");
 const config = require("../../admin/config");
 
-// Underlay coverage probe: cheaply enumerates Transitland's routes in a
-// viewport by sampling its vector tiles. The client uses the route count to
-// decide whether the PMTiles archive is missing routes (full or partial gap),
-// and — when includeGeometry is set — the faint line features as a visual
-// "underlay" of Transitland's network beneath the archive's rendered routes.
-// The underlay is never called an overlay: it renders below the archive.
+// Transitland coverage probe: route counts/geometry from vector tiles.
 
 async function fetchTileData(z, x, y, options = {}) {
   if (!config.TRANSITLAND_API_KEY) {
@@ -176,10 +171,7 @@ async function getTransitCoverageForBbox(bbox, zoom, options = {}) {
   const tileZoom = Math.max(5, Math.min(12, Math.round(userZoom)));
   const maxTiles = userZoom < 4 ? 40 : userZoom < 6 ? 30 : userZoom < 9 ? 20 : 10;
 
-  // Snapped cache key using floor/ceil so small pans within a cell don't
-  // change the key. Wider cells at low zoom prevent boundary-crossing cache
-  // misses during typical browsing. Count-only and geometry responses use
-  // separate keys so the small probe payloads are never replaced by geometry.
+  // Snapped cache key; count and geometry responses use separate entries.
   const step = userZoom < 5 ? 20 : userZoom < 8 ? 5 : 1;
   const mode = includeGeometry ? "geo" : "count";
   const cacheKey = `transit-v4:coverage:${mode}:${tileZoom}:${Math.floor(minLon / step) * step}:${Math.floor(minLat / step) * step}:${Math.ceil(maxLon / step) * step}:${Math.ceil(maxLat / step) * step}`;
@@ -233,9 +225,7 @@ async function getTransitCoverageForBbox(bbox, zoom, options = {}) {
     }
   }
 
-  // NOTE: routeCount samples at most maxTiles centre tiles in Transitland's own
-  // id space. It answers "does anything exist here?" and must never be compared
-  // for magnitude against archive feature/line counts.
+// routeCount samples centre tiles; never compare it for magnitude.
   const result = {
     routeCount: seen.size,
     source: "coverage",
@@ -277,8 +267,7 @@ function emptyCoverageResponse(includeGeometry) {
   return response;
 }
 
-// Enumerate every route key in a bbox from the coverage tiles (no REST
-// pagination). Used by the backfill to decide which routes are missing.
+// Route keys for a bbox from coverage tiles (no REST pagination).
 async function getCoverageLineKeysForBbox(bboxArray, zoom = 10, options = {}) {
   if (!Array.isArray(bboxArray) || bboxArray.length !== 4) {
     return { lineKeys: [], tileCount: 0, tileZoom: 0 };

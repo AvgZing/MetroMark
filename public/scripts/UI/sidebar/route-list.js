@@ -49,8 +49,7 @@ function getRouteListLines() {
     return lineDisplayName(a).localeCompare(lineDisplayName(b));
   });
 
-  // Global DB matches come last: visible matches first, then viewport matches,
-  // then routes elsewhere in the archive.
+  // Global DB matches come after visible/viewport matches.
   if (hasQuery && Array.isArray(appState.globalSearchLines)) {
     const knownKeys = new Set(listed.map((line) => line.lineKey));
     for (const line of appState.globalSearchLines) {
@@ -102,9 +101,7 @@ function renderLineList() {
 
   const fragment = document.createDocumentFragment();
 
-  // Cap the number of DOM rows rendered at once. At global scale the visible
-  // set can be thousands of routes; rendering all of them at once is the
-  // biggest cause of UI lag. Search still reaches any route.
+  // Cap rendered rows to keep the list responsive.
   const MAX_ROUTE_LIST_ROWS = 300;
   const renderLines = routeListLines.slice(0, MAX_ROUTE_LIST_ROWS);
   const totalRouteCount = routeListLines.length;

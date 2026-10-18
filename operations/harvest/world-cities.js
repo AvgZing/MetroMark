@@ -372,8 +372,7 @@ module.exports = [
   { name: "Ibadan", lat: 7.38, lon: 3.9 },
   { name: "Kano", lat: 12, lon: 8.52 },
 
-  // v2 additions: known rail/metro/tram systems not covered by the entries above.
-  // Appended, as requested, so existing ordering is unchanged.
+  // v2 additions: rail/metro/tram systems not covered above.
   { name: "Blackpool", lat: 53.82, lon: -3.04 },
   { name: "Sunderland", lat: 54.91, lon: -1.38 },
   { name: "Rennes", lat: 48.12, lon: -1.68 },

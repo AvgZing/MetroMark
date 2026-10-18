@@ -1,13 +1,4 @@
-// Automatic gap detection + feed-in backfill for the PMTiles pipeline.
-//
-// Completeness is decided from the archive alone: the coverage probe is only
-// used as a yes/no ("does Transitland have anything here?"), never as a count,
-// because it samples a limited number of centre tiles in Transitland's own id
-// space. An area is fetched once from Transitland, saved to the NDJSON store,
-// and the archive is rebuilt + the vector source reloaded without a page reload.
-// Repeated views are skipped (coarse-bbox dedup client-side + line_key dedup
-// server-side). The check only runs once the archive has settled: tiles loaded,
-// routes layers present, and the camera still.
+// Auto-backfill missing viewport routes from Transitland, then rebuild and reload.
 
 var BACKFILL_MIN_ZOOM = 9;
 var BACKFILL_COOLDOWN_MS = 20000;
@@ -46,8 +37,7 @@ function coverageLineCount() {
   return Number(appState.transitCoverageCount || 0);
 }
 
-// Line keys present in the loaded archive tiles, ignoring filters/visibility.
-// Returns null when the source cannot be queried yet (still loading).
+// Archive line keys in the loaded tiles; null until the source is queryable.
 function archiveLineKeysInViewport() {
   if (!appState.map || !appState.mapReady) {
     return null;
@@ -70,8 +60,7 @@ function routesLayersReady() {
   return Boolean(appState.map && appState.mapReady && appState.map.getLayer && appState.map.getLayer("routes-main-vector"));
 }
 
-// The coverage sample is a subset of the area, so a coverage count above the
-// archive count proves routes are missing. Zero archived routes is always a gap.
+// Coverage count above the archive count proves routes are missing.
 function hasIncompleteCoverage() {
   if (coverageLineCount() <= 0) {
     return false;
@@ -133,8 +122,7 @@ async function maybeBackfillViewport() {
   if (Date.now() < Number(appState.tileBackfillCooldownUntil || 0)) {
     return;
   }
-  // A slow first load must never read as "missing routes": wait for the
-  // archive to settle (tiles loaded + camera still) before judging.
+  // Wait for the archive to settle before judging gaps.
   if (!archiveSettled()) {
     const retries = Number(appState.backfillSettleRetries || 0);
     if (retries < BACKFILL_SETTLE_MAX_RETRIES) {
@@ -162,8 +150,7 @@ async function maybeBackfillViewport() {
   appState.tileBackfillBboxes.add(key);
   const result = await requestBackfill(bbox, { forceRefresh: false });
   if (!result) {
-    // Don't hammer the same area after a failure; require a new viewport or a
-    // manual retry once the cooldown passes.
+    // Don't auto-retry the same area after a failure.
     appState.tileBackfillCooldownUntil = Date.now() + 10 * 60 * 1000;
   }
 }
@@ -173,8 +160,7 @@ async function requestBackfill(bbox, options = {}) {
   appState.tileBackfillInFlight = true;
   appState.backfillStage = "fetching";
 
-  // One place decides presentation: card when nothing is on screen, badge when
-  // the map already shows routes.
+  // Card when nothing is on screen, badge when routes are visible.
   if (typeof updateLoadingStatus === "function") {
     updateLoadingStatus();
   }
@@ -223,8 +209,7 @@ async function requestBackfill(bbox, options = {}) {
       Number(payload?.addedRoutes || 0) + Number(payload?.updatedRoutes || 0) > 0 ||
       Boolean(payload?.rebuilt);
     if (changed) {
-      // The server rebuilt the archive, so its build stamp changed: adopting it
-      // both gives the new URL and reloads the source.
+      // Adopt the rebuilt archive stamp and reload the source.
       if (typeof syncArchiveVersion === "function") {
         const adopted = await syncArchiveVersion();
         if (!adopted) {
@@ -245,8 +230,7 @@ async function requestBackfill(bbox, options = {}) {
           `${payload.totalRoutesInArchive} routes now in the archive.`
         );
       } else if (options.forceRefresh) {
-        // User/admin-initiated refresh: report the no-op. Auto-backfill stays
-        // quiet so scanning the map doesn't spam toasts for covered areas.
+        // Report the no-op only for explicit refreshes.
         setStatus("No new routes to load for this area.", "ok", "This area is already covered.");
       }
     }
@@ -270,13 +254,11 @@ async function requestBackfill(bbox, options = {}) {
   } finally {
     appState.tileBackfillInFlight = false;
     appState.tileBackfillCooldownUntil = Date.now() + BACKFILL_COOLDOWN_MS;
-    // Re-evaluate once the flag is clear: routes may have arrived, or the area
-    // may still be empty (empty state / zoom hint then take over).
+    // Re-evaluate after the flag clears.
     if (typeof updateLoadingStatus === "function") {
       updateLoadingStatus();
     }
-    // The user may have moved while this ran; check the new viewport after the
-    // cooldown so a queued area still loads.
+    // Re-check the (possibly moved) viewport after the cooldown.
     if (typeof scheduleBackfillCheck === "function") {
       scheduleBackfillCheck(BACKFILL_COOLDOWN_MS + 500);
     }

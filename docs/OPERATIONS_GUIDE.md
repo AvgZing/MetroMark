@@ -1,5 +1,37 @@
 # Operations Guide
 
+Self-hosting, maintenance, and admin workflows for MetroMark. System design is in
+[Architecture](ARCHITECTURE.md).
+
+## Contents
+- [Running it yourself](#running-it-yourself)
+- [Login model](#login-model)
+- [Admin console](#admin-console)
+- [Manual override editor](#manual-override-editor)
+- [User preferences](#user-preferences)
+- [Transit data and cleanup](#transit-data-and-cleanup)
+- [Review and filtering notes](#review-and-filtering-notes)
+- [Operational notes](#operational-notes)
+- [Production Deployment (Windows 11)](#production-deployment-windows-11)
+- [Windows Host Operation (bat-based)](#windows-host-operation-bat-based)
+- [Production Readiness Checklist](#production-readiness-checklist)
+
+## Running it yourself
+1. Install Node.js 20+.
+2. Copy `.env.development.example` to `.env.development` and add your Supabase keys and a
+   Transitland API key.
+3. Apply the Supabase SQL in the dashboard:
+   `operations/sql/supabase-baseline.sql` and `operations/sql/supabase-changes.sql`.
+4. Install and run:
+   ```bash
+   npm install
+   npm run start:dev
+   ```
+5. Open http://localhost:8080.
+
+Production uses `.env.production` and `npm run start:prod`; see
+[Production Deployment](#production-deployment-windows-11).
+
 ## Login model
 - Admin console and manual override editor both require a session login.
 - Login uses the Supabase account whose email matches `ADMIN_EMAIL` (the bootstrap admin, granted the admin role on login); the password lives in Supabase, not the env.
@@ -11,6 +43,8 @@
 - It exposes usage, cache, harvest, and database status.
 - It links to `/admin/override` for route cleanup work.
 - Protected admin actions are accepted only when the request includes the active admin session or a signed-in Supabase admin user.
+
+![Admin console](images/admin-console.png)
 
 ## Manual override editor
 - `/admin/override` loads the selected route and its current cached Transitland geometry/stops.
@@ -24,6 +58,8 @@
   - editing stop coordinates
   - resetting the working copy from the live route payload
 - Route overrides are stored in `public.route_override`, so they survive cache refreshes.
+
+![Map Editor](images/admin-override.png)
 
 ## User preferences
 - Per-user UI settings (filters, display and accessibility toggles such as Colorblind mode)
@@ -54,7 +90,7 @@
 ## Production Deployment (Windows 11)
 - Two env profiles: `.env.development` and `.env.production`.
 - Start: `npm run start:dev` / `npm run start:prod`.
-- Operational jobs: `npm run harvest:world`, `npm run harvest:headway`, `npm run backup:nonrecoverable` (or the `operations/run-harvesters.bat` loop).
+- Operational jobs: `npm run harvest:world`, `npm run harvest:headway`, `npm run harvest:stops`, `npm run backup:nonrecoverable` (or the `operations/run-harvesters.bat` loop).
 - Use separate Supabase projects for dev and production.
 - Local Postgres schema is auto-provisioned at server startup; Supabase schema is applied from `operations/sql/supabase-baseline.sql` in the Supabase dashboard.
 

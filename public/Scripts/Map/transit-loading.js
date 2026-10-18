@@ -6,9 +6,7 @@ async function onMapMoveEnd() {
   appState.currentViewportBbox = typeof mapBoundsToBbox === "function" ? mapBoundsToBbox() : null;
   appState.lastCameraMoveAt = Date.now();
 
-  // Refresh the Transitland underlay + coverage count for this viewport before
-  // deciding whether a backfill is needed (the backfill check runs after
-  // moveend).
+  // Refresh the underlay/coverage before the backfill check.
   if (typeof updateUnderlay === "function") {
     await updateUnderlay();
   }
@@ -33,8 +31,7 @@ function updateLoadingStatus() {
   });
   const zoom = appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
 
-  // Routes on screen: anything running in the background is the small corner
-  // badge, never a modal over the map the user is reading.
+    // Background loading uses the corner badge, not a modal.
   if (hasRoutes) {
     if (routeStopLoadingCount > 0 || backfillInFlight) {
       const message = backfillInFlight
@@ -84,8 +81,7 @@ function updateLoadingStatus() {
     return;
   }
 
-  // Informational cards wait for the camera to settle so panning through empty
-  // areas doesn't strobe a modal.
+  // Wait for the camera to settle before showing informational cards.
   const settled = Date.now() - Number(appState.lastCameraMoveAt || 0) >= 1200 &&
     (!appState.map || typeof appState.map.areTilesLoaded !== "function" || appState.map.areTilesLoaded());
 
@@ -109,8 +105,7 @@ function updateLoadingStatus() {
 
   hideMapLoadingBadge();
 
-  // Routes exist for this area but the current filters hide them all: never
-  // imply the area is empty.
+    // Filters hide every route in this area.
   const anyLinesKnown = Array.isArray(appState.lineSummaries) && appState.lineSummaries.length > 0;
   if (anyLinesKnown) {
     setMapNotice(
@@ -123,8 +118,7 @@ function updateLoadingStatus() {
     return;
   }
 
-  // Distinguish "nothing exists here" from "exists upstream, not harvested yet"
-  // so the empty state never implies the area has no transit at all.
+  // Separate "nothing here" from "not harvested yet".
   if (typeof hasIncompleteCoverage === "function" && hasIncompleteCoverage()) {
     setMapNotice(
       "Routes for this area aren't loaded yet",

@@ -35,16 +35,9 @@ operations/
 
 - **`harvest/harvest-world.js`** harvests the whole world in two phases:
   1. **Cities first**: walks the curated list in `harvest/world-cities.js`
-     (360+ major cities, ordered by population and transit-network relevance,
-     with the most comprehensive coverage for North America and Europe;
-     includes Hong Kong; mainland China excluded pending a future
-     non-Transitland source). Each city is checked against the **coverage
-     tiles**: every route key in the city bbox is compared with the archive,
-     and only the missing routes are fetched. A city is done only when none
-     remain unanswered (or a route has no geometry upstream); otherwise it
-     stays queued and retries on the next pass. `completionVersion: 2` in
-     `world-harvest.json` forces a one-time re-check of every city (v1 states
-     reset to city 0). Gap-phase progress is preserved across that reset.
+     (450+ cities, ordered by relevance). Each city is checked against the
+     coverage tiles and only missing routes are fetched; a city advances only
+     when complete, otherwise it retries next pass.
   2. **Gap-fill**: once every default city is done, it walks a coarse-to-fine
      quadtree over the whole globe, subdividing only cells that contain transit
      (covers intercity corridors + rural areas).

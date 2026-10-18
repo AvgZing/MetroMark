@@ -31,8 +31,7 @@ router.post("/tiles/backfill", async (req, res) => {
     return res.status(202).json({ started: false, inFlight: true });
   }
 
-  // Run in the background; clients follow /tiles/backfill/status. Holding the
-  // HTTP request for the whole catalog + rebuild is fragile on long city fills.
+  // Run in the background; clients follow /tiles/backfill/status.
   runBackfill(bbox, {
     forceRefresh: Boolean(req.body?.forceRefresh),
     zoom: Number(req.body?.zoom)

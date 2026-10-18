@@ -101,9 +101,7 @@ async function setRouteMetadata(lineKey, metadata) {
 
   const meta = metadata || {};
 
-  // Partial merge: only the columns the caller explicitly provides are
-  // written; everything else is preserved. This stops a non-headway update
-  // (e.g. a route-stops fetch) from clobbering stored headway/stop-count data.
+  // Partial merge: only provided columns are written.
   const COLUMN_MAP = {
     routeOnestopId: "route_onestop_id",
     lineName: "line_name",

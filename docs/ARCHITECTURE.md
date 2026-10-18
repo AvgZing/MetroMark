@@ -81,10 +81,11 @@ MapLibre "routes-vector" source (pmtiles:// protocol) → routes/casing/hit laye
 4. Stops are GeoJSON on the `stops` source, loaded on demand per focused route via `/api/transit/route-stops`.
 
 **Coverage / backfill:**
-- Harvested cities are pre-baked into the archive. On each moveend, the client's `underlay.js` asks `GET /api/transit/coverage?bbox&zoom` (sampled from vector tiles, cached in Postgres). The visual underlay is disabled by design; only the probe remains.
-- That probe samples at most `maxTiles` centre tiles in **Transitland's own id space**, so its `routeCount` is a presence signal only — it is never compared for magnitude against archive counts.
-- `tile-backfill.js` treats an area as missing routes only when coverage > 0 **and** the archive has zero line keys there (`hasIncompleteCoverage`, read from the vector source so filters/zoom cannot influence it), and only once tiles are loaded and the camera has settled. That triggers `POST /api/tiles/backfill` with the bbox.
-- `runBackfill` fetches Transitland routes for the bbox, merges missing `line_key`s into `routes-feed.ndjson` (server-side dedup; seed-owned lines skipped unless `forceRefresh`), rebuilds the archive via tippecanoe, and the client reloads the vector source — all without a page reload.
+- On moveend, `underlay.js` asks `GET /api/transit/coverage?bbox&zoom` (sampled vector tiles, Postgres-cached); the visual underlay is disabled, so only the probe remains.
+- `routeCount` samples at most `maxTiles` centre tiles, so it is a presence signal. `hasIncompleteCoverage` treats a viewport as incomplete when the archive has zero keys there **or** the sample count exceeds the archive key count.
+- `tile-backfill.js` waits for tiles and a still camera, dedupes coarse bboxes, and calls `POST /api/tiles/backfill`; the server runs the fill in the background and the client follows `GET /api/tiles/backfill/status`.
+- `runBackfill` enumerates **all** route keys from the coverage vector tiles, reads the sharded archive's existing keys, and fetches geometry only for the missing routes (`GET /routes/{id}`), then merges them and rebuilds `routes.pmtiles`. Builds run in a child process so the API stays responsive. Failed areas are not auto-retried until their cooldown passes.
+- The harvester's city phase uses the same key diff via `collectOnly` and advances a city only when no coverage keys remain unanswered. `completionVersion: 2` in `world-harvest.json` forces the one-time re-check; gap-phase progress is preserved.
 
 ## Archive Build Stamp (required for rebuilds to propagate)
 
@@ -95,12 +96,13 @@ render **zero** routes until the app was restarted.
 
 - `GET /api/tiles/archive-version` returns `{ version: "<mtimeMs>-<size>", size, mtimeMs }` (`no-store`).
 - The client stamps the vector source URL: `pmtiles:///api/tiles/routes.pmtiles?v=<version>`, fetched before the map is created (`fetchArchiveVersion`) and re-synced by `startArchiveVersionWatch()` (60s interval + `visibilitychange`). On change, `syncArchiveVersion()` adopts the new stamp and `reloadVectorSource()` calls `setUrl` — no page reload.
-- The Service Worker must **not** intercept `/api/tiles/routes.pmtiles`: PMTiles owns its range requests and the browser HTTP cache keys them on the stamped URL. An earlier SW-side full-archive cache stalled first loads for the whole archive download and raced parallel range requests; it was removed.
+- The Service Worker must **not** intercept `/api/tiles/routes.pmtiles`: PMTiles owns its range requests and the HTTP cache keys them on the stamped URL.
 - Repeated views are throttled client-side (coarse-bbox dedup + cooldown) and deduped server-side by `line_key`.
 
 **Key behavior:**
 - The browser never calls Transitland directly; the API server is the only Transitland client.
 - Postgres (`route_metadata`, `transit_cache`, `route_geometry_lod`) supplies metadata, cached API responses, and per-route details; the archive supplies geometry.
+- Cache retention defaults: `TRANSIT_CACHE_TTL_HOURS=2160` (90 days) and `TRANSIT_CACHE_STALE_DAYS=30`.
 - `GET /api/transit/bbox` is retired (HTTP 410); `GET /api/transit/city/:slug` was removed.
 
 ## Station Identity Strategy

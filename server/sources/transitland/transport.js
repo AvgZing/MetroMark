@@ -26,8 +26,7 @@ async function transitlandRequest(path, params, options = {}) {
     const configuredTimeout = Number(config.TRANSITLAND_REQUEST_TIMEOUT_MS || 15000);
     // Harvest requests cap at 30s so one hung route can't stall the backfill.
     const isHarvest = source.startsWith("harvest");
-    // Backfill pages are metadata-only and should be quick; reharvest still
-    // loads geometry in bulk and needs longer.
+    // Backfill pages are quick; reharvest bulk geometry needs longer.
     const isBackfill = source === "backfill";
     const isReharvest = source === "reharvest";
     const timeoutMs = Math.max(

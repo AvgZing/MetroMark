@@ -41,12 +41,7 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
     routeParams.route_types = routeTypes.join(",");
   }
 
-  // Page through /routes results following Transitland pagination to its
-  // natural end. MAX_PAGES is a safety cap against hypothetical infinite
-  // pagination glitches — at 20 pages × 200 routes/page = 4000 routes,
-  // it would never be hit in normal operation (dense cities are <1000
-  // routes) but limits a worst-case bug to 20 REST calls (0.2% of
-  // the 10,000/month quota).
+// Page to the natural end; MAX_PAGES caps runaway pagination.
   const fetchedRoutes = [];
   let afterCursor = null;
   const pageLimit = Math.max(40, Math.min(routeLimit, 100));
@@ -138,8 +133,7 @@ async function fetchRoutesAndStopsForBbox(bboxArray, options = {}) {
   };
 }
 
-// Metadata-only bbox catalog. Small cells mirror the harvester grid: Transitland
-// cursor pagination repeats routes on large bbox pages, so cells keep it reliable.
+// Metadata-only catalog in small cells; large bbox pages repeat routes.
 async function fetchRouteCatalogForBbox(bboxArray, options = {}) {
   const [west, south, east, north] = bboxArray.map((value) => Number(value));
   const lonSpan = Math.max(0, east - west);
@@ -189,14 +183,6 @@ async function fetchRouteCatalogForBbox(bboxArray, options = {}) {
           }
         }
         pagesFetched += 1;
-        if (typeof options.onProgress === "function") {
-          options.onProgress({
-            cell: cellIndex + 1,
-            cells: cells.length,
-            routes: routes.length,
-            pages: pagesFetched
-          });
-        }
         const nextAfter = Number(response?.meta?.after);
         if (!response?.meta?.next || !Number.isFinite(nextAfter) || pageRoutes.length === 0) {
           break;

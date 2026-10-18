@@ -12,8 +12,8 @@ var MODE_DEFS = [
   { key: MODE_FILTER_FERRY, label: "Ferries", routeTypes: [4] },
   { key: MODE_FILTER_METRO, label: "Metro", routeTypes: [1] },
   { key: MODE_FILTER_TRAM, label: "Tram", routeTypes: [0] },
-  { key: MODE_FILTER_RAIL, label: "Rail", routeTypes: [2] },
-  { key: MODE_FILTER_OTHER, label: "Other", routeTypes: [5, 6, 7, 12] }
+  { key: MODE_FILTER_RAIL, label: "Rail", routeTypes: [2, 12] },
+  { key: MODE_FILTER_OTHER, label: "Other", routeTypes: [5, 6, 7] }
 ];
 
 var MODE_DEF_BY_KEY = new Map(MODE_DEFS.map(function(entry) { return [entry.key, entry]; }));
@@ -69,7 +69,7 @@ function modeKeyFromRouteType(routeType) {
   if (numeric === 4) return MODE_FILTER_FERRY;
   if (numeric === 1) return MODE_FILTER_METRO;
   if (numeric === 0) return MODE_FILTER_TRAM;
-  if (numeric === 2) return MODE_FILTER_RAIL;
+  if (numeric === 2 || numeric === 12) return MODE_FILTER_RAIL;
   return MODE_FILTER_OTHER;
 }
 

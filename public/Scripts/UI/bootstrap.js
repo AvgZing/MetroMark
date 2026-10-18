@@ -429,16 +429,14 @@ function monitorServiceWorkerUpdates(registration) {
     }
     installing.addEventListener("statechange", () => {
       if (installing.state === "installed" && navigator.serviceWorker.controller) {
-        // A newer app version is installed and waiting; surface an event the
-        // UI can hook to offer a reload.
+  // Surface a waiting app update to the UI.
         window.dispatchEvent(new CustomEvent("metromark:update-available"));
         console.info("[sw] A new version is available — reload to apply.");
       }
     });
   });
 
-  // Re-check for updates whenever the app comes back into view (feels like an
-  // app re-opening rather than a stale cached tab).
+  // Re-check for updates when the app becomes visible.
   const checkForUpdates = () => {
     registration.update().catch(() => {});
   };
@@ -507,10 +505,7 @@ async function registerSw() {
   if (!("serviceWorker" in navigator)) {
     return;
   }
-  // Reload the app once when a freshly activated service worker takes control,
-  // so an installed update actually applies instead of leaving the old bundle
-  // running until the next manual reload. Fresh installs (no controller yet)
-  // are skipped — the first claim is just the initial activation.
+  // Reload once when a newly activated worker takes control.
   let hadController = Boolean(navigator.serviceWorker.controller);
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -529,13 +524,10 @@ async function registerSw() {
   });
 
   try {
-    // updateViaCache: "none" forces the browser to byte-check /sw.js against
-    // the network on every update check, so a deployed service worker is not
-    // served from the HTTP cache for up to 24h.
+  // updateViaCache "none" byte-checks /sw.js on every update.
     const registration = await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" });
     monitorServiceWorkerUpdates(registration);
-    // Explicit check right after registration; combined with the
-    // visibilitychange/pageshow checks this applies updates on the next launch.
+  // Explicit update right after registration.
     registration.update().catch(() => {});
     if (registration.waiting) {
       registration.waiting.postMessage({ type: "SKIP_WAITING" });
@@ -572,8 +564,7 @@ async function init() {
   if (typeof fetchBasemapKey === "function") {
     await fetchBasemapKey();
   }
-  // Stamp the archive version before the vector source is created, so every
-  // cache in the chain keys on the current build.
+  // Stamp the archive version before the source is created.
   if (typeof fetchArchiveVersion === "function") {
     try {
       appState.vectorArchiveVersion = await fetchArchiveVersion();
@@ -597,8 +588,7 @@ async function init() {
       setTheme(appState.theme, { persist: false });
     }
 
-    // Watch for archive rebuilds (harvester / backfill) so clients recover
-    // without a page reload.
+  // Reload when the archive is rebuilt.
     if (typeof startArchiveVersionWatch === "function") {
       startArchiveVersionWatch();
     }
@@ -627,8 +617,7 @@ async function init() {
       loadReviewsForCity(appState.initialCitySlug).catch(() => {});
     }
 
-    // Admin edits have no push channel; refresh overrides/reviews when the tab
-    // returns to the foreground so changes feel immediate.
+  // Refresh overrides/reviews when the tab becomes visible.
     let lastReviewRefreshAt = 0;
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "visible") {

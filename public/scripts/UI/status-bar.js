@@ -51,8 +51,7 @@ function setMapNotice(title, meta = "", kind = "neutral", placement = "center", 
     return;
   }
 
-  // Center placement: show a full map notice card. Errors use error styling;
-  // neutral messages are allowed here when the map has no visible routes.
+  // Center card for notices; errors use error styling.
   if (!message) {
     clearMapNotice();
     return;
@@ -445,8 +444,7 @@ function setUserStatusFromLine(line) {
   const progress = lineProgressMetrics(line.lineKey, Number(line.stopCount || 0));
   const focusedLineActions = appState.focusedLineKey === line.lineKey ? line.lineKey : "";
 
-  // Show only what is not already visible: the route name and mode are the
-  // status title, and stop totals are the progress bar, so neither is repeated.
+  // Avoid repeating the title/mode/stop totals.
   const details = [
     {
       label: "Frequency",
