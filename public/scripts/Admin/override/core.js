@@ -42,7 +42,6 @@ const els = {
   areaRefreshRunBtn: document.getElementById("areaRefreshRunBtn"),
   areaRefreshStatus: document.getElementById("areaRefreshStatus"),
   routeEditPanel: document.getElementById("routeEditPanel"),
-  stationEditPanel: document.getElementById("stationEditPanel"),
   routeIdentity: document.getElementById("routeIdentity"),
   routeEditColorDot: document.getElementById("routeEditColorDot"),
   routeEditMeta: document.getElementById("routeEditMeta"),
@@ -142,14 +141,6 @@ const els = {
   rebuildIndicatorChanges: document.getElementById("rebuildIndicatorChanges"),
   runBackupBtn: document.getElementById("runBackupBtn"),
   rebuildTilesBtn: document.getElementById("rebuildTilesBtn"),
-  stationIdentity: document.getElementById("stationIdentity"),
-  stationName: document.getElementById("stationName"),
-  stationLat: document.getElementById("stationLat"),
-  stationLon: document.getElementById("stationLon"),
-  stationNote: document.getElementById("stationNote"),
-  saveStationBtn: document.getElementById("saveStationBtn"),
-  discardStationBtn: document.getElementById("discardStationBtn"),
-  stationEditStatus: document.getElementById("stationEditStatus"),
   operatorList: document.getElementById("operatorList"),
   manualEditsLog: document.getElementById("manualEditsLog")
 };
@@ -166,7 +157,6 @@ const state = {
   frequencyFetchInFlight: new Set(),
   underlayFeatures: [],
   selectedLineKey: "",
-  selectedStationKey: "",
   selectedRouteFeature: null,
   selectedRouteOverride: null,
   selectedRouteReview: null,
@@ -200,8 +190,35 @@ const state = {
   problematicTouched: false,
   actionToastTimer: null,
   archiveVersion: "",
-  archiveVersionTimer: null
+  archiveVersionTimer: null,
+  routeDirty: false,
+  stopsDirty: false
 };
+
+function markRouteDirty(scope = "route") {
+  if (scope === "stops") {
+    state.stopsDirty = true;
+  } else {
+    state.routeDirty = true;
+  }
+}
+
+function clearRouteDirty(scope) {
+  if (!scope || scope === "route") {
+    state.routeDirty = false;
+  }
+  if (!scope || scope === "stops") {
+    state.stopsDirty = false;
+  }
+}
+
+function hasUnsavedRouteChanges() {
+  return state.routeDirty || state.stopsDirty;
+}
+
+function confirmDiscardRouteChanges() {
+  return !hasUnsavedRouteChanges() || window.confirm("Discard unsaved route changes?");
+}
 
 // Persistent action result that survives the route editor closing.
 function showAdminAction(message, isError = false) {

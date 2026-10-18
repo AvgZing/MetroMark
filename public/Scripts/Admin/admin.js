@@ -40,6 +40,7 @@ const els = {
 const state = {
   token: sessionStorage.getItem(SESSION_KEY) || "",
   refreshTimer: null,
+  refreshing: false
 };
 
 function setAdminSession(token) {
@@ -379,7 +380,10 @@ async function refreshStats() {
   return payload;
 }
 
-async function refreshAccounts() {
+async function refreshAccounts({ background = false } = {}) {
+  if (background && els.accountsBody && els.accountsBody.contains(document.activeElement)) {
+    return;
+  }
   try {
     const payload = await apiRequest("/api/admin/accounts", { method: "GET" });
     renderAccounts(payload.accounts);
@@ -390,23 +394,30 @@ async function refreshAccounts() {
   }
 }
 
-async function refreshAll() {
+async function refreshAll({ background = false } = {}) {
   if (!state.token) {
     setAdminLocked(true);
     setStatus("Log in first.", true);
     return;
   }
+  if (state.refreshing) {
+    return;
+  }
+  state.refreshing = true;
   try {
-    await Promise.all([refreshStats(), refreshAccounts()]);
+    await Promise.all([refreshStats(), refreshAccounts({ background })]);
     setAdminLocked(false);
-    setStatus("Admin data refreshed.");
+    if (!background) {
+      setStatus("Admin data refreshed.");
+    }
     if (!state.refreshTimer) {
       startPolling();
     }
   } catch (error) {
-    setAdminLocked(true);
     setStatus(error.message, true);
     appendLog("Refresh failed", { error: error.message });
+  } finally {
+    state.refreshing = false;
   }
 }
 
@@ -415,7 +426,10 @@ function startPolling() {
     window.clearInterval(state.refreshTimer);
   }
   state.refreshTimer = window.setInterval(() => {
-    refreshAll().catch(() => {});
+    if (document.hidden) {
+      return;
+    }
+    refreshAll({ background: true }).catch(() => {});
   }, 20000);
 }
 

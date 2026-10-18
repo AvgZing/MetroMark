@@ -35,6 +35,7 @@ function renderBranchGroupsEditor() {
     removeGroup.title = "Remove branch group";
     removeGroup.addEventListener("click", () => {
       state.selectedBranchGroups.splice(groupIndex, 1);
+      markRouteDirty("stops");
       renderBranchGroupsEditor();
       renderStopsOrderList();
     });
@@ -60,6 +61,7 @@ function renderBranchGroupsEditor() {
       removeOption.title = "Remove option";
       removeOption.addEventListener("click", () => {
         group.options.splice(optionIndex, 1);
+        markRouteDirty("stops");
         renderBranchGroupsEditor();
         renderStopsOrderList();
       });
@@ -78,6 +80,7 @@ function renderBranchGroupsEditor() {
         id: `opt-${groupIndex + 1}-${stamp}`,
         label: `Option ${group.options.length + 1}`
       });
+      markRouteDirty("stops");
       renderBranchGroupsEditor();
       renderStopsOrderList();
     });
@@ -95,6 +98,7 @@ function addBranchGroup() {
     label: `Branch ${state.selectedBranchGroups.length + 1}`,
     options: [{ id: `opt-1-${stamp}`, label: "Option 1" }]
   });
+  markRouteDirty("stops");
   renderBranchGroupsEditor();
   renderStopsOrderList();
 }

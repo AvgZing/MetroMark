@@ -11,10 +11,10 @@
       rel="stylesheet"
     />
     <link href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/Styles/base.css?v=2026-10-15" />
-    <link rel="stylesheet" href="/Styles/map.css?v=2026-10-15" />
-    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-10-15" />
-    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-10-15" />
+    <link rel="stylesheet" href="/Styles/base.css?v=2026-10-18b" />
+    <link rel="stylesheet" href="/Styles/map.css?v=2026-10-18b" />
+    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-10-18b" />
+    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-10-18b" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -209,24 +209,6 @@
             <div id="cityRoutesList" class="city-members-list"></div>
             <p class="status" id="cityPanelStatus"></p>
           </div>
-        </div>
-
-        <div class="panel override-edit-panel" id="stationEditPanel" hidden>
-          <h2>Station</h2>
-          <p class="microcopy" id="stationIdentity"></p>
-          <label for="stationName">Name</label>
-          <input id="stationName" type="text" placeholder="Station name" />
-          <label for="stationLat">Latitude</label>
-          <input id="stationLat" type="number" step="any" placeholder="47.608" />
-          <label for="stationLon">Longitude</label>
-          <input id="stationLon" type="number" step="any" placeholder="-122.335" />
-          <label for="stationNote">Note</label>
-          <input id="stationNote" type="text" placeholder="Why this override?" />
-          <div class="override-actions">
-            <button id="saveStationBtn" class="btn" type="button">Save Station Edits</button>
-            <button id="discardStationBtn" class="btn btn-subtle" type="button">Discard</button>
-          </div>
-          <p class="status" id="stationEditStatus"></p>
         </div>
 
         <div class="panel">
@@ -522,32 +504,32 @@
 
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
     <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
-    <script src="/Scripts/Map/basemap-config.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/admin-theme.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Shared/constants.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Map/viewport-cache.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/UI/line-view/spatial.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/UI/line-view/stop-helpers.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/UI/line-view/ranking.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/UI/line-view/branch-detection.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/UI/line-view/method-main.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/UI/line-view/method-ushape.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/UI/line-view/method-loop.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/UI/line-view/method-auto.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/UI/line-view/stop-ordering.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/core.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/map.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/area-refresh.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/routes.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/route-search.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/map-events.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/stops.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/branches.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/stop-list.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/saves.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/operators.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/boot.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/cities.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Admin/override/app.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/Map/basemap-config.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Shared/constants.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Map/viewport-cache.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/UI/line-view/spatial.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/UI/line-view/stop-helpers.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/UI/line-view/ranking.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/UI/line-view/branch-detection.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/UI/line-view/method-main.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/UI/line-view/method-ushape.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/UI/line-view/method-loop.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/UI/line-view/method-auto.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/UI/line-view/stop-ordering.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/core.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/map.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/area-refresh.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/routes.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/route-search.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/map-events.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/stops.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/branches.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/stop-list.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/saves.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/operators.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/boot.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/cities.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Admin/override/app.js?v=2026-10-18b" defer></script>
   </body>
 </html>

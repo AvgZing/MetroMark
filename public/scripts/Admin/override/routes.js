@@ -43,12 +43,16 @@ function routeFeatureBounds(feature) {
   return [[minLon, minLat], [maxLon, maxLat]];
 }
 
-function focusRouteFeature(feature) {
+async function focusRouteFeature(feature, options = {}) {
   const bounds = routeFeatureBounds(feature);
   if (bounds && state.map) {
-    state.map.fitBounds(bounds, { padding: 60, maxZoom: 15, duration: 300 });
+    state.map.fitBounds(bounds, { padding: adminMapFitPadding(), maxZoom: 15, duration: 300 });
   }
-  selectRouteFromFeature(feature);
+  const lineKey = String(featureLineProps(feature).lineKey || "").trim();
+  if (lineKey && lineKey === state.selectedLineKey && !options.reload) {
+    return;
+  }
+  await selectRouteFromFeature(feature, { force: Boolean(options.reload) });
 }
 
 // Dim all but the focused route (and merge members), like the app.
@@ -106,7 +110,7 @@ function clearRouteHighlight() {
 }
 
 // ?lineKey=... focuses and highlights that route.
-async function focusRouteByLineKey(lineKey) {
+async function focusRouteByLineKey(lineKey, options = {}) {
   const key = String(lineKey || "").trim();
   if (!key) {
     return;
@@ -117,7 +121,7 @@ async function focusRouteByLineKey(lineKey) {
     if (!feature || !feature.geometry) {
       throw new Error("not in the archive");
     }
-    focusRouteFeature(feature);
+    await focusRouteFeature(feature, options);
     showAdminAction(`Showing ${key} on the map.`);
   } catch (error) {
     showAdminAction(`Could not show ${key}: ${error.message}`, true);
@@ -282,7 +286,7 @@ async function showSuggestion(suggestion) {
     lineKey: String(suggestion.lineKey || "").trim(),
     payload: suggestion.payload || {}
   };
-  await focusRouteByLineKey(suggestion.lineKey);
+  await focusRouteByLineKey(suggestion.lineKey, { reload: true });
 }
 
 // Overlay the suggestion's fields into the route editor and highlight them, so

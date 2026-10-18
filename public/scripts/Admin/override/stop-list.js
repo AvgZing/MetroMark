@@ -1,6 +1,11 @@
 // Admin Map Editor — stop list rendering, ordering controls, add/save/clear stops, route/station selection.
 let dragStopIndex = null;
 
+function stopCoordinateValue(input) {
+  const raw = String(input?.value || "").trim();
+  return raw ? Number(raw) : NaN;
+}
+
 function stopOrderingModeLabel(mode) {
   return (
     {
@@ -16,7 +21,7 @@ function updateStopOrderLockState() {
   const manual = String(els.routeOrdering?.value || "") === "manual";
   if (els.stopOrderLockNote) {
     const label = stopOrderingModeLabel(els.routeOrdering?.value);
-    els.stopOrderLockNote.textContent = `Stops are shown in ${label} order. Set Stop Ordering Default to Manual to drag and reorder.`;
+    els.stopOrderLockNote.textContent = `Stops are shown in ${label} order. Set Stop Ordering Default to Manual to add, remove, reorder, or tag stops.`;
     els.stopOrderLockNote.hidden = manual;
   }
   if (els.stopAddRow) {
@@ -52,6 +57,9 @@ async function refreshStopOrderPreview() {
       null,
       state.currentRouteDirectionPatterns || null
     );
+    if (state.selectedLineKey !== lineKey || String(els.routeOrdering?.value || "") !== mode) {
+      return;
+    }
     if (Array.isArray(ordered) && ordered.length) {
       state.currentRouteStops = ordered;
       renderStopsOrderList();
@@ -141,6 +149,7 @@ function renderStopsOrderList() {
         }
         arr.splice(Math.max(0, Math.min(targetIndex, arr.length)), 0, moved);
         dragStopIndex = null;
+        markRouteDirty("stops");
         renderStopsOrderList();
       });
       row.append(drag);
@@ -161,12 +170,21 @@ function renderStopsOrderList() {
     const latInput = document.createElement("input");
     latInput.type = "number";
     latInput.step = "any";
+    latInput.min = "-90";
+    latInput.max = "90";
     latInput.placeholder = "Lat";
     latInput.value = Number.isFinite(Number(coords[1])) ? String(Number(coords[1]).toFixed(6)) : "";
     latInput.addEventListener("input", () => {
-      const lat = Number(latInput.value);
-      const lon = Number(lonInput.value);
-      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      const lat = stopCoordinateValue(latInput);
+      const lon = stopCoordinateValue(lonInput);
+      if (
+        Number.isFinite(lat) &&
+        Number.isFinite(lon) &&
+        lat >= -90 &&
+        lat <= 90 &&
+        lon >= -180 &&
+        lon <= 180
+      ) {
         feature.geometry = { type: "Point", coordinates: [lon, lat] };
       }
     });
@@ -174,12 +192,21 @@ function renderStopsOrderList() {
     const lonInput = document.createElement("input");
     lonInput.type = "number";
     lonInput.step = "any";
+    lonInput.min = "-180";
+    lonInput.max = "180";
     lonInput.placeholder = "Lon";
     lonInput.value = Number.isFinite(Number(coords[0])) ? String(Number(coords[0]).toFixed(6)) : "";
     lonInput.addEventListener("input", () => {
-      const lat = Number(latInput.value);
-      const lon = Number(lonInput.value);
-      if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      const lat = stopCoordinateValue(latInput);
+      const lon = stopCoordinateValue(lonInput);
+      if (
+        Number.isFinite(lat) &&
+        Number.isFinite(lon) &&
+        lat >= -90 &&
+        lat <= 90 &&
+        lon >= -180 &&
+        lon <= 180
+      ) {
         feature.geometry = { type: "Point", coordinates: [lon, lat] };
       }
     });
@@ -204,6 +231,7 @@ function renderStopsOrderList() {
         state.removedStopKeys.add(key);
       }
       state.currentRouteStops.splice(index, 1);
+      markRouteDirty("stops");
       const source = state.map && state.map.getSource("stops");
       if (source && typeof source.setData === "function") {
         source.setData({ type: "FeatureCollection", features: state.currentRouteStops.slice() });
@@ -273,10 +301,20 @@ function addCustomStop() {
     return;
   }
   const name = String(els.newStopName?.value || "").trim();
-  const lat = Number(els.newStopLat?.value);
-  const lon = Number(els.newStopLon?.value);
-  if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) {
-    setEditStatus(els.stopOrderStatus, "A stop name and numeric lat/lon are required.", true);
+  const latRaw = String(els.newStopLat?.value || "").trim();
+  const lonRaw = String(els.newStopLon?.value || "").trim();
+  const lat = latRaw ? Number(latRaw) : NaN;
+  const lon = lonRaw ? Number(lonRaw) : NaN;
+  if (
+    !name ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lon) ||
+    lat < -90 ||
+    lat > 90 ||
+    lon < -180 ||
+    lon > 180
+  ) {
+    setEditStatus(els.stopOrderStatus, "A stop name and valid lat/lon are required.", true);
     return;
   }
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "stop";
@@ -286,6 +324,7 @@ function addCustomStop() {
     return;
   }
   state.currentRouteStops.push(feature);
+  markRouteDirty("stops");
   renderStopsOrderList();
   appendStopsToMapSource([feature]);
   if (els.newStopName) els.newStopName.value = "";
@@ -386,6 +425,7 @@ async function saveStopOrderNow() {
     });
     setEditStatus(els.stopOrderStatus, `Stop order saved (${stops.length} stops).`);
     setEditStatus(els.mergeRouteStatus, "");
+    clearRouteDirty("stops");
     recordManualEdit(
       "route",
       `${lineKey} · stop order`,
@@ -415,6 +455,7 @@ async function clearStopChanges() {
   renderBranchGroupsEditor();
   await loadStopsForRoute(state.selectedLineKey);
   updateStopOrderLockState();
+  clearRouteDirty("stops");
   setEditStatus(els.stopOrderStatus, "Reverted unsaved stop changes.");
 }
 
@@ -446,6 +487,7 @@ async function clearStopOrder() {
     state.selectedBranchGroups = [];
     state.removedStopKeys = new Set();
     renderBranchGroupsEditor();
+    clearRouteDirty("stops");
     setEditStatus(els.stopOrderStatus, "Stop order reset to automatic.");
     recordManualEdit("route", `${lineKey} · stop order`, "reset all stop-order changes");
     await loadStopsForRoute(lineKey);
@@ -462,18 +504,29 @@ async function clearStopOrder() {
   }
 }
 
-async function selectRouteFromFeature(feature) {
+async function selectRouteFromFeature(feature, options = {}) {
   const props = featureLineProps(feature);
+  const nextLineKey = String(props.lineKey || "").trim();
+  if (!options.force && nextLineKey === state.selectedLineKey) {
+    highlightRouteOnMap(feature);
+    return;
+  }
+  if (
+    state.selectedLineKey &&
+    nextLineKey !== state.selectedLineKey &&
+    !confirmDiscardRouteChanges()
+  ) {
+    return;
+  }
   closeRouteOverlapPopup();
   state.selectedRouteFeature = feature;
   state.selectedRouteOnestopId = String(feature?.properties?.onestop_id || "").trim();
-  state.selectedLineKey = props.lineKey;
-  state.selectedStationKey = "";
+  state.selectedLineKey = nextLineKey;
   state.selectedRouteOverride = null;
   state.selectedRouteReview = null;
+  clearRouteDirty();
 
   highlightRouteOnMap(feature);
-  els.stationEditPanel.hidden = true;
   els.routeEditPanel.hidden = false;
   els.routeIdentity.textContent = `${props.lineKey}${props.lineName ? " · " + props.lineName : ""}`;
   if (els.routeEditColorDot) {
@@ -516,15 +569,20 @@ async function selectRouteFromFeature(feature) {
     els.removeRouteBtn.disabled = false;
   }
 
+  const requestLineKey = state.selectedLineKey;
   try {
     const [overridePayload, reviewsPayload, headwayPayload] = await Promise.all([
-      apiRequest(`/api/admin/overrides/route/${encodeURIComponent(state.selectedLineKey)}`, { method: "GET" }),
+      apiRequest(`/api/admin/overrides/route/${encodeURIComponent(requestLineKey)}`, { method: "GET" }),
       state.currentCitySlug
         ? apiRequest(`/api/admin/reviews/route?citySlug=${encodeURIComponent(state.currentCitySlug)}`, { method: "GET" })
         : Promise.resolve({ reviews: [] }),
-      apiRequest(`/api/transit/route-headway/bulk?${new URLSearchParams({ lineKeys: state.selectedLineKey })}`, { method: "GET" })
+      apiRequest(`/api/transit/route-headway/bulk?${new URLSearchParams({ lineKeys: requestLineKey })}`, { method: "GET" })
         .catch(() => ({ headwayByLineKey: {} }))
     ]);
+
+    if (state.selectedLineKey !== requestLineKey) {
+      return;
+    }
 
     if (overridePayload?.override) {
       state.selectedRouteOverride = overridePayload.override;
@@ -590,33 +648,10 @@ async function selectRouteFromFeature(feature) {
   }
 }
 
-async function selectStationFromFeature(feature) {
-  const p = feature?.properties || {};
-  closeRouteOverlapPopup();
-  const stationKey = String(p.station_key || "").trim();
-  const lineKey = String(p.line_key || "").trim();
-  if (!stationKey) {
-    return;
-  }
-
-  state.selectedStationKey = stationKey;
-  state.selectedLineKey = "";
-  els.routeEditPanel.hidden = true;
-  els.stationEditPanel.hidden = false;
-  els.stationIdentity.textContent = `${stationKey}${lineKey ? " · on " + lineKey : ""}`;
-
-  const coords = feature.geometry?.coordinates || [];
-  els.stationName.value = String(p.station_name || "");
-  els.stationLat.value = coords[1] !== undefined ? String(Number(coords[1]).toFixed(6)) : "";
-  els.stationLon.value = coords[0] !== undefined ? String(Number(coords[0]).toFixed(6)) : "";
-  els.stationNote.value = "";
-  setEditStatus(els.stationEditStatus, "Loaded from stop properties.");
-}
-
 function clearSelection() {
   closeRouteOverlapPopup();
   state.selectedLineKey = "";
-  state.selectedStationKey = "";
+  clearRouteDirty();
   state.currentRouteStops = [];
   state.selectedBranchGroups = [];
   state.selectedMergedKeys = [];
@@ -628,9 +663,6 @@ function clearSelection() {
   renderProblematicSelectedRow();
   if (els.routeEditPanel) {
     els.routeEditPanel.hidden = true;
-  }
-  if (els.stationEditPanel) {
-    els.stationEditPanel.hidden = true;
   }
   renderCitySelectedRoute();
 }

@@ -27,6 +27,16 @@ function setAdminFocusMask(active) {
   }
 }
 
+function adminMapFitPadding() {
+  const editor = document.getElementById("routeEditPanel");
+  const editorWidth = editor && !editor.hidden
+    ? editor.getBoundingClientRect().width
+    : window.innerWidth >= 1100
+      ? Math.min(430, window.innerWidth * 0.46)
+      : 0;
+  return { top: 70, bottom: 70, left: 60, right: Math.max(60, Math.round(editorWidth) + 20) };
+}
+
 function mapStyle() {
   // Frontend basemap/projection + admin overlay layers.
   const savedTheme = typeof getAdminTheme === "function" ? getAdminTheme() : "light";
@@ -37,8 +47,7 @@ function mapStyle() {
       ...base.sources,
       "routes-vector": { type: "vector", url: adminVectorSourceUrl(), promoteId: "line_key" },
       "focus-mask": { type: "geojson", data: adminFocusMask(false) },
-      stops: { type: "geojson", data: EMPTY_FC },
-      "stops-edited": { type: "geojson", data: EMPTY_FC }
+      stops: { type: "geojson", data: EMPTY_FC }
     },
     layers: [
       ...base.layers,
@@ -136,17 +145,6 @@ function mapStyle() {
           "circle-stroke-color": "#111920",
           "circle-stroke-width": 1.5
         }
-      },
-      {
-        id: "stops-edited",
-        type: "circle",
-        source: "stops-edited",
-        paint: {
-          "circle-radius": 8,
-          "circle-color": "#f59e0b",
-          "circle-stroke-color": "#111920",
-          "circle-stroke-width": 1.8
-        }
       }
     ]
   };
@@ -174,9 +172,10 @@ async function initMap() {
     style: mapStyle(),
     center: [-122.335, 47.608],
     zoom: 10,
-    attributionControl: true
+    attributionControl: false
   });
-  state.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+  state.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-left");
+  state.map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
 
   state.map.on("load", () => {
     state.mapReady = true;

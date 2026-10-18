@@ -1,4 +1,4 @@
-// Admin Map Editor — save/delete route and station overrides, map highlights.
+// Admin Map Editor — save/delete route overrides, map highlights.
 // ---------------------------------------------------------------------------
 // Saves
 // ---------------------------------------------------------------------------
@@ -73,6 +73,7 @@ async function saveRouteEdits() {
 
     setEditStatus(els.routeEditStatus, "Route changes saved.");
     setEditStatus(els.mergeRouteStatus, "");
+    clearRouteDirty("route");
 
     // Problematic geometry is managed from the Problematic geometries panel.
     const problematicActive = Boolean(els.routeProblematic?.checked);
@@ -101,38 +102,6 @@ async function saveRouteEdits() {
   }
 }
 
-async function saveStationEdits() {
-  if (!state.selectedStationKey) {
-    return;
-  }
-  const stationKey = state.selectedStationKey;
-  const body = {
-    stationKey,
-    manualName: String(els.stationName.value || "").trim(),
-    note: String(els.stationNote.value || "").trim()
-  };
-  const lat = Number(els.stationLat.value);
-  const lon = Number(els.stationLon.value);
-  if (Number.isFinite(lat)) body.manualLat = lat;
-  if (Number.isFinite(lon)) body.manualLon = lon;
-
-  try {
-    await apiRequest("/api/admin/overrides/station", {
-      method: "POST",
-      body
-    });
-    setEditStatus(els.stationEditStatus, "Station edits saved.");
-    recordManualEdit(
-      "station",
-      stationKey,
-      [body.manualName ? `name "${body.manualName}"` : "", Number.isFinite(lat) ? `lat ${lat}` : "", Number.isFinite(lon) ? `lon ${lon}` : "", body.note ? `note ${body.note}` : ""].filter(Boolean).join(", ")
-    );
-    addStationHighlight(stationKey, body.manualName, Number.isFinite(lon) ? lon : null, Number.isFinite(lat) ? lat : null);
-  } catch (error) {
-    setEditStatus(els.stationEditStatus, error.message, true);
-  }
-}
-
 async function deleteRouteOverride() {
   const lineKey = state.selectedLineKey;
   if (!lineKey) {
@@ -149,7 +118,7 @@ async function deleteRouteOverride() {
     recordManualEdit("route", `${lineKey} override`, "deleted");
     loadExistingEdits();
     if (state.selectedRouteFeature) {
-      await selectRouteFromFeature(state.selectedRouteFeature);
+      await selectRouteFromFeature(state.selectedRouteFeature, { force: true });
     }
     setEditStatus(els.routeEditStatus, "Override deleted; showing harvested values.");
   } catch (error) {
@@ -178,27 +147,4 @@ function addRouteHighlight(lineKey, payload) {
   } catch {
     // route not in the loaded tileset
   }
-}
-
-function addStationHighlight(stationKey, name, lon, lat) {
-  const source = state.map.getSource("stops-edited");
-  if (!source) {
-    return;
-  }
-  const features = source._data?.features || [];
-  const existing = features.find((f) => f.properties?.station_key === stationKey);
-  if (existing) {
-    existing.properties.station_name = name || existing.properties.station_name;
-    if (Number.isFinite(lon) && Number.isFinite(lat)) {
-      existing.geometry.coordinates = [lon, lat];
-    }
-  } else {
-    features.push({
-      type: "Feature",
-      id: stationKey,
-      geometry: Number.isFinite(lon) && Number.isFinite(lat) ? { type: "Point", coordinates: [lon, lat] } : null,
-      properties: { station_key: stationKey, station_name: name || stationKey }
-    });
-  }
-  source.setData({ type: "FeatureCollection", features });
 }

@@ -266,7 +266,7 @@ async function loadOperatorsForViewport() {
         await loadOperatorsForViewport();
       } catch (error) {
         toggleInput.checked = !toggleInput.checked;
-        setEditStatus(els.routeEditStatus || els.stationEditStatus, error.message, true);
+        setEditStatus(els.routeEditStatus, error.message, true);
       } finally {
         toggleInput.disabled = false;
       }

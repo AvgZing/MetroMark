@@ -104,6 +104,9 @@ function orderAdminStopsByCustomOrder(features, customStops, lineKey = "") {
 }
 
 async function loadStopsForRoute(lineKey) {
+  if (String(lineKey || "") !== String(state.selectedLineKey || "")) {
+    return;
+  }
   const source = state.map && state.map.getSource("stops");
   if (!source) {
     return;
@@ -127,6 +130,9 @@ async function loadStopsForRoute(lineKey) {
   try {
     const params = new URLSearchParams({ lineKey, stopTypes: ROUTE_STOP_TYPES_QUERY });
     const payload = await fetch(`/api/transit/route-stops?${params.toString()}`).then((r) => r.json());
+    if (state.selectedLineKey !== lineKey) {
+      return;
+    }
     if (Array.isArray(payload?.stopsGeoJson?.features)) {
       // Dedupe by station key, then apply the saved custom order.
       let stops = dedupeAdminStopFeatures(payload.stopsGeoJson.features);
@@ -167,11 +173,9 @@ function appendStopsToMapSource(newFeatures) {
 }
 
 function clearStopsMapSources() {
-  for (const id of ["stops", "stops-edited"]) {
-    const source = state.map && state.map.getSource(id);
-    if (source && typeof source.setData === "function") {
-      source.setData(EMPTY_FC);
-    }
+  const source = state.map && state.map.getSource("stops");
+  if (source && typeof source.setData === "function") {
+    source.setData(EMPTY_FC);
   }
 }
 
@@ -218,6 +222,7 @@ function renderMergeRoutesList() {
     remove.textContent = "Unmerge";
     remove.addEventListener("click", () => {
       state.selectedMergedKeys = (state.selectedMergedKeys || []).filter((entry) => entry !== key);
+      markRouteDirty("route");
       renderMergeRoutesList();
       setEditStatus(els.mergeRouteStatus, `${key} removed. Save Changes to apply.`);
     });
@@ -292,6 +297,7 @@ function addMergeRoute() {
     return;
   }
   state.selectedMergedKeys = [...(state.selectedMergedKeys || []), key];
+  markRouteDirty("route");
   if (els.mergeRouteKeyInput) {
     els.mergeRouteKeyInput.value = "";
   }

@@ -34,27 +34,21 @@ function bindMapEvents() {
     openRouteOverlapPopup(uniqueFeatures, event.lngLat);
   });
 
-  state.map.on("click", "stops-layer", (event) => {
-    const features = state.map.queryRenderedFeatures(event.point, { layers: ["stops-layer"] });
-    const feature = features && features[0];
-    if (!feature) {
-      return;
-    }
-    selectStationFromFeature(feature);
-  });
-
   state.map.on("click", (event) => {
     const clicked = state.map.queryRenderedFeatures(event.point, {
       layers: ["routes-hit", "stops-layer"]
     });
     if (!clicked || !clicked.length) {
+      if (!confirmDiscardRouteChanges()) {
+        return;
+      }
       closeRouteOverlapPopup();
       clearSelection();
     }
   });
 
   state.map.on("mousemove", (event) => {
-    const hit = state.map.queryRenderedFeatures(event.point, { layers: ["routes-hit", "stops-layer"] });
+    const hit = state.map.queryRenderedFeatures(event.point, { layers: ["routes-hit"] });
     state.map.getCanvas().style.cursor = hit && hit.length ? "pointer" : "";
   });
 }

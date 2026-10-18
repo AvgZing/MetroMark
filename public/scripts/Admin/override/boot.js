@@ -190,6 +190,27 @@ function bindEvents() {
   }
 
   els.saveRouteBtn.addEventListener("click", saveRouteEdits);
+  if (els.routeEditPanel) {
+    const markEdited = (event) => {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+      if (event.target.closest("#routeStopsList, .branch-groups-editor, #stopAddRow")) {
+        markRouteDirty("stops");
+      } else {
+        markRouteDirty("route");
+      }
+    };
+    els.routeEditPanel.addEventListener("input", markEdited);
+    els.routeEditPanel.addEventListener("change", markEdited);
+  }
+  window.addEventListener("beforeunload", (event) => {
+    if (!hasUnsavedRouteChanges()) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = "";
+  });
   if (els.routeProblematic) {
     els.routeProblematic.addEventListener("change", () => {
       state.problematicTouched = true;
@@ -219,6 +240,9 @@ function bindEvents() {
     });
   }
   els.discardRouteBtn.addEventListener("click", () => {
+    if (!confirmDiscardRouteChanges()) {
+      return;
+    }
     closeRouteOverlapPopup();
     clearSelection();
   });
@@ -229,12 +253,6 @@ function bindEvents() {
       }
     });
   }
-  els.saveStationBtn.addEventListener("click", saveStationEdits);
-  els.discardStationBtn.addEventListener("click", () => {
-    els.stationEditPanel.hidden = true;
-    state.selectedStationKey = "";
-  });
-
   els.saveStopOrderBtn.addEventListener("click", saveStopOrder);
   els.clearStopOrderBtn.addEventListener("click", clearStopOrder);
   if (els.clearStopChangesBtn) {
@@ -282,7 +300,7 @@ function bindEvents() {
   if (els.resetRouteBtn) {
     els.resetRouteBtn.addEventListener("click", () => {
       if (state.selectedRouteFeature) {
-        selectRouteFromFeature(state.selectedRouteFeature).catch(() => {});
+        selectRouteFromFeature(state.selectedRouteFeature, { force: true }).catch(() => {});
       }
     });
   }

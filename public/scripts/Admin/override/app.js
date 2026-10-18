@@ -36,9 +36,15 @@ function initCollapsiblePanels() {
     }
     panel.classList.toggle("is-collapsed", collapsed);
 
+    const syncExpanded = () => {
+      heading.setAttribute("aria-expanded", String(!panel.classList.contains("is-collapsed")));
+    };
+    syncExpanded();
+
     const toggle = () => {
       const next = !panel.classList.contains("is-collapsed");
       panel.classList.toggle("is-collapsed", next);
+      syncExpanded();
       try {
         localStorage.setItem(key, next ? "1" : "0");
       } catch {
