@@ -168,10 +168,20 @@ body.line-view-open .map-overlay-controls {
   font-weight: 500;
   color: var(--ink);
   background: var(--panel);
+  border-top: 1px solid var(--panel-border);
   border-bottom: 1px solid var(--panel-border);
-  cursor: default;
+  cursor: pointer;
   user-select: none;
   line-height: 1;
+}
+
+.zoom-readout:hover {
+  background: var(--button-hover);
+}
+
+.zoom-readout:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /* Dark-mode navigation controls + attribution (match the zoom readout) */
@@ -285,8 +295,6 @@ body[data-theme="dark"] .maplibregl-popup-content {
   border-radius: 6px;
   font-size: 10px;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
   border-color: rgba(45, 45, 45, 0.3);
   background: rgba(255, 255, 255, 0.6);
   color: var(--muted);

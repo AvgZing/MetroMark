@@ -262,6 +262,7 @@
                   <p id="lineViewName" class="line-view-name">Line View</p>
                   <p id="lineViewMeta" class="line-view-meta">Route details</p>
                   <div id="lineViewFacts" class="line-view-facts"></div>
+                  <p id="lineViewProgressText" class="line-view-progress-text">0 / 0 (0%)</p>
                 </div>
               </div>
               <div class="line-view-actions">
@@ -284,16 +285,9 @@
             <div class="line-view-status">
               <p id="lineViewStatus" class="line-view-status-text">Loading stops...</p>
               <div id="lineViewProgress" class="line-view-progress" hidden>
-                <p id="lineViewProgressText" class="line-view-progress-text">0 / 0 (0%)</p>
                 <div class="progress-track">
                   <div id="lineViewProgressFill" class="progress-fill"></div>
                 </div>
-              </div>
-              <div class="line-view-progress-actions">
-                <button id="clearRouteProgressBtn" class="btn line-view-clear-btn" type="button" hidden>
-                  Clear progress
-                </button>
-                <p id="clearRouteProgressConfirmText" class="clear-progress-confirm" hidden></p>
               </div>
               <div id="lineViewDiagnostics" class="line-view-diagnostics">
                 <span class="diagnostic-label">Sort stops (WIP):</span>
@@ -350,6 +344,16 @@
                     <option value="12">Monorail</option>
                   </select>
                 </label>
+                <label for="suggestOrderingInput">
+                  Stop order
+                  <select id="suggestOrderingInput">
+                    <option value="">No Suggestion</option>
+                    <option value="geometry-revised">Geometry-revised</option>
+                    <option value="legacy-geometry">Legacy geometry</option>
+                    <option value="fractions">Fractions</option>
+                    <option value="manual">Request Manual Review</option>
+                  </select>
+                </label>
                 <label for="suggestNoteInput">Note
                   <textarea id="suggestNoteInput" rows="3" maxlength="1000" placeholder="Why should this change? e.g. this is a duplicate of route XX"></textarea>
                 </label>
@@ -362,6 +366,11 @@
                 Notice incorrect route info?
                 <button id="lineViewSuggestBtn" class="line-view-suggest-link" type="button">Suggest changes</button>
               </p>
+              <p class="line-view-suggest-hint" id="clearRouteProgressRow" hidden>
+                Want to start over on this route?
+                <button id="clearRouteProgressBtn" class="line-view-suggest-link" type="button">Clear progress</button>
+              </p>
+              <p id="clearRouteProgressConfirmText" class="clear-progress-confirm" hidden></p>
             </div>
             </div>
           </div>
@@ -394,12 +403,12 @@
             <button class="btn" type="submit">Login</button>
           </form>
 
-          <p class="auth-separator">Don't Have an Account? Create account:</p>
+          <p class="auth-separator">Don't Have an Account? <strong>Create account:</strong></p>
 
           <form id="registerForm" class="stack-form">
             <label>
               Display Name
-              <input id="registerDisplayName" name="displayName" type="text" autocomplete="name" placeholder="Optional" />
+              <input id="registerDisplayName" name="displayName" type="text" autocomplete="name" required />
             </label>
             <label>
               Email

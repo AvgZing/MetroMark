@@ -113,8 +113,12 @@
   }
 
   .line-view-panel.sheet-peek .line-view-status {
-    padding-bottom: 0;
     margin: 0;
+    padding-bottom: 0;
+  }
+
+  .line-view-panel.sheet-peek .line-view-scroll {
+    display: none;
   }
 }
 

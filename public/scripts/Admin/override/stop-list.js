@@ -100,6 +100,9 @@ function renderStopsOrderList() {
       drag.addEventListener("dragend", () => {
         dragStopIndex = null;
         row.classList.remove("is-dragging");
+        els.routeStopsList.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+          el.classList.remove("is-drop-before", "is-drop-after");
+        });
       });
       row.addEventListener("dragover", (event) => {
         if (dragStopIndex === null) {
@@ -109,15 +112,34 @@ function renderStopsOrderList() {
         if (event.dataTransfer) {
           event.dataTransfer.dropEffect = "move";
         }
+        const rect = row.getBoundingClientRect();
+        const after = event.clientY > rect.top + rect.height / 2;
+        els.routeStopsList.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+          el.classList.remove("is-drop-before", "is-drop-after");
+        });
+        row.classList.add(after ? "is-drop-after" : "is-drop-before");
+      });
+      row.addEventListener("dragleave", (event) => {
+        if (event.target === row) {
+          row.classList.remove("is-drop-before", "is-drop-after");
+        }
       });
       row.addEventListener("drop", (event) => {
         event.preventDefault();
-        if (dragStopIndex === null || dragStopIndex === index) {
+        const after = row.classList.contains("is-drop-after");
+        els.routeStopsList.querySelectorAll(".is-drop-before, .is-drop-after").forEach((el) => {
+          el.classList.remove("is-drop-before", "is-drop-after");
+        });
+        if (dragStopIndex === null) {
           return;
         }
         const arr = state.currentRouteStops;
+        let targetIndex = index + (after ? 1 : 0);
         const [moved] = arr.splice(dragStopIndex, 1);
-        arr.splice(index, 0, moved);
+        if (dragStopIndex < targetIndex) {
+          targetIndex -= 1;
+        }
+        arr.splice(Math.max(0, Math.min(targetIndex, arr.length)), 0, moved);
         dragStopIndex = null;
         renderStopsOrderList();
       });
@@ -171,8 +193,9 @@ function renderStopsOrderList() {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "stop-order-remove";
-    remove.textContent = "Delete";
+    remove.textContent = "×";
     remove.title = "Delete this stop";
+    remove.setAttribute("aria-label", "Delete this stop");
     remove.disabled = !manual;
     remove.addEventListener("click", () => {
       state.currentRouteStops.splice(index, 1);
@@ -184,24 +207,51 @@ function renderStopsOrderList() {
     if (manual && (state.selectedBranchGroups || []).length) {
       const branchRow = document.createElement("div");
       branchRow.className = "stop-branch-row";
-      const branchSelect = document.createElement("select");
-      branchSelect.className = "stop-branch-select";
-      branchSelect.title = "Which branch option this stop belongs to";
-      const trunkOption = document.createElement("option");
-      trunkOption.value = "";
-      trunkOption.textContent = "Trunk (always shown)";
-      branchSelect.append(trunkOption);
-      for (const choice of branchOptionChoices()) {
-        const optionEl = document.createElement("option");
-        optionEl.value = String(choice.option.id);
-        optionEl.textContent = `${choice.group.label || "Branch"}: ${choice.option.label || choice.option.id}`;
-        branchSelect.append(optionEl);
+      const choices = branchOptionChoices();
+      const picker = document.createElement("details");
+      picker.className = "stop-branch-picker";
+      const summary = document.createElement("summary");
+      const labelFor = (id) => {
+        const choice = choices.find((entry) => String(entry.option.id) === String(id));
+        return choice ? `${choice.group.label || "Branch"}: ${choice.option.label || id}` : "";
+      };
+      const updateSummary = () => {
+        const labels = stopBranchIds(p).map(labelFor).filter(Boolean);
+        summary.textContent = labels.length ? labels.join(", ") : "Trunk (always shown)";
+      };
+      updateSummary();
+      const optionsWrap = document.createElement("div");
+      optionsWrap.className = "stop-branch-options";
+      for (const choice of choices) {
+        const optionId = String(choice.option.id);
+        const optionLabel = document.createElement("label");
+        optionLabel.className = "stop-branch-option";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.value = optionId;
+        checkbox.checked = stopBranchIds(p).includes(optionId);
+        checkbox.addEventListener("change", () => {
+          const ids = new Set(stopBranchIds(p));
+          if (checkbox.checked) {
+            ids.add(optionId);
+          } else {
+            ids.delete(optionId);
+          }
+          if (ids.size) {
+            p.branches = Array.from(ids);
+          } else {
+            delete p.branches;
+          }
+          delete p.branch;
+          updateSummary();
+        });
+        const text = document.createElement("span");
+        text.textContent = `${choice.group.label || "Branch"}: ${choice.option.label || optionId}`;
+        optionLabel.append(checkbox, text);
+        optionsWrap.append(optionLabel);
       }
-      branchSelect.value = String(p.branch || "");
-      branchSelect.addEventListener("change", () => {
-        p.branch = branchSelect.value;
-      });
-      branchRow.append(branchSelect);
+      picker.append(summary, optionsWrap);
+      branchRow.append(picker);
       row.append(branchRow);
     }
 
@@ -217,7 +267,7 @@ function addCustomStop() {
   const lat = Number(els.newStopLat?.value);
   const lon = Number(els.newStopLon?.value);
   if (!name || !Number.isFinite(lat) || !Number.isFinite(lon)) {
-    setEditStatus(els.routeEditStatus, "A stop name and numeric lat/lon are required.", true);
+    setEditStatus(els.stopOrderStatus, "A stop name and numeric lat/lon are required.", true);
     return;
   }
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "stop";
@@ -232,10 +282,35 @@ function addCustomStop() {
   if (els.newStopName) els.newStopName.value = "";
   if (els.newStopLat) els.newStopLat.value = "";
   if (els.newStopLon) els.newStopLon.value = "";
-  setEditStatus(els.routeEditStatus, `Added "${name}" to the working order. Save Stop Order to persist.`);
+  setEditStatus(els.stopOrderStatus, `Added "${name}" to the working order. Save Stop Order to persist.`);
 }
 
 async function saveStopOrder() {
+  if (!state.selectedLineKey || state.stopOrderSaving) {
+    return;
+  }
+  state.stopOrderSaving = true;
+  if (els.saveStopOrderBtn) {
+    els.saveStopOrderBtn.disabled = true;
+  }
+  setEditStatus(els.stopOrderStatus, "Saving…");
+  const warnBeforeUnload = (event) => {
+    event.preventDefault();
+    event.returnValue = "";
+  };
+  window.addEventListener("beforeunload", warnBeforeUnload);
+  try {
+    await saveStopOrderNow();
+  } finally {
+    state.stopOrderSaving = false;
+    if (els.saveStopOrderBtn) {
+      els.saveStopOrderBtn.disabled = false;
+    }
+    window.removeEventListener("beforeunload", warnBeforeUnload);
+  }
+}
+
+async function saveStopOrderNow() {
   if (!state.selectedLineKey) {
     return;
   }
@@ -250,9 +325,12 @@ async function saveStopOrder() {
         lat: Number.isFinite(Number(coords[1])) ? Number(coords[1]) : null,
         lon: Number.isFinite(Number(coords[0])) ? Number(coords[0]) : null
       };
-      const branch = String(p.branch || "").trim();
-      if (branch) {
-        entry.branch = branch;
+      const validOptionIds = new Set(branchOptionChoices().map((choice) => String(choice.option.id)));
+      const branches = stopBranchIds(p).filter((id) => validOptionIds.has(id));
+      if (branches.length) {
+        entry.branches = branches;
+        // Keep `branch` for older clients that only read the single tag.
+        entry.branch = branches[0];
       }
       return entry;
     })
@@ -291,7 +369,7 @@ async function saveStopOrder() {
       method: "POST",
       body: { lineKey, citySlug: state.currentCitySlug, payload }
     });
-    setEditStatus(els.routeEditStatus, `Stop order saved (${stops.length} stops).`);
+    setEditStatus(els.stopOrderStatus, `Stop order saved (${stops.length} stops).`);
     setEditStatus(els.mergeRouteStatus, "");
     recordManualEdit(
       "route",
@@ -299,7 +377,7 @@ async function saveStopOrder() {
       `${stops.length} stops${branchGroups.length ? `, ${branchGroups.length} branch group(s)` : ""}`
     );
   } catch (error) {
-    setEditStatus(els.routeEditStatus, error.message, true);
+    setEditStatus(els.stopOrderStatus, error.message, true);
   }
 }
 
@@ -319,7 +397,7 @@ async function clearStopChanges() {
   renderBranchGroupsEditor();
   await loadStopsForRoute(state.selectedLineKey);
   updateStopOrderLockState();
-  setEditStatus(els.routeEditStatus, "Reverted unsaved stop changes.");
+  setEditStatus(els.stopOrderStatus, "Reverted unsaved stop changes.");
 }
 
 async function clearStopOrder() {
@@ -348,18 +426,19 @@ async function clearStopOrder() {
     }
     state.selectedBranchGroups = [];
     renderBranchGroupsEditor();
-    setEditStatus(els.routeEditStatus, "Stop order reset to automatic.");
+    setEditStatus(els.stopOrderStatus, "Stop order reset to automatic.");
     recordManualEdit("route", `${lineKey} · stop order`, "reset all stop-order changes");
     await loadStopsForRoute(lineKey);
     // Re-render in case the stop refetch did not land.
     for (const feature of state.currentRouteStops || []) {
       if (feature.properties) {
         delete feature.properties.branch;
+        delete feature.properties.branches;
       }
     }
     updateStopOrderLockState();
   } catch (error) {
-    setEditStatus(els.routeEditStatus, error.message, true);
+    setEditStatus(els.stopOrderStatus, error.message, true);
   }
 }
 

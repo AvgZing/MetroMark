@@ -471,6 +471,7 @@
     height: 100%;
     width: 100%;
     background: var(--panel);
+    padding-bottom: 0;
   }
 
   .line-view-sheet-handle {
@@ -939,21 +940,13 @@
     height: 13px;
   }
 
-  /* Hidden until a long-press arms the two-step clear confirmation. */
-  .line-view-progress-actions {
-    display: none;
+  .line-view-progress-text {
+    left: -16px;
+    top: 10px;
   }
 
-  .line-view-progress-actions.is-revealed {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .line-view-progress-actions .clear-progress-confirm {
-    margin: 0;
-    font-size: 11px;
-    color: var(--muted);
+  .line-view-panel.sheet-peek .line-view-progress-text {
+    top: 16px;
   }
 
   /* Ordering row stays one compact line; reverse becomes a round icon. */
@@ -997,7 +990,7 @@
 
   /* Peek with a focused route: name row, X/Zoom stack, and progress. */
   body.route-selected .line-view-panel.sheet-peek {
-    height: 122px;
+    height: 104px;
   }
 
   /* Keep the map controls just clear of the sheet. */
@@ -1242,21 +1235,25 @@
     text-transform: none;
   }
 
-  /* Route rows: meta gets its own full-width wrapping line so the headway and
-     operator are never truncated, with the visibility controls kept on row 1. */
+  /* Route rows: keep the stop count on the name line, above the visibility
+     controls, matching desktop. */
   #filtersPanel .line-item {
     grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-areas:
-      "dot name controls"
-      "meta meta meta"
-      "stops stops stops";
+      "dot name stops"
+      ". meta controls";
     row-gap: 3px;
     padding: 9px 0;
   }
 
   #filtersPanel .line-item.is-manual-on,
   #filtersPanel .line-item.is-manual-off {
-    padding-left: 0;
+    padding-left: 10px;
+  }
+
+  #filtersPanel .line-item.is-manual-on::before,
+  #filtersPanel .line-item.is-manual-off::before {
+    left: 0;
   }
 
   #filtersPanel .line-item > .line-meta {
@@ -1265,10 +1262,6 @@
     text-overflow: clip;
     font-size: 11px;
     line-height: 1.35;
-  }
-
-  #filtersPanel .line-item > .line-side-top {
-    justify-self: start;
   }
 
   /* Progress tab: no dead space between the header and the big number. */

@@ -30,6 +30,9 @@
       window.updateLineViewSuggestVisibility();
     }
     updateChromeVisibility();
+    if (el.id === "lineViewPanel" && state !== "peek") {
+      requestAnimationFrame(() => window.redrawLineViewConnector?.());
+    }
   }
 
   function openPagePanelState(backdropId, panelSelector) {
@@ -117,7 +120,9 @@
     let startY = 0;
     let startHeight = 0;
     let startState = "peek";
-    let moved = false;
+    let lastY = 0;
+    let lastMoveAt = 0;
+    let velocity = 0;
 
     handle.addEventListener("pointerdown", (event) => {
       if (!isPortrait()) {
@@ -127,10 +132,12 @@
         return;
       }
       dragging = true;
-      moved = false;
       startY = event.clientY;
       startHeight = el.getBoundingClientRect().height;
       startState = stateOf(el);
+      lastY = event.clientY;
+      lastMoveAt = performance.now();
+      velocity = 0;
       el.dataset.dragMoved = "";
       el.classList.add("sheet-dragging");
       try {
@@ -144,45 +151,68 @@
       if (!dragging) {
         return;
       }
+      const now = performance.now();
+      const dt = now - lastMoveAt;
+      if (dt >= 2) {
+        velocity = (event.clientY - lastY) / dt;
+      }
+      lastY = event.clientY;
+      lastMoveAt = now;
       const delta = event.clientY - startY;
       if (Math.abs(delta) > 6) {
-        moved = true;
         el.dataset.dragMoved = "1";
       }
       const next = startHeight - delta;
       el.style.height = `${Math.max(56, Math.min(window.innerHeight - 120, next))}px`;
     });
 
-    const finish = (event) => {
+    const finish = (event, cancelled) => {
       if (!dragging) {
         return;
       }
       dragging = false;
-      const dy = (event.clientY || startY) - startY;
+      const dy = cancelled ? 0 : (event.clientY || startY) - startY;
       const measured = el.getBoundingClientRect().height;
+      // A flick counts even when the finger travels only a little.
+      const sinceMove = performance.now() - lastMoveAt;
+      const fling = !cancelled && sinceMove < 120 ? velocity : 0;
       el.style.height = "";
       el.classList.remove("sheet-dragging");
 
-      const routeMode = el.id === "lineViewPanel" && document.body.classList.contains("route-selected");
-
-      if (!routeMode) {
-        // Page sheets and the plain map sheet share one snapping behaviour.
-        pageSheetFinish(el, startState, dy, measured);
+      if (cancelled) {
+        applyState(el, startState);
         return;
       }
 
+      const up = dy < -24 || (dy < -10 && fling < -0.25);
+      const down = dy > 40 || (dy > 10 && fling > 0.25);
       const state = stateOf(el);
-      if (dy < -30) {
-        applyState(el, "full");
-      } else if (dy > 45) {
-        const stayHalf = measured > window.innerHeight * 0.32;
-        applyState(el, state === "full" && stayHalf ? "half" : "peek");
+      const isLinePanel = el.id === "lineViewPanel";
+      const twoState = isLinePanel && !document.body.classList.contains("route-selected");
+      const downTarget =
+        state === "full" && !twoState && measured > window.innerHeight * 0.32 ? "half" : "peek";
+
+      if (isLinePanel) {
+        if (up) {
+          applyState(el, "full");
+        } else if (down) {
+          applyState(el, downTarget);
+        } else {
+          applyState(el, state);
+        }
+        return;
+      }
+
+      if (up) {
+        setPageSheetState(el, "full");
+      } else if (down) {
+        setPageSheetState(el, downTarget);
       } else {
-        applyState(el, state);
+        pageSheetFinish(el, startState, dy, measured);
       }
     };
-    handle.addEventListener("pointerup", finish);
-    handle.addEventListener("pointercancel", finish);
+    handle.addEventListener("pointerup", (event) => finish(event, false));
+    handle.addEventListener("pointercancel", (event) => finish(event, true));
   }
 
   function bindCycle(handle, el) {

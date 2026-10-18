@@ -223,6 +223,10 @@ function renderUserStatus() {
     const showClear = Boolean(appState.user) && Boolean(routeLineKey);
     dom.clearRouteProgressBtn.hidden = !showClear;
     dom.clearRouteProgressBtn.disabled = !showClear;
+    const clearRow = dom.clearRouteProgressBtn.closest(".line-view-suggest-hint");
+    if (clearRow) {
+      clearRow.hidden = !showClear;
+    }
   }
 
   if (dom.clearRouteProgressConfirmText) {
@@ -232,15 +236,8 @@ function renderUserStatus() {
 
     dom.clearRouteProgressConfirmText.hidden = !pending;
     dom.clearRouteProgressConfirmText.textContent = pending
-      ? "Click Clear Route Progress again to confirm reset."
+      ? "Click Clear progress again to confirm."
       : "";
-
-    // Mobile keeps the clear controls hidden until a long-press arms the
-    // confirmation, so tie their visibility to the pending state.
-    const progressActions = document.querySelector(".line-view-progress-actions");
-    if (progressActions) {
-      progressActions.classList.toggle("is-revealed", pending);
-    }
   }
 
   if (dom.lineViewBtn) {
@@ -316,6 +313,33 @@ function setUserStatus(title, subtitle, options = {}) {
   renderUserStatus();
 }
 
+async function loadRouteOverrides() {
+  try {
+    const response = await fetch("/api/transit/overrides");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+
+    appState.routeOverridesByCity.clear();
+    if (Array.isArray(data.routeOverrides)) {
+      data.routeOverrides.forEach((override) => {
+        appState.routeOverridesByCity.set(override.line_key, override);
+      });
+    }
+
+    if (typeof applyRouteOverridesToMap === "function") {
+      applyRouteOverridesToMap();
+    }
+    if (typeof rebuildLineMetadataFromTiles === "function") {
+      rebuildLineMetadataFromTiles();
+    }
+    if (appState.lineViewOpen && typeof renderLineView === "function") {
+      renderLineView({ forceStopRefresh: true });
+    }
+  } catch (err) {
+    console.warn("Failed to load route overrides:", err);
+  }
+}
+
 async function loadReviewsForCity(citySlug) {
   try {
     const response = await fetch(`/api/transit/reviews?citySlug=${encodeURIComponent(citySlug)}`);
@@ -325,7 +349,6 @@ async function loadReviewsForCity(citySlug) {
 
     appState.routeReviewsByCity.clear();
     appState.agencyReviewsByCity.clear();
-    appState.routeOverridesByCity.clear();
 
     if (Array.isArray(data.routeReviews)) {
       data.routeReviews.forEach((review) => {
@@ -336,12 +359,6 @@ async function loadReviewsForCity(citySlug) {
     if (Array.isArray(data.agencyReviews)) {
       data.agencyReviews.forEach((review) => {
         appState.agencyReviewsByCity.set(review.operator_name, review);
-      });
-    }
-
-    if (Array.isArray(data.routeOverrides)) {
-      data.routeOverrides.forEach((override) => {
-        appState.routeOverridesByCity.set(override.line_key, override);
       });
     }
 

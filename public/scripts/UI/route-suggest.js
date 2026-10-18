@@ -35,6 +35,10 @@ function openSuggest() {
   suggestEl("suggestOperatorInput").value = suggestBaseline.operatorName;
   suggestEl("suggestColorInput").value = suggestBaseline.color;
   suggestEl("suggestModeInput").value = suggestBaseline.mode;
+  const orderingEl = suggestEl("suggestOrderingInput");
+  if (orderingEl) {
+    orderingEl.value = "";
+  }
   suggestEl("suggestNoteInput").value = "";
   suggestEl("suggestRouteLabel").textContent = `${line.lineName || lineKey} (${lineKey}) — an admin reviews every suggestion.`;
   const statusEl = suggestEl("suggestStatus");
@@ -91,6 +95,8 @@ async function submitRouteSuggestion() {
   if (operator && operator !== suggestBaseline.operatorName) payload.operatorName = operator;
   if (color && color !== suggestBaseline.color) payload.color = color;
   if (mode !== "" && mode !== suggestBaseline.mode) payload.mode = Number(mode);
+  const ordering = suggestEl("suggestOrderingInput")?.value.trim() || "";
+  if (ordering) payload.orderingMode = ordering;
 
   const note = suggestEl("suggestNoteInput").value.trim();
   const statusEl = suggestEl("suggestStatus");

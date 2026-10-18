@@ -63,6 +63,8 @@ async function init() {
   els.adminPasswordInput.value = "";
   initCollapsiblePanels();
   bindEvents();
+  renderAdminModeFilter();
+  renderAdminFrequencyFilter();
 
   // Apply the saved light/dark theme and wire the toggle (basemap swap is
   // handled automatically once the map exists).

@@ -159,26 +159,75 @@ function resolveBranchStops(customStops, branchGroups, selection) {
     chosen[group.id] = optionById.has(selected) ? selected : first;
   }
 
-  const filtered = [];
-  const splitLabels = new Map();
-  const seenSplit = new Set();
+  const included = [];
   for (const stop of stops) {
-    const branchId = String(stop?.branch || "").trim();
-    if (branchId) {
-      const meta = optionById.get(branchId);
-      if (!meta || chosen[meta.group.id] !== branchId) {
+    const ids = stopBranchIds(stop);
+    const groupsForStop = new Map();
+    if (ids.length) {
+      // A stop is shown only when every group it belongs to has a chosen option
+      // among its memberships (a stop may sit in several options of one group).
+      for (const id of ids) {
+        const meta = optionById.get(id);
+        if (!meta) {
+          continue;
+        }
+        if (!groupsForStop.has(meta.group.id)) {
+          groupsForStop.set(meta.group.id, new Set());
+        }
+        groupsForStop.get(meta.group.id).add(String(meta.option.id));
+      }
+      let keep = true;
+      for (const [groupId, optionIds] of groupsForStop) {
+        if (!optionIds.has(String(chosen[groupId]))) {
+          keep = false;
+          break;
+        }
+      }
+      if (!keep) {
         continue;
       }
-      const key = String(stop?.key || "").trim();
-      if (key && !seenSplit.has(meta.group.id)) {
-        seenSplit.add(meta.group.id);
-        splitLabels.set(key, String(meta.option.label || meta.group.label || "Branch"));
-      }
     }
-    filtered.push(stop);
+    included.push({ stop, groupsForStop });
   }
 
-  return { stops: filtered, splitLabels, hasBranches: true };
+  // Label both ends of each branch run: the junction where it starts and the
+  // stop where it rejoins the shared trunk.
+  const splitLabels = new Map();
+  const addLabel = (key, text) => {
+    if (!key || !text) {
+      return;
+    }
+    splitLabels.set(key, splitLabels.has(key) ? `${splitLabels.get(key)} / ${text}` : text);
+  };
+  for (const group of groups) {
+    const chosenId = String(chosen[group.id] || "");
+    if (!chosenId) {
+      continue;
+    }
+    let firstIndex = -1;
+    let lastIndex = -1;
+    for (let i = 0; i < included.length; i += 1) {
+      const ids = included[i].groupsForStop.get(group.id);
+      if (ids && ids.has(chosenId)) {
+        if (firstIndex === -1) {
+          firstIndex = i;
+        }
+        lastIndex = i;
+      }
+    }
+    if (firstIndex === -1) {
+      continue;
+    }
+    const meta = optionById.get(chosenId);
+    const optionLabel = String(meta?.option?.label || "Branch");
+    const divergenceIndex = firstIndex > 0 ? firstIndex - 1 : firstIndex;
+    addLabel(String(included[divergenceIndex]?.stop?.key || ""), `Branches to ${optionLabel}`);
+    if (lastIndex < included.length - 1) {
+      addLabel(String(included[lastIndex + 1]?.stop?.key || ""), `${optionLabel} rejoins`);
+    }
+  }
+
+  return { stops: included.map((entry) => entry.stop), splitLabels, hasBranches: true };
 }
 
 function renderLineViewBranchSelector(lineKey, branchGroups) {
@@ -229,6 +278,7 @@ function renderLineViewBranchSelector(lineKey, branchGroups) {
 // Guards against overlapping async renders stacking duplicate stop rows.
 let lineViewStopsRenderToken = 0;
 let lineViewSheetLineKey = "";
+let lineViewConnectorColor = "#177ca2";
 
 async function renderLineViewStops(lineKey, lineColor, options = {}) {
   if (!dom.lineViewStops) {
@@ -420,7 +470,7 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
       row.classList.add("is-branch-split");
       const branchLabel = document.createElement("p");
       branchLabel.className = "line-view-stop-branch";
-      branchLabel.textContent = `Branches to ${String(props.branch_split_label).trim()}`;
+      branchLabel.textContent = String(props.branch_split_label).trim();
       content.prepend(branchLabel);
     }
     row.append(marker, content);
@@ -437,8 +487,17 @@ async function renderLineViewStops(lineKey, lineColor, options = {}) {
     dom.lineViewStops.append(row);
   });
 
-  createLineConnector(lineColor);
+  lineViewConnectorColor = lineColor || "#177ca2";
+  createLineConnector(lineViewConnectorColor);
+  requestAnimationFrame(() => createLineConnector(lineViewConnectorColor));
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => createLineConnector(lineViewConnectorColor)).catch(() => {});
+  }
   updateLineViewSuggestVisibility();
+}
+
+function redrawLineViewConnector() {
+  createLineConnector(lineViewConnectorColor);
 }
 
 // Show the suggest footer only for a loaded route, outside peek.
@@ -448,9 +507,10 @@ function updateLineViewSuggestVisibility() {
     return;
   }
   const lineKey = String(appState.lineViewLineKey || appState.focusedLineKey || "").trim();
-  const state = dom.lineViewPanel?.dataset.sheetState || "peek";
+  const state = dom.lineViewPanel?.dataset.sheetState || "";
+  const peekMobile = typeof isPortraitMobileLayout === "function" && isPortraitMobileLayout() && state === "peek";
   const hasStops = Boolean(dom.lineViewStops?.querySelector(".line-view-stop-row"));
-  footer.hidden = !lineKey || !hasStops || state === "peek";
+  footer.hidden = !lineKey || !hasStops || peekMobile;
 }
 
 /** Render or update the line view panel with the focused line's metadata and progress. */
@@ -477,6 +537,9 @@ function setLineViewEmptyState() {
   }
   if (dom.lineViewProgress) {
     dom.lineViewProgress.hidden = true;
+  }
+  if (dom.lineViewProgressText) {
+    dom.lineViewProgressText.textContent = "";
   }
   if (dom.lineViewDiagnostics) {
     dom.lineViewDiagnostics.hidden = true;
@@ -869,38 +932,5 @@ async function openLineViewMap() {
     window.setMobileSheetState("peek");
   }
 }
-
-(function bindLineProgressLongPress() {
-  const target = document.getElementById("lineViewProgress");
-  if (!target) {
-    return;
-  }
-  let timer = null;
-  const start = () => {
-    timer = window.setTimeout(() => {
-      const clearBtn = document.getElementById("clearRouteProgressBtn");
-      if (!clearBtn || clearBtn.disabled) {
-        return;
-      }
-      // Long-press arms the two-step clear confirmation; a second press resets.
-      const actions = clearBtn.closest(".line-view-progress-actions");
-      if (actions) {
-        actions.classList.add("is-revealed");
-      }
-      clearBtn.hidden = false;
-      clearBtn.click();
-    }, 550);
-  };
-  const cancel = () => {
-    if (timer) {
-      window.clearTimeout(timer);
-      timer = null;
-    }
-  };
-  target.addEventListener("pointerdown", start);
-  target.addEventListener("pointerup", cancel);
-  target.addEventListener("pointerleave", cancel);
-  target.addEventListener("pointercancel", cancel);
-})();
 
 try { syncLineViewOrderingControls(); } catch (e) { /* DOM elements may not be ready yet */ }

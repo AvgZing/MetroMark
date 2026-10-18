@@ -106,20 +106,13 @@
   justify-content: center;
 }
 
-.line-view-progress-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 /* One consistent secondary-button treatment across line view controls: a
    slightly stronger fill than the panel so the controls read as buttons. */
 .line-view-nav,
 .line-view-ordering-btn,
 .line-view-reverse-btn,
 .line-visibility-btn,
-.show-stops-btn,
-.line-view-clear-btn {
+.show-stops-btn {
   background: var(--control-bg);
   border: 1px solid var(--line);
   color: var(--ink);
@@ -129,8 +122,7 @@
 .line-view-ordering-btn:hover,
 .line-view-reverse-btn:hover,
 .line-visibility-btn:hover,
-.show-stops-btn:hover,
-.line-view-clear-btn:hover {
+.show-stops-btn:hover {
   background: var(--control-hover);
 }
 
@@ -149,13 +141,6 @@
 .line-view-actions #lineViewMapBtn:hover {
   background: var(--accent-strong);
   border-color: transparent;
-}
-
-.line-view-clear-btn {
-  height: 24px;
-  padding: 0 8px;
-  font-size: 11px;
-  color: var(--muted);
 }
 
 /* Hinged / dual-segment viewports (foldables with a crease, dual-screen

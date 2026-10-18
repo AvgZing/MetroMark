@@ -30,8 +30,7 @@ body[data-theme="dark"] .line-view-panel {
   border: 1px solid var(--panel-border);
   border-radius: 10px;
   box-shadow: var(--shadow);
-  padding: 12px;
-  overflow: hidden;
+  padding: 12px 12px 0;
 }
 
 body[data-theme="dark"] .line-view-card {
@@ -142,6 +141,9 @@ body[data-theme="dark"] .line-view-card {
 }
 
 .line-view-progress-text {
+  position: relative;
+  left: -24px;
+  top: 10px;
   margin: 0 0 2px;
   font-size: 11px;
   color: var(--muted);
@@ -221,8 +223,14 @@ body[data-theme="dark"] .line-view-card {
 
 .branch-selector-options {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.branch-selector-options::-webkit-scrollbar {
+  display: none;
 }
 
 .branch-selector-btn {
@@ -251,8 +259,6 @@ body[data-theme="dark"] .line-view-card {
   margin: 0 0 2px;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--accent);
 }
 
@@ -477,6 +483,7 @@ body.colorblind-mode .line-view-stop-row.is-visited .line-view-stop-dot::after {
   flex-direction: column;
   gap: 8px;
   padding-top: 8px;
+  padding-bottom: 12px;
   border-top: 1px solid var(--panel-border);
 }
 

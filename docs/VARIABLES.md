@@ -146,11 +146,11 @@ Stored in `route_override` table and edited via admin override page:
   frequencyBucket: "frequent" | "regular" | "local" | "unknown" | null,
   headwayBestMinutes: number | null,
   mergedLineKeys: ["string"],  // member line keys merged into this canonical route
-  stops: [{ key: "string", name: "string", lat: number, lon: number, branch?: "string" }],
+  stops: [{ key: "string", name: "string", lat: number, lon: number, branches?: ["string"], branch?: "string" }],
   branchGroups: [{ id: "string", label: "string", options: [{ id: "string", label: "string" }] }]
 }
 ```
-- `stops` (when present) is the authoritative ordered list for the line view when the ordering default is Manual; it always supplies names/coordinates. `branch` tags a stop with a `branchGroups` option id (trunk = untagged).
+- `stops` (when present) is the authoritative ordered list for the line view when the ordering default is Manual; it always supplies names/coordinates. `branches` lists the `branchGroups` option ids the stop belongs to (trunk = empty). A stop may hold several ids, including multiple options in the same group, so cascading northern/central splits work: the stop is shown when every group it belongs to has the chosen option among its ids. `branch` (single id) is still written for older clients.
 - `mergedLineKeys` (on the canonical route's override): collapses the listed member routes into this route. Names join with "/", members inherit the canonical color/operator/frequency, are hidden from the list, and identical stops merge by `station_key`. Resolved client-side by `resolveCanonicalLineKey` + `appState.mergeMembersByCanonical` / `mergeCanonicalByMember`.
 - Applied client-side (vector-metadata.js + line view); no tile rebuild needed for override changes.
 
@@ -350,6 +350,7 @@ The harvester automates the same requests a user makes (route-stops, headway), c
 - **GET `/api/transit/route-headway/bulk?lineKeys=a,b,c`** - Cached headway for many routes (one query)
 - **POST `/api/transit/stop-fractions`** - ST_LineLocatePoint fractions for stops on a route
 - **GET `/api/transit/reviews?citySlug=...`** - Route & agency review settings
+- **GET `/api/transit/overrides`** - All route overrides (city-independent); loaded on startup and on tab focus so admin edits (branches, naming, merges) apply in globe view too
 - **POST `/api/transit/route-ordering/vote`** - Record a signed-in route-ordering preference vote
 - **GET `/api/transit/bbox`** - **Retired (HTTP 410)**: replaced by the PMTiles pipeline; kept only to return a clear error.
 

@@ -93,28 +93,10 @@
             placeholder="Name, number, operator, or key"
             aria-label="Find route on map"
           />
-          <label for="routeModeFilterSelect">Filter by Mode</label>
-          <select id="routeModeFilterSelect">
-            <option value="">All modes</option>
-            <option value="0">Tram</option>
-            <option value="1">Metro</option>
-            <option value="2">Rail</option>
-            <option value="3">Bus</option>
-            <option value="4">Ferry</option>
-            <option value="5">Cable Tram</option>
-            <option value="6">Aerial</option>
-            <option value="7">Funicular</option>
-            <option value="11">Trolleybus</option>
-            <option value="12">Monorail</option>
-          </select>
-          <label for="routeFrequencyFilterSelect">Filter by Frequency</label>
-          <select id="routeFrequencyFilterSelect">
-            <option value="">All frequencies</option>
-            <option value="frequent">Frequent (up to 10m)</option>
-            <option value="regular">Regular (11-29m)</option>
-            <option value="local">Local (30m+)</option>
-            <option value="unknown">Unknown</option>
-          </select>
+          <p class="filter-section-title">Mode</p>
+          <div id="adminModeFilter" class="mode-filter-bar" aria-label="Admin mode filters"></div>
+          <p class="filter-section-title">Frequency</p>
+          <div id="adminFrequencyFilter" class="mode-filter-bar" aria-label="Admin frequency filters"></div>
           <p class="microcopy" id="routeSearchInfo"></p>
           <div id="routeSearchResults" class="admin-route-search-results"></div>
           <div class="override-actions">
@@ -502,6 +484,7 @@
                   <button id="clearStopChangesBtn" class="btn btn-subtle" type="button">Clear Changes</button>
                   <button id="clearStopOrderBtn" class="btn btn-subtle" type="button">Reset All Changes</button>
                 </div>
+                <p class="status" id="stopOrderStatus"></p>
                 <p class="field-hint">These save the stop list, order, and stop ordering default. Other route fields are saved with Save Changes at the bottom.</p>
               </div>
 

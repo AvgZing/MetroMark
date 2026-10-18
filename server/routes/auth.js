@@ -17,6 +17,10 @@ router.post("/auth/register", async (req, res) => {
     return res.status(400).json({ error: "Email and password are required." });
   }
 
+  if (!displayName) {
+    return res.status(400).json({ error: "Display name is required." });
+  }
+
   if (password.length < 6) {
     return res.status(400).json({ error: "Password must be at least 6 characters." });
   }

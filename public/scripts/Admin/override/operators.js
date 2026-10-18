@@ -4,6 +4,94 @@
 // ---------------------------------------------------------------------------
 
 // Show hidden operators and disabled routes on the map.
+const ADMIN_MODE_FILTER_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 11, 12];
+const ADMIN_FREQUENCY_FILTER_OPTIONS = [
+  ["frequent", "Frequent (≤10m)"],
+  ["regular", "Regular (11–29m)"],
+  ["local", "Local (30m+)"],
+  ["unknown", "Unknown"]
+];
+
+function applyAdminMapFilters() {
+  applyMapRouteVisibility({
+    hiddenOperators: Array.from(state.hiddenOperators || []),
+    disabledLineKeys: Array.from(state.disabledRouteKeys || [])
+  });
+}
+
+function refreshAdminSearch() {
+  if (typeof applyUnderlaySearchFilter === "function") {
+    applyUnderlaySearchFilter();
+  }
+}
+
+function addAdminFilterChip(el, label, active, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "mode-chip";
+  button.textContent = label;
+  button.classList.toggle("is-active", active);
+  button.setAttribute("aria-pressed", active ? "true" : "false");
+  button.addEventListener("click", onClick);
+  el.append(button);
+}
+
+function renderAdminModeFilter() {
+  const el = els.adminModeFilter;
+  if (!el) {
+    return;
+  }
+  el.innerHTML = "";
+  const activeCount = (state.adminModeFilter || new Set()).size;
+  addAdminFilterChip(el, "All", activeCount === 0, () => {
+    state.adminModeFilter.clear();
+    renderAdminModeFilter();
+    applyAdminMapFilters();
+    refreshAdminSearch();
+  });
+  for (const mode of ADMIN_MODE_FILTER_OPTIONS) {
+    const label = MODE_LABELS[mode];
+    if (!label) {
+      continue;
+    }
+    addAdminFilterChip(el, label, state.adminModeFilter.has(mode), () => {
+      if (state.adminModeFilter.has(mode)) {
+        state.adminModeFilter.delete(mode);
+      } else {
+        state.adminModeFilter.add(mode);
+      }
+      renderAdminModeFilter();
+      applyAdminMapFilters();
+      refreshAdminSearch();
+    });
+  }
+}
+
+function renderAdminFrequencyFilter() {
+  const el = els.adminFrequencyFilter;
+  if (!el) {
+    return;
+  }
+  el.innerHTML = "";
+  const activeCount = (state.adminFrequencyFilter || new Set()).size;
+  addAdminFilterChip(el, "All", activeCount === 0, () => {
+    state.adminFrequencyFilter.clear();
+    renderAdminFrequencyFilter();
+    refreshAdminSearch();
+  });
+  for (const [value, label] of ADMIN_FREQUENCY_FILTER_OPTIONS) {
+    addAdminFilterChip(el, label, state.adminFrequencyFilter.has(value), () => {
+      if (state.adminFrequencyFilter.has(value)) {
+        state.adminFrequencyFilter.delete(value);
+      } else {
+        state.adminFrequencyFilter.add(value);
+      }
+      renderAdminFrequencyFilter();
+      refreshAdminSearch();
+    });
+  }
+}
+
 function applyMapRouteVisibility({ hiddenOperators, disabledLineKeys } = {}) {
   if (!state.map || !state.mapReady) {
     return;
@@ -20,6 +108,8 @@ function applyMapRouteVisibility({ hiddenOperators, disabledLineKeys } = {}) {
   if (lineKeys.length) {
     conditions.push(["!", ["in", ["get", "line_key"], ["literal", lineKeys]]]);
   }
+  const modes = Array.from(state.adminModeFilter || []).map(Number).filter((mode) => Number.isFinite(mode));
+  const modeFilter = modes.length ? ["in", ["get", "route_type"], ["literal", modes]] : null;
   // City preset preview: show only the resolved preset routes.
   if (state.cityPreviewKeys instanceof Set && state.cityPreviewKeys.size) {
     conditions.push(["in", ["get", "line_key"], ["literal", Array.from(state.cityPreviewKeys)]]);
@@ -29,6 +119,7 @@ function applyMapRouteVisibility({ hiddenOperators, disabledLineKeys } = {}) {
     conditions.push(["!", ["in", ["get", "line_key"], ["literal", Array.from(state.problematicKeys)]]]);
   }
   const baseFilter = conditions.length === 0 ? null : conditions.length === 1 ? conditions[0] : ["all", ...conditions];
+  const visibleFilter = baseFilter && modeFilter ? ["all", baseFilter, modeFilter] : baseFilter || modeFilter;
 
   // Merged members stay hidden even in "preview all" (preview only ignores
   // operator/disabled hides).
@@ -38,7 +129,7 @@ function applyMapRouteVisibility({ hiddenOperators, disabledLineKeys } = {}) {
   const memberFilter = mergedMembers.length
     ? ["!", ["in", ["get", "line_key"], ["literal", mergedMembers]]]
     : null;
-  let filter = state.visibilityPreviewAll ? null : baseFilter;
+  let filter = state.visibilityPreviewAll ? modeFilter : visibleFilter;
   if (memberFilter) {
     filter = filter ? ["all", filter, memberFilter] : memberFilter;
   }

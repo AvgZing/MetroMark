@@ -62,7 +62,7 @@ async function searchTransitlandRoutes(query, options = {}) {
     include_geometry: "true",
     limit: String(Math.max(1, Math.min(options.limit || 20, MAX_SEARCH_RESULTS)))
   };
-  if (bbox && bbox.every(Number.isFinite)) {
+  if (!isOnestopId && bbox && bbox.every(Number.isFinite)) {
     requestParams.bbox = bbox.join(",");
   }
   const response = await transitlandRequest("/routes", requestParams, { requestSource: REQUEST_SOURCE });

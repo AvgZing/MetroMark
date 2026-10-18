@@ -86,8 +86,6 @@ body.admin-locked .admin-shell > section:not(.auth-card) {
 
 .kicker {
   margin: 0;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   font-size: 0.75rem;
   color: var(--muted);
 }
@@ -387,8 +385,6 @@ pre {
 .kpi-label {
   margin: 0;
   font-size: 0.78rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--muted);
 }
 
@@ -505,8 +501,6 @@ pre {
   flex: 0 0 auto;
   width: 34px;
   font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--muted);
 }
 
@@ -583,7 +577,5 @@ pre {
   margin-left: 6px;
   font-size: 10px;
   font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--muted);
 }

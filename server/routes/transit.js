@@ -139,6 +139,18 @@ router.post("/transit/stop-fractions", async (req, res) => {
   }
 });
 
+router.get("/transit/overrides", async (req, res) => {
+  try {
+    const routeOverrides = await db.listRouteOverrides();
+    return res.json({ routeOverrides });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Unable to load route overrides.",
+      detail: error.message
+    });
+  }
+});
+
 router.get("/transit/reviews", async (req, res) => {
   const citySlug = String(req.query.citySlug || "").trim();
   if (!citySlug) {

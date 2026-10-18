@@ -1,6 +1,15 @@
 // Depends on: stop-helpers.js, ranking.js, spatial.js, method-ushape.js
 // Provides buildBranchGroups exported to window for UI rendering
 
+// A stop can belong to several branch options (and several groups).
+function stopBranchIds(props) {
+  if (Array.isArray(props?.branches)) {
+    return props.branches.map((id) => String(id || "").trim()).filter(Boolean);
+  }
+  const single = String(props?.branch || "").trim();
+  return single ? [single] : [];
+}
+
 /**
  * Detect branches in a route (multiple valid orderings from trip patterns)
  */

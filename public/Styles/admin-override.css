@@ -154,8 +154,6 @@ body[data-theme="dark"] .admin-line-editor-card {
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
 .admin-line-editor-actions-row {
@@ -199,9 +197,10 @@ body[data-theme="dark"] .admin-line-editor-card {
   margin-top: 8px;
   max-height: 240px;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
 }
 
 .admin-route-search-results:empty {
@@ -213,6 +212,24 @@ body[data-theme="dark"] .admin-line-editor-card {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.admin-route-result-row:last-child {
+  border-bottom: none;
+}
+
+.admin-route-result-row:hover {
+  background: var(--button-hover);
+}
+
+.admin-route-result-row input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
 }
 
 .admin-route-result-focus {
@@ -221,17 +238,18 @@ body[data-theme="dark"] .admin-line-editor-card {
   display: flex;
   align-items: center;
   gap: 8px;
-  text-align: left;
-  padding: 6px 8px;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background: var(--button-bg);
+  padding: 2px 0;
+  border: none;
+  background: none;
   color: var(--ink);
+  text-align: left;
   cursor: pointer;
+  overflow: hidden;
 }
 
-.admin-route-result-focus:hover {
-  background: var(--button-hover);
+.admin-route-result-focus .admin-route-select-dot {
+  width: 9px;
+  height: 9px;
 }
 
 .admin-route-result-focus .admin-route-select-name {
@@ -239,6 +257,18 @@ body[data-theme="dark"] .admin-line-editor-card {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.admin-route-result-focus .admin-route-select-meta {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 11px;
 }
 
 .admin-route-result-row .btn {
@@ -251,8 +281,6 @@ body[data-theme="dark"] .admin-line-editor-card {
   margin: 10px 0 2px;
   font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--muted);
 }
 
@@ -679,7 +707,6 @@ body[data-theme="dark"] .admin-line-editor-card {
 
 .manual-edit-kind {
   font-weight: 700;
-  text-transform: uppercase;
 }
 
 /* map.css ships a top-right column; the admin map needs a scoped row.
@@ -813,6 +840,7 @@ body[data-theme="dark"] .admin-line-editor-card {
 }
 
 .stop-order-row {
+  position: relative;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -820,6 +848,26 @@ body[data-theme="dark"] .admin-line-editor-card {
   padding: 4px 0;
   border-bottom: 1px solid var(--line);
   font-size: 0.82rem;
+}
+
+.stop-order-row.is-drop-before::before,
+.stop-order-row.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.stop-order-row.is-drop-before::before {
+  top: -1px;
+}
+
+.stop-order-row.is-drop-after::after {
+  bottom: -1px;
 }
 
 /* Branch group editor (alternative stop runs). */
@@ -831,8 +879,6 @@ body[data-theme="dark"] .admin-line-editor-card {
   margin: 8px 0 2px;
   font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
   color: var(--muted);
 }
 
@@ -888,13 +934,63 @@ body[data-theme="dark"] .admin-line-editor-card {
 .stop-branch-row {
   flex-basis: 100%;
   padding-left: 30px;
+  margin-top: -4px;
 }
 
-.stop-branch-select {
-  max-width: 240px;
+.stop-branch-picker {
   width: 100%;
-  padding: 5px 7px;
-  font-size: 12px;
+  max-width: none;
+}
+
+.stop-branch-picker > summary {
+  cursor: pointer;
+  padding: 2px 0;
+  font-size: 11px;
+  color: var(--muted);
+  list-style: none;
+}
+
+.stop-branch-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.stop-branch-picker > summary::before {
+  content: "▸ ";
+}
+
+.stop-branch-picker[open] > summary::before {
+  content: "▾ ";
+}
+
+.stop-branch-options {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: var(--button-bg);
+}
+
+.stop-branch-option {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  width: 100%;
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.stop-branch-option input {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  min-width: 0;
+  margin: 0;
 }
 
 .stop-order-fields {
@@ -964,7 +1060,6 @@ body[data-theme="dark"] .admin-line-editor-card {
 
 .stop-order-row.is-dragging {
   opacity: 0.5;
-  border-color: var(--accent);
 }
 
 .stop-order-lock-note {

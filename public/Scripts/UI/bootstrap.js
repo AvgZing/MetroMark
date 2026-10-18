@@ -328,6 +328,11 @@ function bindEvents() {
     const password = String(formData.get("password") || "");
     const displayName = String(formData.get("displayName") || "").trim();
 
+    if (!displayName) {
+      setAuthFeedback("Display name is required.", "error");
+      return;
+    }
+
     try {
       await loginWithPayload(
         apiRequest("/api/auth/register", {
@@ -590,27 +595,32 @@ async function init() {
       initProgressQueueSync();
     }
 
+    if (typeof loadRouteOverrides === "function") {
+      loadRouteOverrides().catch(() => {});
+    }
     if (typeof loadReviewsForCity === "function" && appState.initialCitySlug) {
       loadReviewsForCity(appState.initialCitySlug).catch(() => {});
     }
 
-    // Admin edits have no push channel; refresh overrides/merges when the tab
+    // Admin edits have no push channel; refresh overrides/reviews when the tab
     // returns to the foreground so changes feel immediate.
     let lastReviewRefreshAt = 0;
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState !== "visible" || typeof loadReviewsForCity !== "function") {
-        return;
-      }
-      const slug = appState.activeCitySlug || appState.initialCitySlug || "";
-      if (!slug) {
+      if (document.visibilityState !== "visible") {
         return;
       }
       const now = Date.now();
-      if (now - lastReviewRefreshAt < 30000) {
+      if (now - lastReviewRefreshAt < 5000) {
         return;
       }
       lastReviewRefreshAt = now;
-      loadReviewsForCity(slug).catch(() => {});
+      if (typeof loadRouteOverrides === "function") {
+        loadRouteOverrides().catch(() => {});
+      }
+      const slug = appState.activeCitySlug || appState.initialCitySlug || "";
+      if (typeof loadReviewsForCity === "function" && slug) {
+        loadReviewsForCity(slug).catch(() => {});
+      }
     });
 
     if (typeof applyStartupCityMode === "function") {

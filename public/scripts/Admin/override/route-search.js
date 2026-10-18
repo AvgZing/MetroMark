@@ -44,9 +44,10 @@ function renderRouteSearchResults(features, context = {}) {
     return;
   }
   const query = String(context.query || "").trim().toLowerCase();
-  const modeFilter = String(context.modeFilter || "").trim();
-  const frequencyFilter = String(context.frequencyFilter || "").trim();
-  const hasFilter = Boolean(query || modeFilter || frequencyFilter);
+  const modeFilterSet = context.modeFilterSet instanceof Set ? context.modeFilterSet : new Set();
+  const frequencyFilterSet =
+    context.frequencyFilterSet instanceof Set ? context.frequencyFilterSet : new Set();
+  const hasFilter = Boolean(query || modeFilterSet.size || frequencyFilterSet.size);
   container.innerHTML = "";
   // Only render results when a search/filter is active.
   if (!hasFilter) {
@@ -58,14 +59,14 @@ function renderRouteSearchResults(features, context = {}) {
     if (query && !buildUnderlaySearchText(feature).includes(query)) {
       return false;
     }
-    if (modeFilter) {
-      if (props.routeType === null || String(props.routeType) !== modeFilter) {
+    if (modeFilterSet.size) {
+      if (props.routeType === null || !modeFilterSet.has(Number(props.routeType))) {
         return false;
       }
     }
-    if (frequencyFilter) {
+    if (frequencyFilterSet.size) {
       const bucket = String(state.frequencyByLineKey.get(props.lineKey) || "unknown").toLowerCase();
-      if (bucket !== frequencyFilter) {
+      if (!frequencyFilterSet.has(bucket)) {
         return false;
       }
     }
@@ -120,7 +121,7 @@ function renderRouteSearchResults(features, context = {}) {
     name.textContent = adminLineDisplayName(props) || props.lineKey;
     const meta = document.createElement("span");
     meta.className = "admin-route-select-meta";
-    meta.textContent = props.lineKey;
+    meta.textContent = [MODE_LABELS[props.routeType] || "Route", props.operatorName].filter(Boolean).join(" · ");
     focusBtn.append(dot, name, meta);
     focusBtn.addEventListener("click", () => focusRouteFeature(feature));
 
@@ -436,15 +437,16 @@ function buildUnderlaySearchText(feature) {
 
 function applyUnderlaySearchFilter() {
   const query = String(state.routeSearchQuery || "").trim().toLowerCase();
-  const modeFilter = String(state.routeModeFilter || "").trim();
-  const frequencyFilter = String(state.routeFrequencyFilter || "").trim();
+  const modeFilterSet = state.adminModeFilter instanceof Set ? state.adminModeFilter : new Set();
+  const frequencyFilterSet =
+    state.adminFrequencyFilter instanceof Set ? state.adminFrequencyFilter : new Set();
   const corpus = collectRouteSearchCorpus();
   if (els.routeSearchInfo) {
     els.routeSearchInfo.textContent =
-      query || modeFilter || frequencyFilter ? `${corpus.length} route(s) in view` : "";
+      query || modeFilterSet.size || frequencyFilterSet.size ? `${corpus.length} route(s) in view` : "";
   }
   // Frequency comes from route_metadata, not tiles; fetch it for the corpus once.
-  if (frequencyFilter) {
+  if (frequencyFilterSet.size) {
     const keys = corpus.map((feature) => featureLineProps(feature).lineKey).filter(Boolean);
     if (keys.some((key) => !state.frequencyByLineKey.has(key))) {
       ensureFrequencyMetadata(keys)
@@ -452,7 +454,7 @@ function applyUnderlaySearchFilter() {
         .catch(() => {});
     }
   }
-  renderRouteSearchResults(corpus, { query, modeFilter, frequencyFilter });
+  renderRouteSearchResults(corpus, { query, modeFilterSet, frequencyFilterSet });
 }
 
 async function ensureFrequencyMetadata(lineKeys) {

@@ -27,9 +27,9 @@ function adminCustomStopFeature(stop, lineKey) {
     line_key: lineKey,
     custom_stop: 1
   };
-  const branch = String(stop?.branch || "").trim();
-  if (branch) {
-    properties.branch = branch;
+  const branches = stopBranchIds(stop);
+  if (branches.length) {
+    properties.branches = branches;
   }
   return {
     type: "Feature",
@@ -58,14 +58,15 @@ function orderAdminStopsByCustomOrder(features, customStops, lineKey = "") {
     seen.add(key);
     const feature = byKey.get(key);
     if (feature) {
-      // Restore the saved branch tag.
-      const branch = String(stop?.branch || "").trim();
+      // Restore the saved branch memberships.
+      const branches = stopBranchIds(stop);
       if (feature.properties) {
-        if (branch) {
-          feature.properties.branch = branch;
+        if (branches.length) {
+          feature.properties.branches = branches;
         } else {
-          delete feature.properties.branch;
+          delete feature.properties.branches;
         }
+        delete feature.properties.branch;
       }
       ordered.push(feature);
       continue;
@@ -77,11 +78,26 @@ function orderAdminStopsByCustomOrder(features, customStops, lineKey = "") {
     }
   }
 
+  const normalizeName = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/\b(station|underground|rail|stop|platform)\b/g, "")
+      .replace(/[^a-z0-9]+/g, "");
+  const savedNames = new Set(
+    (customStops || []).map((stop) => normalizeName(stop?.name)).filter(Boolean)
+  );
+
   for (const feature of features || []) {
     const key = String(feature?.properties?.station_key || "").trim();
-    if (!seen.has(key)) {
-      ordered.push(feature);
+    if (seen.has(key)) {
+      continue;
     }
+    const name = normalizeName(feature?.properties?.station_name);
+    if (name && savedNames.has(name)) {
+      // Same station under a second feed key; the ordered copy already shows it.
+      continue;
+    }
+    ordered.push(feature);
   }
 
   return ordered;
@@ -91,6 +107,18 @@ async function loadStopsForRoute(lineKey) {
   const source = state.map && state.map.getSource("stops");
   if (!source) {
     return;
+  }
+  // Show the saved override stops immediately; the fetch refreshes them.
+  const savedStops = state.selectedRouteOverride?.payload?.stops;
+  if (Array.isArray(savedStops) && savedStops.length) {
+    const optimistic = savedStops
+      .map((stop) => adminCustomStopFeature(stop, lineKey))
+      .filter(Boolean);
+    if (optimistic.length) {
+      source.setData({ type: "FeatureCollection", features: optimistic });
+      state.currentRouteStops = optimistic.slice();
+      renderStopsOrderList();
+    }
   }
   try {
     const params = new URLSearchParams({ lineKey, stopTypes: ROUTE_STOP_TYPES_QUERY });
