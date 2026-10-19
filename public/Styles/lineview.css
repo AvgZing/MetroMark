@@ -153,9 +153,10 @@ body[data-theme="dark"] .line-view-card {
   margin-top: 2px;
   padding-top: 2px;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 11px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
 }
 
 .line-view-diagnostics .diagnostic-label {
@@ -173,10 +174,15 @@ body[data-theme="dark"] .line-view-card {
 
 .line-view-ordering-group {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 0 100%;
   min-width: 0;
   flex-wrap: nowrap;
   gap: 4px;
+}
+
+.line-view-admin-order-note,
+.line-view-branch-selector {
+  flex: 0 0 100%;
 }
 
 /* Manual override order: hide the algorithm picker, keep Reverse. */
@@ -321,12 +327,12 @@ body[data-theme="dark"] .line-view-card {
 }
 
 .diagnostic-resolved {
-  width: 100%;
+  width: auto;
   margin: 0;
   font-style: italic;
   font-weight: 400;
   font-size: 10px;
-  line-height: 1.15;
+  line-height: 1.35;
   color: var(--muted);
 }
 

@@ -8,8 +8,8 @@ const STOP_MATCH_TOLERANCE_M = 50;
 const MAX_STOP_VERTEX_RATIO = 1.25;
 const MIN_STOP_MATCH_RATIO = 0.8;
 const SPARSE_MIN_SPAN_KM = 10;
-const SPARSE_MAX_VERTICES = 100;
-const SPARSE_MIN_AVG_KM = 0.5;
+const SPARSE_MAX_VERTICES = 300;
+const SPARSE_MIN_AVG_KM = 0.4;
 const EXEMPT_ROUTE_TYPES = new Set([4, 5, 6, 7]);
 
 function toRadians(degrees) {
@@ -197,9 +197,10 @@ function detectProblematicGeometry(geometry, stops, routeType) {
   // straight segments and too few shape points for a real route.
   const averageSegmentKm = spanKm / Math.max(1, distinct - 1);
   if (
-    spanKm >= SPARSE_MIN_SPAN_KM &&
-    distinct <= SPARSE_MAX_VERTICES &&
-    averageSegmentKm >= SPARSE_MIN_AVG_KM
+    (spanKm >= SPARSE_MIN_SPAN_KM &&
+      distinct <= SPARSE_MAX_VERTICES &&
+      averageSegmentKm >= SPARSE_MIN_AVG_KM) ||
+    (spanKm >= 50 && averageSegmentKm >= 2)
   ) {
     return true;
   }

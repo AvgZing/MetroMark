@@ -323,12 +323,46 @@ async function loadProblematicRoutes() {
   try {
     const query = state.currentCitySlug ? `?citySlug=${encodeURIComponent(state.currentCitySlug)}` : "";
     const payload = await apiRequest(`/api/admin/reviews/route${query}`, { method: "GET" });
-    const flagged = (payload?.reviews || []).filter(
-      (row) => row.problematic_override === true || row.problematicOverride === true
-    );
-    state.problematicKeys = new Set(
-      flagged.map((row) => String(row.line_key || row.lineKey || "").trim()).filter(Boolean)
-    );
+    const manualByKey = new Map();
+    for (const row of payload?.reviews || []) {
+      const key = String(row.line_key || row.lineKey || "").trim();
+      if (key) {
+        manualByKey.set(key, row);
+      }
+    }
+
+    const corpus = typeof collectRouteSearchCorpus === "function" ? collectRouteSearchCorpus() : [];
+    const keys = Array.from(new Set(
+      corpus.map((feature) => featureLineProps(feature).lineKey).filter(Boolean)
+    )).slice(0, 1000);
+    const autoKeys = new Set();
+    if (keys.length) {
+      try {
+        const params = new URLSearchParams({ lineKeys: keys.join(",") });
+        const bulk = await apiRequest(`/api/transit/route-headway/bulk?${params.toString()}`, { method: "GET" });
+        for (const [key, headway] of Object.entries(bulk.headwayByLineKey || {})) {
+          if (headway.problematicGeometry) {
+            autoKeys.add(key);
+          }
+        }
+      } catch {
+        // Auto flags are optional; manual reviews still load.
+      }
+    }
+
+    const flagged = [];
+    for (const key of new Set([...autoKeys, ...Array.from(manualByKey.keys())])) {
+      const manual = manualByKey.get(key);
+      if (manual?.problematic_override === false) {
+        continue;
+      }
+      if (manual?.problematic_override === true || autoKeys.has(key)) {
+        flagged.push({ key, isManual: manual?.problematic_override === true });
+      }
+    }
+    flagged.sort((a, b) => cityRouteDisplayName(a.key).localeCompare(cityRouteDisplayName(b.key)));
+
+    state.problematicKeys = new Set(flagged.map((row) => row.key));
     applyMapRouteVisibility({
       hiddenOperators: state.hiddenOperators,
       disabledLineKeys: state.disabledRouteKeys
@@ -340,18 +374,15 @@ async function loadProblematicRoutes() {
       return;
     }
     for (const row of flagged) {
-      const key = String(row.line_key || row.lineKey || "").trim();
-      if (!key) {
-        continue;
-      }
-      const item = reviewRow(`${cityRouteDisplayName(key)} (${key})`);
+      const key = row.key;
+      const item = reviewRow(`${cityRouteDisplayName(key)} (${key})${row.isManual ? "" : " · auto"}`);
       item.append(reviewButton("Show", "Show this route on the map", () => focusRouteByLineKey(key)));
       item.append(
         reviewButton("Unflag", "Unhide this route for users", async () => {
           try {
             await apiRequest("/api/admin/reviews/route", {
               method: "POST",
-              body: { lineKey: key, citySlug: state.currentCitySlug, problematicOverride: null }
+              body: { lineKey: key, citySlug: state.currentCitySlug, problematicOverride: false }
             });
             loadProblematicRoutes();
           } catch (error) {
@@ -389,7 +420,7 @@ function renderProblematicSelectedRow() {
         try {
           await apiRequest("/api/admin/reviews/route", {
             method: "POST",
-            body: { lineKey, citySlug: state.currentCitySlug, problematicOverride: flagged ? null : true }
+            body: { lineKey, citySlug: state.currentCitySlug, problematicOverride: flagged ? false : true }
           });
           loadProblematicRoutes();
         } catch (error) {

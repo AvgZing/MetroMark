@@ -832,6 +832,13 @@ body[data-theme="dark"] .overall-progress-card {
   padding-right: 6px;
 }
 
+@media (min-width: 961px) {
+  .line-progress-list {
+    max-height: calc(100dvh - 585px);
+    min-height: 120px;
+  }
+}
+
 .sidebar,
 .line-list,
 .line-progress-list,

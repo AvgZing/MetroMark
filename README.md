@@ -11,7 +11,7 @@ MetroMark works on all platforms, try it out at [metromark.app](https://metromar
 ## Contents
 
 - [The map](#the-map)
-- [Filters and presets](#filters-and-presets)
+- [Filters](#filters)
 - [Line view](#line-view)
 - [Branches and stop order](#branches-and-stop-order)
 - [Progress](#progress)
@@ -33,7 +33,7 @@ drawn above the dimmed map, so it remains readable in dense areas.
 
 At very wide zoom levels the map stops loading new areas. Lines already on screen stay visible.
 
-## Filters and presets
+## Filters
 
 The mode filters are All Modes, Bus, Ferries, Metro, Tram and Rail. Monorail is grouped under
 Rail; cable tram, aerial lift and funicular are under Other.
@@ -44,9 +44,6 @@ Frequency Unknown.
 Each line in the list has a three-state visibility control: ON keeps it visible, OFF hides it, and
 the dash follows the filters. ON and OFF are saved per line and survive reloads. Private operators
 and lines with broken map geometry can be hidden from the filter panel.
-
-Filter presets save modes, frequencies, search text and line visibility under a name, so a setup
-can be restored later.
 
 Search filters the line list. It also searches lines outside the current view; those results are
 marked "Not in view", and choosing one moves the map to that line.
