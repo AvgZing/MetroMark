@@ -390,6 +390,18 @@ The harvester automates the same requests a user makes (route-stops, headway), c
 - **GET `/api/progress`** - User's visited stops
 - **POST `/api/progress`** - Mark stop as visited
 - **POST `/api/progress/clear-route`** - Clear progress for a route
+- **GET `/api/progress/export`** - Download a CSV backup of the signed-in user's visits and saved preferences
+- **POST `/api/progress/import`** - Merge visits from `{ visits: [...] }` into the signed-in account (upsert by `lineKey` + `stationKey`); existing visits are kept
+
+### User Data CSV (`metromark-user-data-v1`)
+- Top comments record format, export time, and account name
+- Header: `Visited at (UTC),Line,Operator,Station,Line key,Station key,Latitude,Longitude`
+- One row per visited station; line/station names come first, internal keys and coordinates stay at the end
+- After the table, a `# Settings` block records `Setting: key = value` entries
+- `Visited at` is `YYYY-MM-DD HH:mm` in UTC; import also accepts ISO timestamps and epoch seconds
+- Import merges visits (matching `Line key` + `Station key` updates the row) and applies comment settings through `PATCH /api/auth/me/preferences`; it does not delete visits missing from the file
+- Older `record_type` CSVs (meta/setting/visit rows) are still accepted
+- CSV is UTF-8 with a BOM so spreadsheet apps read station names correctly
 
 ### Filter Presets API
 - **GET `/api/presets?citySlug=...`** - User's saved filter presets

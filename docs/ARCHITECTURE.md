@@ -139,6 +139,8 @@ Dedup behavior:
 - POST /api/transit/route-ordering/vote (community ordering preference)
 - POST /api/auth/register / POST /api/auth/login / GET /api/auth/me
 - GET /api/progress / POST /api/progress / POST /api/progress/clear-route
+- GET /api/progress/export (signed-in CSV backup of visits + preferences)
+- POST /api/progress/import (signed-in merge of visits from a MetroMark CSV)
 - GET /api/presets / POST /api/presets / DELETE /api/presets/:name
 
 **Admin-only endpoints (session- or role-guarded):**

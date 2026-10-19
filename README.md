@@ -90,6 +90,9 @@ overall, and shown in the progress panel and in each line view. Taps made offlin
 sent when the connection returns. Progress can be cleared per line from the line view, with a
 confirmation click.
 
+The profile menu can export your visits and settings as a CSV backup and import that CSV into the
+same or another account. Importing merges visits rather than replacing them.
+
 The profile menu holds the account options and Colorblind mode. Advanced information (data usage,
 app version and related links) is in the sidebar on desktop and in the layers sheet on mobile.
 

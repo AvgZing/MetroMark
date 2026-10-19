@@ -123,8 +123,73 @@ async function clearVisitedStationsForLine(userId, lineKey) {
   return Number(existing.count || 0);
 }
 
+async function importVisitedStations(userId, visits) {
+  assertConfigured();
+  const { serviceClient } = requireSupabaseClients();
+
+  const safeUserId = normalizeText(userId);
+  if (!safeUserId) {
+    throw new Error("userId is required.");
+  }
+  if (!Array.isArray(visits)) {
+    throw new Error("visits must be an array.");
+  }
+
+  const byKey = new Map();
+  for (const raw of visits) {
+    const lineKey = normalizeText(raw?.lineKey);
+    const stationKey = normalizeText(raw?.stationKey);
+    const stationName = normalizeText(raw?.stationName).slice(0, 200) || "Unnamed Stop";
+    const lat = Number(raw?.lat);
+    const lon = Number(raw?.lon);
+    if (
+      !lineKey ||
+      !stationKey ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lon) ||
+      lat < -90 ||
+      lat > 90 ||
+      lon < -180 ||
+      lon > 180
+    ) {
+      continue;
+    }
+    const visitedAt = raw?.visitedAt && !Number.isNaN(Date.parse(raw.visitedAt))
+      ? new Date(raw.visitedAt).toISOString()
+      : nowIso();
+    byKey.set(`${lineKey}\u0000${stationKey}`, {
+      user_id: safeUserId,
+      line_key: lineKey,
+      station_key: stationKey,
+      station_name: stationName,
+      lat,
+      lon,
+      visited: true,
+      updated_at: visitedAt
+    });
+  }
+
+  const rows = Array.from(byKey.values());
+  const chunkSize = 500;
+  for (let index = 0; index < rows.length; index += chunkSize) {
+    const chunk = rows.slice(index, index + chunkSize);
+    const { error } = await serviceClient.from("user_station_visit").upsert(chunk, {
+      onConflict: "user_id,line_key,station_key"
+    });
+    if (error) {
+      throw new Error(`Unable to import visited stations: ${error.message}`);
+    }
+  }
+
+  return {
+    imported: rows.length,
+    skipped: Math.max(0, visits.length - rows.length)
+  };
+}
+
 module.exports = {
   setVisitedState,
   getVisitedStations,
-  clearVisitedStationsForLine
+  clearVisitedStationsForLine,
+  importVisitedStations
 };

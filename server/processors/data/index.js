@@ -77,6 +77,7 @@ module.exports = {
   setVisitedState: visits.setVisitedState,
   getVisitedStations: visits.getVisitedStations,
   clearVisitedStationsForLine: visits.clearVisitedStationsForLine,
+  importVisitedStations: visits.importVisitedStations,
   listFilterPresets: presets.listFilterPresets,
   upsertFilterPreset: presets.upsertFilterPreset,
   deleteFilterPreset: presets.deleteFilterPreset,

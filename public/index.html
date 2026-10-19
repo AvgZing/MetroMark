@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="/Styles/changelog.css?v=2026-10-15" />
     <link rel="stylesheet" href="/Styles/ui-shell.css?v=2026-10-15" />
     <link rel="stylesheet" href="/Styles/ui-foundation.css?v=2026-10-15" />
-    <link rel="stylesheet" href="/Styles/ui-controls.css?v=2026-10-15" />
+    <link rel="stylesheet" href="/Styles/ui-controls.css?v=2026-10-19c" />
     <link rel="stylesheet" href="/Styles/ui-panels.css?v=2026-10-19b" />
     <link rel="stylesheet" href="/Styles/ui-progress.css?v=2026-10-15" />
     <link rel="stylesheet" href="/Styles/ui-mobile.css?v=2026-10-15" />
@@ -429,6 +429,19 @@
             Signed in as <strong id="currentUserLabel">-</strong>
           </p>
           <button id="logoutBtn" class="btn" type="button">Log Out</button>
+
+          <div class="popup-settings">
+            <p class="filter-section-title">Your data</p>
+            <p class="microcopy">
+              Download a CSV backup of your visited stations and settings. Importing merges into this account.
+            </p>
+            <div class="data-actions">
+              <button id="exportUserDataBtn" class="btn" type="button">Export CSV</button>
+              <button id="importUserDataBtn" class="btn" type="button">Import CSV</button>
+              <input id="importUserDataInput" type="file" accept=".csv,text/csv" hidden />
+            </div>
+            <p id="userDataStatus" class="status" role="status"></p>
+          </div>
         </div>
 
         <div class="popup-settings">
@@ -702,6 +715,7 @@
     <script src="/Scripts/UI/route-ui.js?v=2026-10-15" defer></script>
     <script src="/Scripts/UI/route-popups.js?v=2026-10-15" defer></script>
     <script src="/Scripts/UI/auth-panel.js?v=2026-10-15" defer></script>
+  <script src="/Scripts/UI/user-data.js?v=2026-10-19e" defer></script>
     <script src="/Scripts/UI/line-view-ordering.js?v=2026-10-19" defer></script>
     <script src="/Scripts/UI/lineview.js?v=2026-10-19b" defer></script>
     <script src="/Scripts/Map/viewport-cache.js?v=2026-10-15" defer></script>
@@ -717,7 +731,7 @@
     <script src="/Scripts/Map/vector-metadata.js?v=2026-10-15" defer></script>
     <script src="/Scripts/Map/map-sources.js?v=2026-10-15" defer></script>
     <script src="/Scripts/Map/underlay.js?v=2026-10-15" defer></script>
-    <script src="/Scripts/Map/transit-loading.js?v=2026-10-15" defer></script>
+    <script src="/Scripts/Map/transit-loading.js?v=2026-10-19b" defer></script>
     <script src="/Scripts/Map/route-layer-defs.js?v=2026-10-15" defer></script>
     <script src="/Scripts/Map/map-events.js?v=2026-10-15" defer></script>
     <script src="/Scripts/Map/interactions.js?v=2026-10-15" defer></script>

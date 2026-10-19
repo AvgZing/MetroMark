@@ -213,7 +213,7 @@ function rebuildVisitedMap(items) {
   }
 }
 
-async function loadProgress() {
+async function loadProgress(options = {}) {
   if (!appState.user) {
     appState.visitedByLine = new Map();
     renderMapData();
@@ -222,7 +222,8 @@ async function loadProgress() {
     return;
   }
 
-  const payload = await apiRequest("/api/progress", { method: "GET" });
+  const path = options.forceRefresh ? `/api/progress?_=${Date.now()}` : "/api/progress";
+  const payload = await apiRequest(path, { method: "GET" });
   rebuildVisitedMap(payload.items || []);
   renderMapData();
   renderProgress();
