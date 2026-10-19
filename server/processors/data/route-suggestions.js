@@ -5,6 +5,7 @@ const { normalizeText } = require("./utils");
 const STRING_FIELDS = ["lineName", "lineShortName", "lineLongName", "operatorName", "color"];
 const NUMBER_FIELDS = ["mode", "headwayBestMinutes"];
 const FREQUENCY_VALUES = ["frequent", "regular", "local", "unknown"];
+const ORDERING_VALUES = ["auto", "geometry-revised", "legacy-geometry", "fractions", "manual"];
 
 function sanitizePayload(input) {
   const source = input && typeof input === "object" ? input : {};
@@ -24,6 +25,10 @@ function sanitizePayload(input) {
   const frequency = String(source.frequencyBucket ?? "").trim().toLowerCase();
   if (FREQUENCY_VALUES.includes(frequency)) {
     payload.frequencyBucket = frequency;
+  }
+  const orderingMode = String(source.orderingMode ?? "").trim().toLowerCase();
+  if (ORDERING_VALUES.includes(orderingMode)) {
+    payload.orderingMode = orderingMode;
   }
   return payload;
 }

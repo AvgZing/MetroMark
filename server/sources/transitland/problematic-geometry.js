@@ -4,6 +4,13 @@ const STRAIGHT_TOLERANCE_M = 25;
 const STOP_DEVIATION_TOLERANCE_M = 150;
 const MIN_SPAN_KM = 2;
 const MAX_FALLBACK_VERTICES = 3;
+const STOP_MATCH_TOLERANCE_M = 50;
+const MAX_STOP_VERTEX_RATIO = 1.25;
+const MIN_STOP_MATCH_RATIO = 0.8;
+const SPARSE_MIN_SPAN_KM = 10;
+const SPARSE_MAX_VERTICES = 100;
+const SPARSE_MIN_AVG_KM = 0.5;
+const EXEMPT_ROUTE_TYPES = new Set([4, 5, 6, 7]);
 
 function toRadians(degrees) {
   return (Number(degrees) * Math.PI) / 180;
@@ -91,7 +98,41 @@ function geometrySpanKm(points) {
   if (points.length < 2) {
     return 0;
   }
-  return haversineMeters(points[0], points[points.length - 1]) / 1000;
+  let minLon = Infinity;
+  let minLat = Infinity;
+  let maxLon = -Infinity;
+  let maxLat = -Infinity;
+  for (const point of points) {
+    minLon = Math.min(minLon, point[0]);
+    maxLon = Math.max(maxLon, point[0]);
+    minLat = Math.min(minLat, point[1]);
+    maxLat = Math.max(maxLat, point[1]);
+  }
+  return haversineMeters([minLon, minLat], [maxLon, maxLat]) / 1000;
+}
+
+function dedupePoints(points) {
+  const out = [];
+  for (const point of points) {
+    if (!out.length || haversineMeters(out[out.length - 1], point) > 0.5) {
+      out.push(point);
+    }
+  }
+  return out;
+}
+
+function countVerticesNearStops(points, stopPoints, toleranceM) {
+  const unique = dedupePoints(points);
+  let matched = 0;
+  for (const point of unique) {
+    for (const stop of stopPoints) {
+      if (haversineMeters(point, stop) <= toleranceM) {
+        matched += 1;
+        break;
+      }
+    }
+  }
+  return matched;
 }
 
 // Extract [lon, lat] stop points from a raw stops array (Transitland shapes).
@@ -130,28 +171,53 @@ function distinctVertexCount(points) {
   return count;
 }
 
-function detectProblematicGeometry(geometry, stops) {
+function detectProblematicGeometry(geometry, stops, routeType) {
+  if (EXEMPT_ROUTE_TYPES.has(Number(routeType))) {
+    return false;
+  }
+
   const points = flattenGeometryPoints(geometry);
   if (points.length < 2) {
     return false;
   }
 
-  const straightDeviationM = maxDeviationFromChordMeters(points);
+  const distinct = distinctVertexCount(points);
   const spanKm = geometrySpanKm(points);
+  const straightDeviationM = maxDeviationFromChordMeters(points);
   const isStraight = straightDeviationM <= STRAIGHT_TOLERANCE_M;
   const stopPoints = extractStopPoints(stops);
+  const stopsDeviationM = stopPoints.length >= 3 ? maxDeviationFromChordMeters(stopPoints) : null;
 
   // Genuine straight routes keep their stops on the line — don't flag those.
-  if (isStraight && stopPoints.length >= 3) {
-    const stopsDeviationM = maxDeviationFromChordMeters(stopPoints);
-    if (stopsDeviationM <= STOP_DEVIATION_TOLERANCE_M) {
-      return false;
+  if (isStraight && stopPoints.length >= 3 && stopsDeviationM <= STOP_DEVIATION_TOLERANCE_M) {
+    return false;
+  }
+
+  // Sparse geometry over a real span is the stop-to-stop fallback: many long
+  // straight segments and too few shape points for a real route.
+  const averageSegmentKm = spanKm / Math.max(1, distinct - 1);
+  if (
+    spanKm >= SPARSE_MIN_SPAN_KM &&
+    distinct <= SPARSE_MAX_VERTICES &&
+    averageSegmentKm >= SPARSE_MIN_AVG_KM
+  ) {
+    return true;
+  }
+
+  // Geometry built from stops has a vertex at almost every stop and no shape
+  // points between them.
+  if (stopPoints.length >= 3 && spanKm >= MIN_SPAN_KM) {
+    const maxVertices = Math.round(stopPoints.length * MAX_STOP_VERTEX_RATIO) + 2;
+    if (distinct <= maxVertices) {
+      const matched = countVerticesNearStops(points, stopPoints, STOP_MATCH_TOLERANCE_M);
+      if (matched / distinct >= MIN_STOP_MATCH_RATIO) {
+        return true;
+      }
     }
   }
 
   // Straight geometry + stops off the line -> synthesized (ignored the stops).
   if (isStraight && stopPoints.length >= 3 && spanKm >= MIN_SPAN_KM) {
-    const stopsDeviationM = maxDeviationFromChordMeters(stopPoints);
     if (stopsDeviationM > STOP_DEVIATION_TOLERANCE_M) {
       return true;
     }
@@ -161,7 +227,7 @@ function detectProblematicGeometry(geometry, stops) {
   // a drawn fallback (real street geometry has many vertices).
   if (stopPoints.length === 0) {
     if (isStraight && spanKm >= MIN_SPAN_KM) {
-      return distinctVertexCount(points) <= MAX_FALLBACK_VERTICES;
+      return distinct <= MAX_FALLBACK_VERTICES;
     }
   }
 

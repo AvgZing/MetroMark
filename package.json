@@ -18,6 +18,10 @@
     "harvest:world:prod": "set METROMARK_ENV_FILE=.env.production&& node operations/harvest/harvest-world.js",
     "backup:nonrecoverable": "set METROMARK_ENV_FILE=.env.development&& node server/admin/backup-nonrecoverable.js",
     "backup:nonrecoverable:prod": "set METROMARK_ENV_FILE=.env.production&& node server/admin/backup-nonrecoverable.js",
+    "restore:nonrecoverable": "set METROMARK_ENV_FILE=.env.development&& node server/admin/restore-nonrecoverable.js",
+    "restore:nonrecoverable:prod": "set METROMARK_ENV_FILE=.env.production&& node server/admin/restore-nonrecoverable.js",
+    "problematic:recompute": "set METROMARK_ENV_FILE=.env.development&& node server/scripts/recompute-problematic-geometry.js",
+    "problematic:recompute:prod": "set METROMARK_ENV_FILE=.env.production&& node server/scripts/recompute-problematic-geometry.js",
     "build:tiles": "node server/scripts/build/build-pmtiles.js"
   },
   "engines": {

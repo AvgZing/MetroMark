@@ -124,10 +124,26 @@ async function buildSnapshot(triggerSource = "script") {
     "reharvest_flag",
     "id,kind,line_key,station_key,message,status,created_at,resolved_at"
   );
+  const cityPresets = await readLocalTable(
+    "city_preset",
+    "slug,name,country,center_lon,center_lat,bbox,default_zoom,published,notes,sort_order,updated_at"
+  );
+  const cityPresetRoutes = await readLocalTable(
+    "city_preset_route",
+    "city_slug,line_key,included,vetted_accuracy,vetted_up_to_date,vetted_stop_order,vetted_at,vetted_by,sort_order,updated_at"
+  );
+  const cityPresetOperators = await readLocalTable(
+    "city_preset_operator",
+    "city_slug,operator_name,included,sort_order,updated_at"
+  );
+  const routeSuggestions = await readLocalTable(
+    "route_suggestion",
+    "id,line_key,city_slug,payload,note,status,reporter_name,reporter_email,created_at,resolved_at,resolved_by"
+  );
 
   return {
     createdAtIso: new Date().toISOString(),
-    schemaVersion: 3,
+    schemaVersion: 4,
     triggerSource,
     storageBackend: "hybrid-supabase-local-postgres",
     nonrecoverable: {
@@ -141,7 +157,11 @@ async function buildSnapshot(triggerSource = "script") {
       agencyReviews,
       routeOrderingVotes,
       issueReports,
-      reharvestFlags
+      reharvestFlags,
+      cityPresets,
+      cityPresetRoutes,
+      cityPresetOperators,
+      routeSuggestions
     }
   };
 }
@@ -168,7 +188,9 @@ async function runNonrecoverableBackup(options = {}) {
       `stationOverrides=${snapshot.nonrecoverable.stationOverrides.length} routeOverrides=${snapshot.nonrecoverable.routeOverrides.length} ` +
       `routeReviews=${snapshot.nonrecoverable.routeReviews.length} agencyReviews=${snapshot.nonrecoverable.agencyReviews.length} ` +
       `orderingVotes=${snapshot.nonrecoverable.routeOrderingVotes.length} issueReports=${snapshot.nonrecoverable.issueReports.length} ` +
-      `reharvestFlags=${snapshot.nonrecoverable.reharvestFlags.length}`
+      `reharvestFlags=${snapshot.nonrecoverable.reharvestFlags.length} cityPresets=${snapshot.nonrecoverable.cityPresets.length} ` +
+      `cityPresetRoutes=${snapshot.nonrecoverable.cityPresetRoutes.length} cityPresetOperators=${snapshot.nonrecoverable.cityPresetOperators.length} ` +
+      `routeSuggestions=${snapshot.nonrecoverable.routeSuggestions.length}`
   );
 
   return {
@@ -185,7 +207,11 @@ async function runNonrecoverableBackup(options = {}) {
       agencyReviews: snapshot.nonrecoverable.agencyReviews.length,
       routeOrderingVotes: snapshot.nonrecoverable.routeOrderingVotes.length,
       issueReports: snapshot.nonrecoverable.issueReports.length,
-      reharvestFlags: snapshot.nonrecoverable.reharvestFlags.length
+      reharvestFlags: snapshot.nonrecoverable.reharvestFlags.length,
+      cityPresets: snapshot.nonrecoverable.cityPresets.length,
+      cityPresetRoutes: snapshot.nonrecoverable.cityPresetRoutes.length,
+      cityPresetOperators: snapshot.nonrecoverable.cityPresetOperators.length,
+      routeSuggestions: snapshot.nonrecoverable.routeSuggestions.length
     }
   };
 }

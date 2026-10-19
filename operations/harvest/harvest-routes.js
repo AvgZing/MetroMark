@@ -9,7 +9,7 @@ async function storeRouteMetadata(route) {
   const fallback = hasHeadway && isFallbackHeadwaySeconds(headwaySeconds);
 
   // Geometry-only detection here; route-stops refines with stop positions.
-  const problematicGeometry = detectProblematicGeometry(route.geometry, []);
+  const problematicGeometry = detectProblematicGeometry(route.geometry, [], route.routeType);
 
   // Only write headway when this response carries it (setRouteMetadata is a
   // partial merge). Stop counts come from harvest:stops, never here.

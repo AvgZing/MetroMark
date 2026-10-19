@@ -8,6 +8,10 @@ const {
   listArchiveLineKeysInBbox
 } = require("./archive/store");
 
+function isDailyCapError(error) {
+  return error?.code === "DAILY_USAGE_LIMIT_REACHED" || error?.code === "TRANSITLAND_DAILY_CAP_REACHED";
+}
+
 const backfillStats = {
   count: 0,
   totalMs: 0,
@@ -93,6 +97,8 @@ async function runBackfill(bboxArray, options = {}) {
     const normalized = [];
     let unavailableRoutes = 0;
     let failedFetch = 0;
+    let capError = null;
+    let firstFetchError = null;
     const FETCH_CONCURRENCY = 4;
     for (let i = 0; i < missingKeys.length; i += FETCH_CONCURRENCY) {
       const batch = missingKeys.slice(i, i + FETCH_CONCURRENCY);
@@ -109,9 +115,19 @@ async function runBackfill(bboxArray, options = {}) {
           normalized.push(result.value);
         } else if (result.status === "fulfilled") {
           unavailableRoutes += 1;
+        } else if (isDailyCapError(result.reason)) {
+          if (!capError) {
+            capError = result.reason;
+          }
         } else {
           failedFetch += 1;
+          if (!firstFetchError) {
+            firstFetchError = result.reason?.message || String(result.reason || "Unknown fetch error");
+          }
         }
+      }
+      if (capError) {
+        break;
       }
       if (backfillStats.current) {
         backfillStats.current.message =
@@ -127,7 +143,10 @@ async function runBackfill(bboxArray, options = {}) {
       missingRoutes: missingKeys.length,
       fetchedRoutes: features.length,
       unavailableRoutes,
-      failedFetch
+      failedFetch,
+      capReached: Boolean(capError),
+      capMessage: capError?.message || "",
+      firstError: firstFetchError || ""
     };
 
     if (options.collectOnly) {

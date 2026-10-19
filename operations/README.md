@@ -71,7 +71,8 @@ operations/
 
 Backups from `maybe-backup.bat` / `npm run backup:nonrecoverable:prod` are
 written to `data/backups` (see `BACKUP_OUTPUT_DIR` in `.env.production`), not to
-this directory.
+this directory. Restore with `npm run restore:nonrecoverable:prod`; test with
+`--dry-run` first. See `docs/OPERATIONS_GUIDE.md` for the full procedure.
 
 ## Host PC setup (one-time)
 

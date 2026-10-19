@@ -39,6 +39,14 @@ async function harvestCities(state, newFeatures) {
       }
       processed += 1;
 
+      if (diagnostics.capReached) {
+        log(
+          `Daily budget reached mid-city (${city.name}): ${diagnostics.capMessage || "daily cap reached"}.`,
+          budget.getSummary()
+        );
+        break;
+      }
+
       const missing = Number(diagnostics.missingRoutes || 0);
       const fetched = Number(diagnostics.fetchedRoutes || 0);
       const unavailable = Number(diagnostics.unavailableRoutes || 0);
@@ -55,7 +63,8 @@ async function harvestCities(state, newFeatures) {
         const attempts = Number(state.cityAttempts[city.name] || 0) + 1;
         state.cityAttempts[city.name] = attempts;
         log(
-          `City ${city.name} incomplete (${fetched}/${missing} fetched, ${failed} failed) — attempt ${attempts}; will retry.`
+          `City ${city.name} incomplete (${fetched}/${missing} fetched, ${failed} failed) — attempt ${attempts}; will retry.` +
+            (diagnostics.firstError ? ` First error: ${diagnostics.firstError}` : "")
         );
         // Keep the city queued and pause this pass; the next pass resumes it.
         break;

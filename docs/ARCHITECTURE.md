@@ -80,6 +80,8 @@ MapLibre "routes-vector" source (pmtiles:// protocol) → routes/casing/hit laye
 3. `vector-metadata.js` merges `route_metadata` (name, color, headway, stop count) into rendered feature properties; `lineSummaries` power the sidebar list.
 4. Stops are GeoJSON on the `stops` source, loaded on demand per focused route via `/api/transit/route-stops`.
 
+**Problematic geometry auto-flag:** Route metadata carries `problematic_geometry` when geometry looks synthesized rather than routed. Detection combines three checks: sparse geometry over a real span (too few vertices and long average segments), geometry whose vertices sit almost entirely on stop points with no shape points between them, and the original straight-chord checks. Ferries, cable trams, aerial lifts, and funiculars are exempt because straight segments are expected. The flag is recomputed when route geometry/stops are fetched and can be reapplied to the existing archive with `npm run problematic:recompute:prod`.
+
 **Coverage / backfill:**
 - On moveend, `underlay.js` asks `GET /api/transit/coverage?bbox&zoom` (sampled vector tiles, Postgres-cached); the visual underlay is disabled, so only the probe remains.
 - `routeCount` samples at most `maxTiles` centre tiles, so it is a presence signal. `hasIncompleteCoverage` treats a viewport as incomplete when the archive has zero keys there **or** the sample count exceeds the archive key count.

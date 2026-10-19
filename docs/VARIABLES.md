@@ -142,7 +142,7 @@ Stored in `route_override` table and edited via admin override page:
   operatorName: "string",
   color: "string",  // hex
   mode: number | null,  // GTFS mode
-  orderingMode: "geometry-revised" | "legacy-geometry" | "fractions" | null,
+  orderingMode: "auto" | "geometry-revised" | "legacy-geometry" | "fractions" | "manual" | null,
   frequencyBucket: "frequent" | "regular" | "local" | "unknown" | null,
   headwayBestMinutes: number | null,
   mergedLineKeys: ["string"],  // member line keys merged into this canonical route
@@ -382,7 +382,7 @@ The harvester automates the same requests a user makes (route-stops, headway), c
 - **DELETE `/api/admin/overrides/route/:lineKey`** - Delete a route override
 
 ### Route Suggestion API
-- **POST `/api/suggestions`** - Public: submit a route change suggestion (`{ lineKey, citySlug, payload, note }`); guests allowed, per-IP daily cap. Payload is limited to name/operator/color/mode/frequency fields.
+- **POST `/api/suggestions`** - Public: submit a route change suggestion (`{ lineKey, citySlug, payload, note }`); guests allowed, per-IP daily cap. Payload is limited to name/operator/color/mode/frequency/ordering fields.
 - **GET `/api/admin/suggestions?status=open|applied|denied`** - List suggestions for review; each entry includes a `current` snapshot (override-aware) so the console can show current → suggested
 - **POST `/api/admin/suggestions/:id/resolve`** - `{ status: "applied" | "denied" }`; applying merges the payload into the route's `route_override` and clears the transit cache prefix
 

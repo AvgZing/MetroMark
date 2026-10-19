@@ -102,6 +102,59 @@ Production uses `.env.production` and `npm run start:prod`; see
 - **Backups are automatic** (once per UTC day): `run-harvesters.bat` calls `operations\maybe-backup.bat`, which runs the nonrecoverable backup guarded by a date marker. You can also trigger manually from the admin dashboard ("Run Nonrecoverable Backup") or `npm run backup:nonrecoverable:prod`.
 - **Daily restart** (optional, for log rollover + process hygiene): run `operations\install-daily-restart.bat` once as admin to register a Task Scheduler task that calls `restart-metromark.bat` each morning. `restart-metromark.bat` can also be run by hand after a `sync-from-github.bat`.
 
+## Problematic geometry recheck
+
+The automatic flag is applied when route geometry or route stops are fetched. To re-evaluate routes already in the archive, run the recompute script:
+
+```powershell
+# Count what would be flagged without writing
+npm run problematic:recompute:prod -- --dry-run
+
+# Write the flags
+npm run problematic:recompute:prod
+```
+
+The script only sets flags to true; it does not clear existing flags. Manual route reviews still win. Use `--limit 500` for a sample run. New harvests and route-stop fetches use the same detector automatically.
+
+## Backup and restore
+
+The "nonrecoverable backup" is a **JSON snapshot**, not a `pg_dump` archive. `pg_restore` does not apply to it. It contains auth users, profiles, filter presets, visited stations, station/route overrides, route/agency reviews, ordering votes, issue reports, reharvest flags, city presets, and route suggestions.
+
+Backups are written to `BACKUP_OUTPUT_DIR` (default `data/backups`):
+
+- `nonrecoverable-backup-YYYYMMDD-HHMMSS.json` — timestamped snapshot
+- `nonrecoverable-backup-latest.json` — copy of the newest snapshot
+
+Restore the latest backup:
+
+```powershell
+# Check what would be restored first
+npm run restore:nonrecoverable:prod -- --dry-run
+
+# Restore for real
+npm run restore:nonrecoverable:prod
+```
+
+Restore a specific backup:
+
+```powershell
+npm run restore:nonrecoverable:prod -- --file data/backups/nonrecoverable-backup-20261019-060000.json --dry-run
+npm run restore:nonrecoverable:prod -- --file data/backups/nonrecoverable-backup-20261019-060000.json
+```
+
+The restore script merges with existing data using the table keys; matching rows are updated and extra rows are left alone. For a fresh database:
+
+1. Start the app once so local Postgres schema is created.
+2. Apply `operations/sql/supabase-baseline.sql` to the new Supabase project.
+3. Point `.env.production` at the new database and Supabase project.
+4. Run the restore command above.
+
+Important limits:
+
+- Auth **passwords are not in the backup**. Restored auth users are created without a password and must use password reset. Existing auth users keep their current passwords.
+- This JSON restores app data. For a full database disaster, also use the hosting provider's Postgres/Supabase backups; those are the ones restored with `pg_restore` or the provider's restore UI.
+- Pause the app and harvester during a real restore so they do not write while tables are being merged, then verify sign-in, progress, cities, overrides, and admin access.
+
 ## Production Readiness Checklist
 1. Populate `.env.production` with real production keys.
 2. Apply SQL migration on production Supabase.

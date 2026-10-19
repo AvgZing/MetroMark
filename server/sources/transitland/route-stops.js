@@ -162,7 +162,7 @@ async function getRouteStopsTransit(lineKey, options = {}) {
     try {
       // Auto-detect problematic geometry using both the line geometry and the
       // actual stop positions; refine the geometry-only guess from harvest time.
-      const problematicGeometry = detectProblematicGeometry(line.geometry, routeStops.stops);
+      const problematicGeometry = detectProblematicGeometry(line.geometry, routeStops.stops, line.routeType);
       await db.setRouteMetadata(normalizedLineKey, {
         routeOnestopId: line.routeOnestopId || routeMetadata.routeOnestopId,
         lineName: line.lineName || routeMetadata.lineName,
