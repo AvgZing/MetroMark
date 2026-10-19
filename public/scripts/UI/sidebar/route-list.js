@@ -63,6 +63,21 @@ function getRouteListLines() {
   return listed;
 }
 
+function openRouteSearchResult(line) {
+  if (!line || !line.lineKey) {
+    return;
+  }
+  if (Array.isArray(line._geometryBbox) && typeof fitMapToBbox === "function") {
+    fitMapToBbox(line._geometryBbox, { extraPadding: 40, duration: 650, maxZoom: 12.5 });
+  }
+  if (!appState.lineSummaries.some((entry) => entry.lineKey === line.lineKey)) {
+    appState.lineSummaries.push(line);
+  }
+  if (typeof openLineView === "function") {
+    openLineView(line.lineKey, { zoom: !line.isGlobalSearchResult }).catch(() => {});
+  }
+}
+
 function renderLineList() {
   dom.lineList.innerHTML = "";
 
@@ -143,21 +158,7 @@ function renderLineList() {
     name.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (line.isGlobalSearchResult) {
-        if (Array.isArray(line._geometryBbox) && typeof fitMapToBbox === "function") {
-          fitMapToBbox(line._geometryBbox, { extraPadding: 40, duration: 650, maxZoom: 12.5 });
-        }
-        if (!appState.lineSummaries.some((entry) => entry.lineKey === line.lineKey)) {
-          appState.lineSummaries.push(line);
-        }
-        if (typeof openLineView === "function") {
-          openLineView(line.lineKey, { zoom: false });
-        }
-        return;
-      }
-      if (typeof openLineView === "function") {
-        openLineView(line.lineKey, { zoom: true });
-      }
+      openRouteSearchResult(line);
     });
 
     const meta = document.createElement("p");

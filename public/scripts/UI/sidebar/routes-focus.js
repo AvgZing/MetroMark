@@ -63,6 +63,9 @@ async function setFocusedLine(lineKey, options = {}) {
   }
 
   appState.focusedLineKey = normalizedLineKey;
+  if (typeof retargetSuggest === "function") {
+    retargetSuggest(normalizedLineKey);
+  }
   
   // If line view is open, update the line shown in line view to match focused line
   if (appState.lineViewOpen) {

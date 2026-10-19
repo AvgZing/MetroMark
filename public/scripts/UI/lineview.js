@@ -758,10 +758,6 @@ async function openLineView(lineKey, options = {}) {
     return;
   }
 
-  if (typeof closeSuggest === "function") {
-    closeSuggest();
-  }
-
   if (!appState.lineViewOpen) {
     appState.lineViewReturn = {
       focusedLineKey: appState.focusedLineKey,
@@ -789,8 +785,9 @@ async function openLineView(lineKey, options = {}) {
     setMobilePanelsOpen(false);
   }
 
+  let focusPromise = Promise.resolve();
   if (normalizedLineKey !== appState.focusedLineKey) {
-    setFocusedLine(normalizedLineKey, { forceRefresh: false }).catch((error) => {
+    focusPromise = setFocusedLine(normalizedLineKey, { forceRefresh: false }).catch((error) => {
       setStatus(error.message, "error");
     });
   }
@@ -799,6 +796,7 @@ async function openLineView(lineKey, options = {}) {
   renderUserStatus();
 
   if (options.zoom && typeof fitMapToLine === "function") {
+    await focusPromise;
     fitMapToLine(normalizedLineKey);
   }
 

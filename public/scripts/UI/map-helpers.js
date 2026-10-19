@@ -230,7 +230,11 @@ function fitMapToLine(lineKey) {
   // only an addition to the stop extents, never the sole source.
   const stopBbox = buildLineBboxFromStops(lineKey);
   const routeBbox = buildLineBboxFromRoutes(lineKey);
-  const bbox = unionBbox(stopBbox, routeBbox);
+  const summary = Array.isArray(appState.lineSummaries)
+    ? appState.lineSummaries.find((entry) => entry.lineKey === lineKey)
+    : null;
+  const summaryBbox = Array.isArray(summary?._geometryBbox) ? summary._geometryBbox : null;
+  const bbox = unionBbox(unionBbox(stopBbox, routeBbox), summaryBbox);
   if (!bbox) {
     return;
   }

@@ -129,7 +129,9 @@
 
       row.append(dot, block, stops);
       row.addEventListener("click", () => {
-        if (typeof openLineView === "function") {
+        if (typeof openRouteSearchResult === "function") {
+          openRouteSearchResult(line);
+        } else if (typeof openLineView === "function") {
           openLineView(line.lineKey);
         }
       });

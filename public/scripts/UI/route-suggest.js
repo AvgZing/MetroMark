@@ -79,6 +79,45 @@ function closeSuggest() {
   suggestLineKey = "";
 }
 
+function retargetSuggest(lineKey) {
+  if (!suggestLineKey) {
+    return;
+  }
+  const normalizedLineKey = typeof resolveCanonicalLineKey === "function"
+    ? resolveCanonicalLineKey(lineKey)
+    : String(lineKey || "").trim();
+  if (!normalizedLineKey || normalizedLineKey === suggestLineKey) {
+    return;
+  }
+  const line = (appState.lineSummaries || []).find((entry) => entry.lineKey === normalizedLineKey);
+  if (!line) {
+    return;
+  }
+  suggestLineKey = normalizedLineKey;
+  suggestBaseline = {
+    operatorName: String(line.operatorName || ""),
+    color: String(line.color || ""),
+    mode: line.routeType !== null && line.routeType !== undefined ? String(line.routeType) : ""
+  };
+  suggestEl("suggestShortNameInput").value = "";
+  suggestEl("suggestLongNameInput").value = "";
+  suggestEl("suggestOperatorInput").value = suggestBaseline.operatorName;
+  suggestEl("suggestColorInput").value = suggestBaseline.color;
+  suggestEl("suggestModeInput").value = suggestBaseline.mode;
+  const orderingEl = suggestEl("suggestOrderingInput");
+  if (orderingEl) {
+    orderingEl.value = "";
+  }
+  suggestEl("suggestNoteInput").value = "";
+  suggestEl("suggestRouteLabel").textContent =
+    `${line.lineName || normalizedLineKey} (${normalizedLineKey}) — an admin reviews every suggestion.`;
+  const statusEl = suggestEl("suggestStatus");
+  if (statusEl) {
+    statusEl.hidden = false;
+    statusEl.textContent = `Now suggesting changes for ${line.lineName || normalizedLineKey}.`;
+  }
+}
+
 async function submitRouteSuggestion() {
   if (!suggestLineKey) {
     return;
