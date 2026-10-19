@@ -33,7 +33,19 @@ function normalizeLineViewOrderingMode(orderingMode) {
 
 function lineViewOrderingDefaultModeForLine(lineKey) {
   const normalizedLineKey = String(lineKey || '').trim();
-  if (!normalizedLineKey || !Array.isArray(appState?.lineSummaries)) {
+  if (!normalizedLineKey) {
+    return 'auto';
+  }
+
+  const override = appState?.routeOverridesByCity instanceof Map
+    ? appState.routeOverridesByCity.get(normalizedLineKey)
+    : null;
+  const overrideMode = override?.payload?.orderingMode;
+  if (overrideMode) {
+    return normalizeLineViewOrderingMode(overrideMode);
+  }
+
+  if (!Array.isArray(appState?.lineSummaries)) {
     return 'auto';
   }
 

@@ -252,6 +252,7 @@
     window.addEventListener("resize", markMultilineBars);
   }
 
+  window.renderMapSearchResults = renderMapSearchResults;
   window.setFiltersPanelOpen = setOpen;
 
   if (document.readyState === "loading") {

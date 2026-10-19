@@ -303,20 +303,32 @@ function bindEvents() {
     if (!searchQuery) {
       appState.globalSearchLines = [];
       renderLineList();
+      if (typeof window.renderMapSearchResults === "function") {
+        window.renderMapSearchResults();
+      }
       return;
     }
     globalRouteSearchTimer = window.setTimeout(async () => {
       try {
         const payload = await apiRequest(`/api/transit/routes/search?q=${encodeURIComponent(searchQuery)}`);
+        if (appState.lineSearchQuery !== searchQuery) {
+          return;
+        }
         appState.globalSearchLines = (payload.routes || []).map((route) => ({
           ...route,
           _geometryBbox: route.bbox,
           isGlobalSearchResult: true
         }));
       } catch {
+        if (appState.lineSearchQuery !== searchQuery) {
+          return;
+        }
         appState.globalSearchLines = [];
       }
       renderLineList();
+      if (typeof window.renderMapSearchResults === "function") {
+        window.renderMapSearchResults();
+      }
     }, 300);
   });
 

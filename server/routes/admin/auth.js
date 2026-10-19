@@ -154,5 +154,6 @@ async function isAdminAuthorized(req) {
 
 module.exports = {
   router,
-  isAdminAuthorized
+  isAdminAuthorized,
+  getAdminSession
 };

@@ -20,28 +20,6 @@ function lineViewOrderingModeLabel(mode) {
   return "Main";
 }
 
-function lineViewOrderingTechnicalLabel(mode) {
-  const normalizedMode = normalizeLineViewOrderingMode(mode);
-
-  if (normalizedMode === "auto") {
-    return "Automatic route-shape detection";
-  }
-
-  if (normalizedMode === "geometry-revised") {
-    return "Geometry Revised Endpoint Anchored";
-  }
-
-  if (normalizedMode === "legacy-geometry") {
-    return "Trip Pattern Geometry";
-  }
-
-  if (normalizedMode === "fractions") {
-    return "Fractions Only";
-  }
-
-  return "Geometry Revised Endpoint Anchored";
-}
-
 function lineViewOrderingStatusLabel() {
   var mode = normalizeLineViewOrderingMode(appState.lineViewOrderingMode);
   var resolvedMode = normalizeLineViewOrderingMode(appState.lineViewOrderingResolved || mode);
@@ -57,8 +35,8 @@ function lineViewOrderingStatusLabel() {
   var voteCounts = (focusedLine && focusedLine.lineViewOrderingVoteCounts) ? focusedLine.lineViewOrderingVoteCounts : {};
 
   var label = mode === "auto"
-    ? "Auto - " + lineViewOrderingModeLabel(activeMode) + " (" + lineViewOrderingTechnicalLabel(activeMode) + ")"
-    : lineViewOrderingModeLabel(activeMode) + " (" + lineViewOrderingTechnicalLabel(activeMode) + ")";
+    ? "Auto - " + lineViewOrderingModeLabel(activeMode)
+    : lineViewOrderingModeLabel(activeMode);
 
   var voteSuffix = "";
   if (adminMode === activeMode) {
@@ -282,10 +260,10 @@ function syncLineViewOrderingControls() {
   };
 
   const buttonTitleByMode = {
-    auto: "Automatic route-shape detection",
-    "geometry-revised": "Geometry Revised Endpoint Anchored",
-    "legacy-geometry": "Trip Pattern Geometry",
-    fractions: "Fractions Only"
+    auto: "Automatically detect stop order",
+    "geometry-revised": "Main stop order",
+    "legacy-geometry": "U-Shape stop order",
+    fractions: "Loop stop order"
   };
 
   for (const [buttonMode, button] of Object.entries(buttonByMode)) {
