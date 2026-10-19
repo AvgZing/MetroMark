@@ -65,7 +65,19 @@ async function searchRouteMetadatas(query, limit = 20) {
      ) geo on true
      where m.line_key ilike $1 or m.line_name ilike $1 or m.line_short_name ilike $1
         or m.line_long_name ilike $1 or m.operator_name ilike $1
-     order by (lower(m.line_name) = lower($3)) desc, (m.line_name ilike $1) desc, m.line_name asc
+     order by
+       (lower(m.line_short_name) = lower($3)) desc,
+       (lower(m.line_name) = lower($3)) desc,
+       (lower(m.line_long_name) = lower($3)) desc,
+       (m.line_short_name ilike ($3 || '%')) desc,
+       (m.line_name ilike ($3 || '%')) desc,
+       (m.line_long_name ilike ($3 || '%')) desc,
+       case
+         when m.route_type in (0, 1, 2, 12) then 0
+         when m.route_type in (3, 11) then 3
+         else 2
+       end asc,
+       m.line_name asc
      limit $2`,
     [like, Math.max(1, Math.min(50, Number(limit) || 20)), term]
   );

@@ -1,41 +1,182 @@
 // Admin Map Editor — route search corpus/results, batch refresh, Transitland add, coverage underlay, cities load.
 function collectRouteSearchCorpus() {
   const byKey = new Map();
-  const add = (feature) => {
+  const add = (feature, visible = false) => {
     const props = featureLineProps(feature);
     if (!props.lineKey) {
       return;
     }
+    const marked = { ...feature, _adminVisible: Boolean(visible) };
     const existing = byKey.get(props.lineKey);
     if (!existing) {
-      byKey.set(props.lineKey, feature);
+      byKey.set(props.lineKey, marked);
       return;
+    }
+    if (visible) {
+      existing._adminVisible = true;
     }
     const hasGeom = Boolean(feature.geometry && Array.isArray(feature.geometry.coordinates));
     const existingGeom = Boolean(existing.geometry && Array.isArray(existing.geometry.coordinates));
     if (hasGeom && !existingGeom) {
-      byKey.set(props.lineKey, feature);
+      marked._adminVisible = marked._adminVisible || Boolean(existing._adminVisible);
+      byKey.set(props.lineKey, marked);
     }
   };
   if (state.map && state.mapReady && state.map.getLayer("routes-main")) {
     for (const feature of state.map.queryRenderedFeatures({ layers: ["routes-main"] })) {
-      add(feature);
+      add(feature, true);
     }
   }
   // Include source (hidden) features so search finds non-rendered routes too.
   if (state.map && state.mapReady) {
     try {
       for (const feature of state.map.querySourceFeatures("routes-vector", { sourceLayer: "routes" })) {
-        add(feature);
+        add(feature, false);
       }
     } catch {
       // source not ready yet
     }
   }
   for (const feature of state.underlayFeatures || []) {
-    add(feature);
+    add(feature, false);
   }
   return Array.from(byKey.values());
+}
+
+function routeSearchFeatureText(feature) {
+  const props = featureLineProps(feature);
+  return [
+    props.lineKey,
+    props.lineName,
+    props.lineShortName,
+    props.lineLongName,
+    props.operatorName,
+    props.routeOnestopId,
+    MODE_LABELS[props.routeType],
+    props.routeType,
+    state.frequencyByLineKey.get(props.lineKey)
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join(" ");
+}
+
+function routeSearchScore(feature, query) {
+  if (!query) {
+    return 0;
+  }
+  const props = featureLineProps(feature);
+  const text = routeSearchFeatureText(feature);
+  if (!text.includes(query)) {
+    return -999;
+  }
+  const shortName = String(props.lineShortName || "").toLowerCase();
+  const lineName = String(props.lineName || "").toLowerCase();
+  const longName = String(props.lineLongName || "").toLowerCase();
+  if (shortName === query) return 1000;
+  if (lineName === query) return 950;
+  if (longName === query) return 900;
+  if (shortName.startsWith(query)) return 800;
+  if (lineName.startsWith(query)) return 750;
+  if (longName.startsWith(query)) return 700;
+  const shortNameIndex = shortName.indexOf(query);
+  if (shortNameIndex !== -1) {
+    return 500 - shortNameIndex;
+  }
+  return 100;
+}
+
+function routeSearchTierWeight(feature) {
+  const routeType = Number(featureLineProps(feature).routeType);
+  if ([0, 1, 2, 12].includes(routeType)) {
+    return 0;
+  }
+  if ([3, 11].includes(routeType)) {
+    return 3;
+  }
+  return 2;
+}
+
+function sortRouteSearchFeatures(features, query) {
+  return features.slice().sort((a, b) => {
+    const visibleDiff = Number(Boolean(b._adminVisible)) - Number(Boolean(a._adminVisible));
+    if (visibleDiff) {
+      return visibleDiff;
+    }
+    const scoreDiff = routeSearchScore(b, query) - routeSearchScore(a, query);
+    if (scoreDiff) {
+      return scoreDiff;
+    }
+    const tierDiff = routeSearchTierWeight(a) - routeSearchTierWeight(b);
+    if (tierDiff) {
+      return tierDiff;
+    }
+    return adminLineDisplayName(featureLineProps(a)).localeCompare(adminLineDisplayName(featureLineProps(b)));
+  });
+}
+
+function routeMetadataToSearchFeature(route) {
+  return {
+    type: "Feature",
+    properties: {
+      line_key: route.lineKey,
+      line_name: route.lineName,
+      line_short_name: route.lineShortName,
+      line_long_name: route.lineLongName,
+      operator_name: route.operatorName,
+      route_type: route.routeType,
+      color: route.color,
+      route_onestop_id: route.routeOnestopId
+    },
+    bbox: route.bbox,
+    _adminGlobal: true
+  };
+}
+
+function createRouteSearchRow(feature, { global = false } = {}) {
+  const props = featureLineProps(feature);
+  const row = document.createElement("div");
+  row.className = "admin-route-result-row";
+
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.title = "Select for batch refresh";
+  cb.checked = state.routeBatchSelection.has(props.lineKey);
+  cb.addEventListener("change", () => {
+    if (cb.checked) {
+      state.routeBatchSelection.add(props.lineKey);
+    } else {
+      state.routeBatchSelection.delete(props.lineKey);
+    }
+    updateRouteBatchControl();
+  });
+
+  const focusBtn = document.createElement("button");
+  focusBtn.type = "button";
+  focusBtn.className = "admin-route-result-focus";
+  const dot = document.createElement("span");
+  dot.className = "admin-route-select-dot";
+  dot.style.background = props.color || "#177ca2";
+  const name = document.createElement("span");
+  name.className = "admin-route-select-name";
+  name.textContent = adminLineDisplayName(props) || props.lineKey;
+  const meta = document.createElement("span");
+  meta.className = "admin-route-select-meta";
+  const metaParts = [MODE_LABELS[props.routeType] || "Route", props.operatorName].filter(Boolean);
+  if (global) {
+    metaParts.push("Not in view");
+  }
+  meta.textContent = metaParts.join(" · ");
+  focusBtn.append(dot, name, meta);
+  focusBtn.addEventListener("click", () => {
+    if (global) {
+      focusRouteByLineKey(props.lineKey).catch(() => {});
+    } else {
+      focusRouteFeature(feature);
+    }
+  });
+
+  row.append(cb, focusBtn);
+  return row;
 }
 
 function renderRouteSearchResults(features, context = {}) {
@@ -56,7 +197,7 @@ function renderRouteSearchResults(features, context = {}) {
   }
   const list = (Array.isArray(features) ? features : []).filter((feature) => {
     const props = featureLineProps(feature);
-    if (query && !buildUnderlaySearchText(feature).includes(query)) {
+    if (query && !routeSearchFeatureText(feature).includes(query)) {
       return false;
     }
     if (modeFilterSet.size) {
@@ -72,18 +213,13 @@ function renderRouteSearchResults(features, context = {}) {
     }
     return true;
   });
-  if (!list.length) {
-    const p = document.createElement("p");
-    p.className = "microcopy";
-    p.textContent = "No matching routes in the current view. Pan/zoom the map to load more.";
-    container.append(p);
-    updateRouteBatchControl();
-    return;
-  }
+  const globalList = query && Array.isArray(context.globalResults)
+    ? context.globalResults.slice()
+    : [];
 
   const seen = new Set();
   let rendered = 0;
-  for (const feature of list) {
+  for (const feature of sortRouteSearchFeatures(list, query)) {
     const props = featureLineProps(feature);
     if (!props.lineKey || seen.has(props.lineKey)) {
       continue;
@@ -93,40 +229,28 @@ function renderRouteSearchResults(features, context = {}) {
       break;
     }
     rendered += 1;
+    container.append(createRouteSearchRow(feature));
+  }
 
-    const row = document.createElement("div");
-    row.className = "admin-route-result-row";
+  let globalRendered = 0;
+  for (const feature of sortRouteSearchFeatures(globalList, query)) {
+    const props = featureLineProps(feature);
+    if (!props.lineKey || seen.has(props.lineKey)) {
+      continue;
+    }
+    seen.add(props.lineKey);
+    if (globalRendered >= 30) {
+      break;
+    }
+    globalRendered += 1;
+    container.append(createRouteSearchRow(feature, { global: true }));
+  }
 
-    const cb = document.createElement("input");
-    cb.type = "checkbox";
-    cb.title = "Select for batch refresh";
-    cb.checked = state.routeBatchSelection.has(props.lineKey);
-    cb.addEventListener("change", () => {
-      if (cb.checked) {
-        state.routeBatchSelection.add(props.lineKey);
-      } else {
-        state.routeBatchSelection.delete(props.lineKey);
-      }
-      updateRouteBatchControl();
-    });
-
-    const focusBtn = document.createElement("button");
-    focusBtn.type = "button";
-    focusBtn.className = "admin-route-result-focus";
-    const dot = document.createElement("span");
-    dot.className = "admin-route-select-dot";
-    dot.style.background = props.color || "#177ca2";
-    const name = document.createElement("span");
-    name.className = "admin-route-select-name";
-    name.textContent = adminLineDisplayName(props) || props.lineKey;
-    const meta = document.createElement("span");
-    meta.className = "admin-route-select-meta";
-    meta.textContent = [MODE_LABELS[props.routeType] || "Route", props.operatorName].filter(Boolean).join(" · ");
-    focusBtn.append(dot, name, meta);
-    focusBtn.addEventListener("click", () => focusRouteFeature(feature));
-
-    row.append(cb, focusBtn);
-    container.append(row);
+  if (!rendered && !globalRendered) {
+    const p = document.createElement("p");
+    p.className = "microcopy";
+    p.textContent = "No matching routes in the current view. Pan/zoom the map to load more.";
+    container.append(p);
   }
   updateRouteBatchControl();
 }
@@ -420,19 +544,34 @@ async function updateUnderlay() {
   }
 }
 
-function buildUnderlaySearchText(feature) {
-  const props = feature?.properties || {};
-  return [
-    props.line_key,
-    props.line_name,
-    props.line_short_name,
-    props.line_long_name,
-    props.operator_name,
-    props.onestop_id,
-    props.route_onestop_id
-  ]
-    .map((value) => String(value || "").toLowerCase())
-    .join(" ");
+let globalRouteSearchTimer = null;
+function scheduleGlobalRouteSearch() {
+  if (globalRouteSearchTimer) {
+    window.clearTimeout(globalRouteSearchTimer);
+    globalRouteSearchTimer = null;
+  }
+  const query = String(state.routeSearchQuery || "").trim();
+  if (!query) {
+    state.globalRouteSearchResults = [];
+    return;
+  }
+  globalRouteSearchTimer = window.setTimeout(async () => {
+    globalRouteSearchTimer = null;
+    try {
+      const payload = await apiRequest(`/api/transit/routes/search?q=${encodeURIComponent(query)}`, {
+        method: "GET"
+      });
+      if (String(state.routeSearchQuery || "").trim() !== query) {
+        return;
+      }
+      state.globalRouteSearchResults = (payload.routes || []).map(routeMetadataToSearchFeature);
+    } catch {
+      if (String(state.routeSearchQuery || "").trim() === query) {
+        state.globalRouteSearchResults = [];
+      }
+    }
+    applyUnderlaySearchFilter();
+  }, 300);
 }
 
 function applyUnderlaySearchFilter() {
@@ -442,8 +581,14 @@ function applyUnderlaySearchFilter() {
     state.adminFrequencyFilter instanceof Set ? state.adminFrequencyFilter : new Set();
   const corpus = collectRouteSearchCorpus();
   if (els.routeSearchInfo) {
-    els.routeSearchInfo.textContent =
-      query || modeFilterSet.size || frequencyFilterSet.size ? `${corpus.length} route(s) in view` : "";
+    if (query || modeFilterSet.size || frequencyFilterSet.size) {
+      const globalCount = query ? state.globalRouteSearchResults.length : 0;
+      els.routeSearchInfo.textContent = `${corpus.length} route(s) in view${
+        globalCount ? ` · ${globalCount} elsewhere` : ""
+      }`;
+    } else {
+      els.routeSearchInfo.textContent = "";
+    }
   }
   // Frequency comes from route_metadata, not tiles; fetch it for the corpus once.
   if (frequencyFilterSet.size) {
@@ -454,7 +599,12 @@ function applyUnderlaySearchFilter() {
         .catch(() => {});
     }
   }
-  renderRouteSearchResults(corpus, { query, modeFilterSet, frequencyFilterSet });
+  renderRouteSearchResults(corpus, {
+    query,
+    modeFilterSet,
+    frequencyFilterSet,
+    globalResults: state.globalRouteSearchResults
+  });
 }
 
 async function ensureFrequencyMetadata(lineKeys) {

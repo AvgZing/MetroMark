@@ -11,10 +11,10 @@
       rel="stylesheet"
     />
     <link href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" rel="stylesheet" />
-    <link rel="stylesheet" href="/Styles/base.css?v=2026-10-18b" />
-    <link rel="stylesheet" href="/Styles/map.css?v=2026-10-18b" />
-    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-10-18b" />
-    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-10-18b" />
+    <link rel="stylesheet" href="/Styles/base.css?v=2026-10-18c" />
+    <link rel="stylesheet" href="/Styles/map.css?v=2026-10-18c" />
+    <link rel="stylesheet" href="/Styles/admin-shell.css?v=2026-10-18c" />
+    <link rel="stylesheet" href="/Styles/admin-override.css?v=2026-10-18c" />
     <link rel="icon" type="image/png" href="/Assets/icons/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/Assets/icons/favicon.svg" />
     <link rel="shortcut icon" href="/Assets/icons/favicon.ico" />
@@ -116,6 +116,7 @@
             id="transitlandSearchInput"
             type="search"
             placeholder="e.g. 44, Rainier, or a route key"
+            aria-label="Search Transitland routes"
           />
           <div class="override-actions">
             <button id="transitlandSearchBtn" class="btn btn-subtle" type="button">
@@ -135,9 +136,8 @@
           </p>
           <div class="city-create">
             <h3 class="city-subhead">Create city from current view</h3>
-            <input id="newCitySlug" type="text" placeholder="slug (e.g. seattle)" />
-            <input id="newCityName" type="text" placeholder="Name (e.g. Seattle)" />
-            <input id="newCityCountry" type="text" placeholder="Country (e.g. USA)" />
+            <input id="newCitySlug" type="text" placeholder="slug (e.g. seattle)" aria-label="New city slug" />
+            <input id="newCityName" type="text" placeholder="Name (e.g. Seattle)" aria-label="New city name" />
             <p class="microcopy" id="newCityView">Move the map to the city, then create it here.</p>
             <div class="override-actions">
               <button id="newCityCreateBtn" class="btn" type="button">Create city from current view</button>
@@ -186,7 +186,7 @@
             </div>
             <div id="cityOperatorsList" class="city-members-list"></div>
             <div class="city-add-row">
-              <input id="cityOperatorSearchInput" type="text" placeholder="Find operator (e.g. King County Metro)" />
+              <input id="cityOperatorSearchInput" type="text" placeholder="Find operator (e.g. King County Metro)" aria-label="Find operator" />
               <button id="cityOperatorSearchBtn" class="btn btn-subtle" type="button">Search</button>
             </div>
             <div id="cityOperatorResults" class="admin-route-search-results"></div>
@@ -504,32 +504,32 @@
 
     <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
     <script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js"></script>
-    <script src="/Scripts/Map/basemap-config.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/admin-theme.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Shared/constants.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Map/viewport-cache.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/UI/line-view/spatial.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/UI/line-view/stop-helpers.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/UI/line-view/ranking.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/UI/line-view/branch-detection.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/UI/line-view/method-main.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/UI/line-view/method-ushape.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/UI/line-view/method-loop.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/UI/line-view/method-auto.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/UI/line-view/stop-ordering.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/core.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/map.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/area-refresh.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/routes.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/route-search.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/map-events.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/stops.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/branches.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/stop-list.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/saves.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/operators.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/boot.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/cities.js?v=2026-10-18b" defer></script>
-    <script src="/Scripts/Admin/override/app.js?v=2026-10-18b" defer></script>
+    <script src="/Scripts/Map/basemap-config.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/admin-theme.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Shared/constants.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Map/viewport-cache.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/UI/line-view/spatial.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/UI/line-view/stop-helpers.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/UI/line-view/ranking.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/UI/line-view/branch-detection.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/UI/line-view/method-main.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/UI/line-view/method-ushape.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/UI/line-view/method-loop.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/UI/line-view/method-auto.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/UI/line-view/stop-ordering.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/core.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/map.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/area-refresh.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/routes.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/route-search.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/map-events.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/stops.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/branches.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/stop-list.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/saves.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/operators.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/boot.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/cities.js?v=2026-10-18c" defer></script>
+    <script src="/Scripts/Admin/override/app.js?v=2026-10-18c" defer></script>
   </body>
 </html>

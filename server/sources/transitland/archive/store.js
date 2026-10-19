@@ -1,6 +1,7 @@
 const fs = require("fs");
 const {
   MANIFEST_FILE,
+  SHARD_COUNT,
   ensureSharded,
   lineKeyOf,
   readManifest,

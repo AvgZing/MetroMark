@@ -39,7 +39,6 @@ async function createCityFromView() {
     .replace(/[^a-z0-9-]+/g, "-")
     .replace(/^-+|-+$/g, "");
   const name = String(els.newCityName?.value || "").trim() || slug;
-  const country = String(els.newCityCountry?.value || "").trim();
   if (!slug) {
     setEditStatus(els.newCityStatus, "A slug is required.", true);
     return;
@@ -56,7 +55,6 @@ async function createCityFromView() {
       body: {
         slug,
         name,
-        country,
         center: view.center,
         bbox: view.bbox,
         defaultZoom: view.zoom,
@@ -66,7 +64,6 @@ async function createCityFromView() {
     setEditStatus(els.newCityStatus, `Created ${slug}.`);
     if (els.newCitySlug) els.newCitySlug.value = "";
     if (els.newCityName) els.newCityName.value = "";
-    if (els.newCityCountry) els.newCityCountry.value = "";
     await loadCityPanelList();
     if (els.cityPanelSelect) {
       els.cityPanelSelect.value = slug;

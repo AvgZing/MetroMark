@@ -286,6 +286,26 @@ async function getAccountStats() {
     throw new Error(`Unable to read active profile count: ${profileActiveQuery.error.message}`);
   }
 
+  const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const profileSignedIn24hQuery = await serviceClient
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .gte("last_login_at", since24h);
+
+  if (profileSignedIn24hQuery.error) {
+    throw new Error(`Unable to read 24h login count: ${profileSignedIn24hQuery.error.message}`);
+  }
+
+  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const profileSignedIn7dQuery = await serviceClient
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .gte("last_login_at", since7d);
+
+  if (profileSignedIn7dQuery.error) {
+    throw new Error(`Unable to read 7d login count: ${profileSignedIn7dQuery.error.message}`);
+  }
+
   const visitsTotalQuery = await serviceClient
     .from("user_station_visit")
     .select("station_key", { count: "exact", head: true })
@@ -310,6 +330,8 @@ async function getAccountStats() {
   return {
     profilesTotal: Number(profileTotalQuery.count || 0),
     profilesActive: Number(profileActiveQuery.count || 0),
+    profilesSignedIn24h: Number(profileSignedIn24hQuery.count || 0),
+    profilesSignedIn7d: Number(profileSignedIn7dQuery.count || 0),
     visitedStationRows: Number(visitsTotalQuery.count || 0),
     latestLoginAtMs: latestLoginIso ? Date.parse(latestLoginIso) : null
   };

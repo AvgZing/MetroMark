@@ -101,7 +101,9 @@ function bindEvents() {
   if (els.routeSearchInput) {
     els.routeSearchInput.addEventListener("input", () => {
       state.routeSearchQuery = String(els.routeSearchInput.value || "").trim();
+      state.globalRouteSearchResults = [];
       applyUnderlaySearchFilter();
+      scheduleGlobalRouteSearch();
       scheduleUnderlayRefresh();
     });
   }

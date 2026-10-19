@@ -297,7 +297,7 @@ async function refreshStats() {
 
   els.kpiUsers.textContent = accountsAvailable ? String(accounts.profilesTotal || 0) : "—";
   els.kpiUsersSub.textContent = accountsAvailable
-    ? `${accounts.profilesActive || 0} active`
+    ? `${accounts.profilesActive || 0} enabled · ${accounts.profilesSignedIn7d || 0} signed in (7d)`
     : "Supabase unreachable";
   els.kpiVisits.textContent = accountsAvailable ? String(accounts.visitedStationRows || 0) : "—";
     els.kpiRoutes.textContent = String(payload.routeCoverage?.totalRoutes ?? payload.harvest?.totalCities ?? "—");
@@ -346,13 +346,15 @@ async function refreshStats() {
   ]);
 
   renderKv(els.accountStats, [
-    { label: "Profiles Total", value: accountsAvailable ? accounts.profilesTotal : "n/a" },
-    { label: "Profiles Active", value: accountsAvailable ? accounts.profilesActive : "n/a" },
-    { label: "Visited Station Rows", value: accountsAvailable ? accounts.visitedStationRows : "n/a" },
-    {
-      label: "Latest Login",
-      value: accountsAvailable && accounts.latestLoginAtMs ? new Date(accounts.latestLoginAtMs).toLocaleString() : "-"
-    }
+  { label: "Profiles Total", value: accountsAvailable ? accounts.profilesTotal : "n/a" },
+  { label: "Profiles Enabled", value: accountsAvailable ? accounts.profilesActive : "n/a" },
+  { label: "Signed in (24h)", value: accountsAvailable ? accounts.profilesSignedIn24h : "n/a" },
+  { label: "Signed in (7d)", value: accountsAvailable ? accounts.profilesSignedIn7d : "n/a" },
+  { label: "Visited Station Rows", value: accountsAvailable ? accounts.visitedStationRows : "n/a" },
+  {
+  label: "Latest Login",
+  value: accountsAvailable && accounts.latestLoginAtMs ? new Date(accounts.latestLoginAtMs).toLocaleString() : "-"
+  }
   ]);
 
   renderKv(els.performanceStats, [
