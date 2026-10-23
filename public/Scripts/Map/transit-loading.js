@@ -10,6 +10,9 @@ async function onMapMoveEnd() {
   if (typeof refreshBackendStatusZoom === "function") {
     refreshBackendStatusZoom();
   }
+  if (typeof updateLoadingStatus === "function") {
+    updateLoadingStatus();
+  }
 
   // Refresh the underlay/coverage before the backfill check.
   if (typeof updateUnderlay === "function") {
@@ -27,7 +30,8 @@ async function onMapMoveEnd() {
 
 function updateLoadingStatus() {
   const routeStopLoadingCount = appState.inFlightLineStopKeys.size;
-  const backfillInFlight = Boolean(appState.tileBackfillInFlight);
+  const backfillInFlight = Boolean(appState.tileBackfillInFlight) &&
+    (typeof isBackfillAreaCurrent !== "function" || isBackfillAreaCurrent());
   const hasRoutes = Array.isArray(appState.lineSummaries) && appState.lineSummaries.some((line) => {
     if (typeof lineIsVisible === "function") {
       return lineIsVisible(line);

@@ -82,6 +82,13 @@ function coarseBboxKey(bbox) {
   return bbox.map((value) => Math.round(Number(value) / snap)).join(",");
 }
 
+function isBackfillAreaCurrent() {
+  if (!appState.backfillAreaKey || !appState.currentViewportBbox) {
+    return true;
+  }
+  return coarseBboxKey(appState.currentViewportBbox) === appState.backfillAreaKey;
+}
+
 function scheduleBackfillCheck(delayMs) {
   if (backfillCheckTimer) {
     clearTimeout(backfillCheckTimer);
@@ -159,6 +166,7 @@ async function maybeBackfillViewport() {
 
 async function requestBackfill(bbox, options = {}) {
   const t0 = performance.now();
+  appState.backfillAreaKey = coarseBboxKey(bbox);
   appState.tileBackfillInFlight = true;
   appState.backfillStage = "fetching";
 
@@ -202,6 +210,7 @@ async function requestBackfill(bbox, options = {}) {
       throw new Error(status.lastError);
     }
     const payload = status?.lastResult || {};
+    const sameArea = isBackfillAreaCurrent();
 
     appState.tileBackfillCount += 1;
     appState.tileBackfillTotalMs += performance.now() - t0;
@@ -227,7 +236,9 @@ async function requestBackfill(bbox, options = {}) {
       const updated = Number(payload?.updatedRoutes || 0);
       if (added > 0 || updated > 0) {
         setStatus(
-          `${added} new route${added === 1 ? "" : "s"} loaded for this area.`,
+          sameArea
+            ? `${added} new route${added === 1 ? "" : "s"} loaded for this area.`
+            : `${added} new route${added === 1 ? "" : "s"} loaded for the area you left.`,
           "ok",
           `${payload.totalRoutesInArchive} routes now in the archive.`
         );
@@ -235,6 +246,7 @@ async function requestBackfill(bbox, options = {}) {
         // Report the no-op only for explicit refreshes.
         setStatus("No new routes to load for this area.", "ok", "This area is already covered.");
       } else if (
+        sameArea &&
         typeof archiveLineKeysInViewport === "function" &&
         (archiveLineKeysInViewport()?.size || 0) === 0
       ) {
@@ -264,6 +276,7 @@ async function requestBackfill(bbox, options = {}) {
     return null;
   } finally {
     appState.tileBackfillInFlight = false;
+    appState.backfillAreaKey = "";
     appState.tileBackfillCooldownUntil = Date.now() + BACKFILL_COOLDOWN_MS;
     // Re-evaluate after the flag clears.
     if (typeof updateLoadingStatus === "function") {
