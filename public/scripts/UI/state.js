@@ -17,6 +17,7 @@ const appState = {
   cities: [],
   transit: null,
   currentViewportBbox: null,
+  processedViewportZoom: null,
   transitCoverageCount: 0,
   lastMapFeatureStateSignature: "",
   lastStopsSourceKey: "",

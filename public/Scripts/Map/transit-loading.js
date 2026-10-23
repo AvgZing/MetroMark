@@ -4,7 +4,12 @@ async function onMapMoveEnd() {
   }
 
   appState.currentViewportBbox = typeof mapBoundsToBbox === "function" ? mapBoundsToBbox() : null;
+  appState.processedViewportZoom = Number(appState.map.getZoom());
   appState.lastCameraMoveAt = Date.now();
+
+  if (typeof refreshBackendStatusZoom === "function") {
+    refreshBackendStatusZoom();
+  }
 
   // Refresh the underlay/coverage before the backfill check.
   if (typeof updateUnderlay === "function") {
@@ -29,7 +34,7 @@ function updateLoadingStatus() {
     }
     return true;
   });
-  const zoom = appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
+  const zoom = appState.processedViewportZoom !== null ? Number(appState.processedViewportZoom) : appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
 
     // Background loading uses the corner badge, not a modal.
   if (hasRoutes) {

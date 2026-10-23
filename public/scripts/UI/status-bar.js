@@ -11,15 +11,33 @@ function setStatus(message, kind = "neutral", meta = "") {
   }
 }
 
+function backendZoomText() {
+  if (appState.processedViewportZoom !== null) {
+    return Number(appState.processedViewportZoom).toFixed(2);
+  }
+  return appState.map && appState.mapReady ? Number(appState.map.getZoom()).toFixed(2) : "n/a";
+}
+
 function setBackendStatus(message) {
   const raw = String(message || "");
+  appState.backendStatusMessage = raw;
   const escaped = escapeHtml(raw);
   const linked = escaped.replace(
     /(https?:\/\/[^\s<]+)/g,
     (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
   );
-  const zoom = appState.map && appState.mapReady ? Number(appState.map.getZoom()).toFixed(2) : "n/a";
-  dom.backendStatusText.innerHTML = `<span class="backend-status-zoom">Current zoom level: ${zoom}</span><br>${linked}`;
+  dom.backendStatusText.innerHTML = `<span class="backend-status-zoom">Current zoom level: ${backendZoomText()}</span><br>${linked}`;
+}
+
+function refreshBackendStatusZoom() {
+  if (!appState.backendStatusMessage || !dom.backendStatusText) {
+    return;
+  }
+  const el = dom.backendStatusText.querySelector(".backend-status-zoom");
+  if (!el) {
+    return;
+  }
+  el.textContent = `Current zoom level: ${backendZoomText()}`;
 }
 
 function clearMapNotice() {

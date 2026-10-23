@@ -336,9 +336,10 @@ async function loadProblematicRoutes() {
       corpus.map((feature) => featureLineProps(feature).lineKey).filter(Boolean)
     )).slice(0, 1000);
     const autoKeys = new Set();
-    if (keys.length) {
+    for (let i = 0; i < keys.length; i += 80) {
+      const chunk = keys.slice(i, i + 80);
       try {
-        const params = new URLSearchParams({ lineKeys: keys.join(",") });
+        const params = new URLSearchParams({ lineKeys: chunk.join(",") });
         const bulk = await apiRequest(`/api/transit/route-headway/bulk?${params.toString()}`, { method: "GET" });
         for (const [key, headway] of Object.entries(bulk.headwayByLineKey || {})) {
           if (headway.problematicGeometry) {

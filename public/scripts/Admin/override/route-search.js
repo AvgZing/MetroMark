@@ -614,8 +614,8 @@ async function ensureFrequencyMetadata(lineKeys) {
   if (!missing.length) {
     return;
   }
-  for (let i = 0; i < missing.length; i += 200) {
-    const chunk = missing.slice(i, i + 200);
+  for (let i = 0; i < missing.length; i += 80) {
+    const chunk = missing.slice(i, i + 80);
     for (const key of chunk) {
       state.frequencyFetchInFlight.add(key);
     }

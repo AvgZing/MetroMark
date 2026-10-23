@@ -60,11 +60,9 @@ function routesLayersReady() {
   return Boolean(appState.map && appState.mapReady && appState.map.getLayer && appState.map.getLayer("routes-main-vector"));
 }
 
-// Coverage count above the archive count proves routes are missing.
+// Coverage/archive mismatch proves routes may be missing; empty areas fall
+// through to the catalog fallback.
 function hasIncompleteCoverage() {
-  if (coverageLineCount() <= 0) {
-    return false;
-  }
   if (!routesLayersReady()) {
     return false;
   }
@@ -72,7 +70,11 @@ function hasIncompleteCoverage() {
   if (!archiveKeys) {
     return false;
   }
-  return archiveKeys.size === 0 || coverageLineCount() > archiveKeys.size;
+  const coverageCount = coverageLineCount();
+  if (coverageCount <= 0) {
+    return archiveKeys.size === 0;
+  }
+  return archiveKeys.size === 0 || coverageCount > archiveKeys.size;
 }
 
 function coarseBboxKey(bbox) {
@@ -112,7 +114,7 @@ async function maybeBackfillViewport() {
     return;
   }
 
-  const zoom = appState.map.getZoom();
+  const zoom = appState.processedViewportZoom !== null ? Number(appState.processedViewportZoom) : appState.map.getZoom();
   if (zoom < BACKFILL_MIN_ZOOM) {
     return;
   }
@@ -173,7 +175,7 @@ async function requestBackfill(bbox, options = {}) {
       method: "POST",
       body: JSON.stringify({
         bbox,
-        zoom: appState.map.getZoom(),
+        zoom: appState.processedViewportZoom !== null ? appState.processedViewportZoom : appState.map.getZoom(),
         forceRefresh: Boolean(options.forceRefresh)
       })
     });
@@ -232,6 +234,15 @@ async function requestBackfill(bbox, options = {}) {
       } else if (options.forceRefresh) {
         // Report the no-op only for explicit refreshes.
         setStatus("No new routes to load for this area.", "ok", "This area is already covered.");
+      } else if (
+        typeof archiveLineKeysInViewport === "function" &&
+        (archiveLineKeysInViewport()?.size || 0) === 0
+      ) {
+        setStatus(
+          "No routes found for this area.",
+          "neutral",
+          "Check Transitland's coverage map; this area may not have a feed yet."
+        );
       }
     }
 

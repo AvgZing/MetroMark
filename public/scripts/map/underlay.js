@@ -169,7 +169,9 @@ function renderUnderlay(geojson) {
 
 async function updateUnderlay() {
   const bbox = appState.currentViewportBbox;
-  const zoom = appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
+  const zoom = appState.processedViewportZoom !== null
+    ? Number(appState.processedViewportZoom)
+    : appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
   if (!bbox || !appState.mapReady) {
     return;
   }

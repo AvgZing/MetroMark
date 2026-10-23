@@ -396,7 +396,9 @@ async function loadVisibleRouteStops() {
     return false;
   }
 
-  const zoom = Number(appState.map.getZoom() || 0);
+  const zoom = appState.processedViewportZoom !== null
+    ? Number(appState.processedViewportZoom)
+    : appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
   const minZoom = typeof BACKFILL_MIN_ZOOM !== "undefined" ? BACKFILL_MIN_ZOOM : 8;
   if (zoom < minZoom) {
     return false;
@@ -481,7 +483,9 @@ async function loadVisibleRouteHeadways() {
 
   // Frequency isn't meaningful at global scale; defer the auto-load until the
   // user is zoomed in enough to read individual routes.
-  const zoom = appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
+  const zoom = appState.processedViewportZoom !== null
+    ? Number(appState.processedViewportZoom)
+    : appState.map && appState.mapReady ? Number(appState.map.getZoom()) : 0;
   if (zoom < (typeof BACKFILL_MIN_ZOOM !== "undefined" ? BACKFILL_MIN_ZOOM : 8)) {
     return false;
   }
@@ -513,7 +517,7 @@ async function loadVisibleRouteHeadways() {
   // route_metadata; the rest load individually on focus.
   const keys = candidates.map((line) => line.lineKey);
 
-  const BULK_CHUNK = 500;
+  const BULK_CHUNK = 80;
   const chunks = [];
   for (let i = 0; i < keys.length; i += BULK_CHUNK) {
     chunks.push(keys.slice(i, i + BULK_CHUNK));
