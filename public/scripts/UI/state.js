@@ -28,6 +28,7 @@ const appState = {
   lineStopsCache: new Map(),
   routeStopsAutoLoadAttempts: new Map(),
   inFlightLineStopKeys: new Set(),
+  inFlightLineStopPromises: new Map(),
   inFlightHeadwayLineKeys: new Set(),
   // Merged routes (route_override payload.mergedLineKeys): canonical line key ->
   // member line keys, and the reverse lookup.
@@ -113,5 +114,7 @@ const appState = {
   tileBackfillBboxes: new Set(),
   tileBackfillLastError: "",
   vectorArchiveVersion: "",
-  tilesStats: null
+  tilesStats: null,
+  pendingArchiveReload: false,
+  archiveReloadListener: null
 };

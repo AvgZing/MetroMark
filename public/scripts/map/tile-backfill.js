@@ -293,6 +293,10 @@ function reloadVectorSource() {
   if (!appState.map || !appState.mapReady) {
     return;
   }
+  if (typeof appState.map.isMoving === "function" && appState.map.isMoving()) {
+    appState.pendingArchiveReload = true;
+    return;
+  }
 
   const source = appState.map.getSource("routes-vector");
   if (source && typeof source.setUrl === "function") {

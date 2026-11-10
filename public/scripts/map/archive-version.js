@@ -57,6 +57,19 @@ function startArchiveVersionWatch() {
     return;
   }
 
+  if (appState.map && !appState.archiveReloadListener) {
+    appState.archiveReloadListener = () => {
+      if (!appState.pendingArchiveReload) {
+        return;
+      }
+      appState.pendingArchiveReload = false;
+      if (typeof reloadVectorSource === "function") {
+        reloadVectorSource();
+      }
+    };
+    appState.map.on("moveend", appState.archiveReloadListener);
+  }
+
   syncArchiveVersion().catch(() => {});
   archiveVersionTimer = window.setInterval(() => {
     syncArchiveVersion().catch(() => {});

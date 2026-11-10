@@ -29,6 +29,13 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
     requestOptions.silent = true;
   }
 
+  const existingInFlight = appState.inFlightLineStopPromises?.get(cacheKey);
+  if (existingInFlight) {
+    const completed = await existingInFlight;
+    if (completed || requestOptions.cacheOnly) {
+      return completed;
+    }
+  }
   if (appState.inFlightLineStopKeys.has(cacheKey)) {
     return false;
   }
@@ -37,6 +44,11 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
   const lineLabel = line ? lineDisplayName(line) : normalizedLineKey;
   const routeStopLookupKey = String(line?.routeOnestopId || normalizedLineKey).trim();
 
+  let resolveInFlight;
+  const inFlightPromise = new Promise((resolve) => {
+    resolveInFlight = resolve;
+  });
+  appState.inFlightLineStopPromises.set(cacheKey, inFlightPromise);
   appState.inFlightLineStopKeys.add(cacheKey);
   updateLoadingStatus();
   let stopFetchFailed = false;
@@ -115,6 +127,8 @@ async function ensureLineStopsLoaded(lineKey, options = {}) {
     return false;
   } finally {
     appState.inFlightLineStopKeys.delete(cacheKey);
+    appState.inFlightLineStopPromises.delete(cacheKey);
+    resolveInFlight?.(Boolean(appState.lineStopsCache.has(cacheKey)));
     updateLoadingStatus();
     if (stopFetchFailed && typeof refreshRouteStopDependentUi === "function") {
       refreshRouteStopDependentUi({ forceStopRefresh: true });
