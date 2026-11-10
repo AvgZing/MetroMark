@@ -2,44 +2,11 @@ function createMapStyle(themeOverride) {
   // Shared by the app and the admin override map. Callers may pass a theme
   // (the admin has no appState); the app falls back to appState.theme.
   const theme = themeOverride || (typeof appState !== "undefined" && appState.theme) || "light";
-  const dark = theme === "dark";
-  return {
-    version: 8,
-    projection: {
-      type: "globe"
-    },
-    sources: {
-      streets: {
-        type: "raster",
-        tiles: cartoTileUrls(dark ? "dark_all" : "light_all"),
-        tileSize: 256,
-        attribution: cartoAttribution()
-      },
-      satellite: {
-        type: "raster",
-        tiles: [
-          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        ],
-        tileSize: 256,
-        attribution: "Esri"
-      }
-    },
-    layers: [
-      {
-        id: "streets-base",
-        type: "raster",
-        source: "streets"
-      },
-      {
-        id: "satellite-base",
-        type: "raster",
-        source: "satellite",
-        layout: {
-          visibility: "none"
-        }
-      }
-    ]
-  };
+  const style = protomapsMapStyle(theme);
+  if (!style) {
+    throw new Error("Basemap style unavailable.");
+  }
+  return style;
 }
 
 function updateMapModeButtons() {

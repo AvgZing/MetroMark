@@ -164,10 +164,7 @@ function onRouteHoverLeave() {
 function initializeMap() {
   appState.map = new maplibregl.Map({
     container: "map",
-    style:
-      typeof basemapOldRequested === "function" && basemapOldRequested()
-        ? basemapOldStyleUrl(basemapOldTheme())
-        : createMapStyle(),
+    style: createMapStyle(),
     center: [-122.335, 47.608],
     zoom: 9.5,
     maxPitch: 80,
@@ -238,9 +235,6 @@ function initializeMap() {
     }
 
     addMapRouteLayers(appState.map);
-    if (typeof basemapOldRequested === "function" && basemapOldRequested() && typeof applyOldBasemapPalette === "function") {
-      applyOldBasemapPalette(appState.map, basemapOldTheme());
-    }
     bindMapInteractionEvents(appState.map);
 
     if (typeof scheduleMetadataLoad === "function") {

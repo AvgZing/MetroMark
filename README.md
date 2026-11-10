@@ -136,8 +136,8 @@ MetroMark installs as an app, and progress made offline syncs when the connectio
 ## Data and attribution
 
 Transit data comes from [Transitland](https://www.transit.land/). Map tiles are from OpenStreetMap
-contributors and CARTO, rendered with MapLibre GL. See
-[Transitland's terms](https://www.transit.land/terms).
+contributors and CARTO, with style flavors from [Protomaps](https://protomaps.com/), rendered with
+MapLibre GL. See [Transitland's terms](https://www.transit.land/terms).
 
 ## For developers
 

@@ -2,10 +2,7 @@
 //
 // The CARTO API key is served from the backend (/api/health -> cartoBasemapKey)
 // so it lives in one place (.env) rather than being hardcoded across the
-// frontend. This module caches it and exposes tile-URL builders for the raster
-// basemaps the app uses (light_all / dark_all). If the key is ever missing the
-// URLs fall back to the old key-less templates, so a stale cache or a dev box
-// without the key still renders tiles (with the CARTO watermark).
+// frontend. The app uses CARTO's Protomaps-compatible vector tileset.
 //
 // Keep the CARTO + OpenStreetMap attribution visible per CARTO's free tier.
 
@@ -42,19 +39,8 @@ function keyQuery() {
   return key ? `?key=${encodeURIComponent(key)}` : "";
 }
 
-function cartoTileUrl(style) {
-  const safeStyle = style === "dark_all" ? "dark_all" : "light_all";
-  return `https://a.basemaps.cartocdn.com/${safeStyle}/{z}/{x}/{y}.png${keyQuery()}`;
-}
-
-function cartoTileUrls(style) {
-  const safeStyle = style === "dark_all" ? "dark_all" : "light_all";
-  const key = keyQuery();
-  // Use the full abcd subdomain set like CARTO's own examples; a single URL
-  // would hammer one subdomain.
-  return ["a", "b", "c", "d"].map(
-    (sub) => `https://${sub}.basemaps.cartocdn.com/${safeStyle}/{z}/{x}/{y}.png${key}`
-  );
+function cartoVectorTileJsonUrl() {
+  return `https://tiles.basemaps.cartocdn.com/vector/carto.streets/v2/tiles.json${keyQuery()}`;
 }
 
 function cartoAttribution() {

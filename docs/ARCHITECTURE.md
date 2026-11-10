@@ -169,13 +169,13 @@ Current baseline:
 
 ## Notes on 3D Buildings (post-1.0)
 
-Current pre-1.0 build is 2D: raster streets + raster satellite with globe
-projection, drag/pinch only, no tilt or rotate navigation.
+Current pre-1.0 build is 2D: CARTO vector streets with Protomaps white/black
+flavors, raster satellite, and globe projection; drag/pinch only, no tilt or
+rotate navigation. The vector styles are generated over CARTO's TileJSON.
 
 3D buildings and earth-style navigation are deferred to post-1.0 (#29) because
 they need display-order work so transit routes clip behind buildings. When they
 land:
-- Move basemap to vector style with building layers.
 - Add building extrusion layers by zoom/pitch, with routes ordered above them
   only where they should be visible.
 - Keep transit overlays and auth/progress unchanged.

@@ -1,7 +1,7 @@
 // Shared light/dark theme handling for the admin pages (admin.html and
 // admin-override.html). Mirrors the main app: reads the saved preference,
-// applies data-theme on <body>, and lets the toggle button swap the CARTO
-// basemap tiles (light_all <-> dark_all) when a map exists.
+// applies data-theme on <body>, and swaps the Protomaps basemap flavor when a
+// map exists.
 
 var ADMIN_THEME_STORAGE_KEY = "metromark_theme";
 
@@ -36,14 +36,11 @@ function applyAdminTheme(theme) {
     document.body.setAttribute("data-theme", next);
   }
 
-  // Swap the CARTO basemap tiles on the admin override map (if it exists).
+  // Swap the basemap flavor on the admin map (if it exists).
   var map = ADMIN_THEME_MAP_ACCESSOR();
-  if (map && map.getSource && map.getSource("streets")) {
+  if (map && typeof applyProtomapsTheme === "function") {
     try {
-      map.getSource("streets").setTiles(
-        next === "dark" ? cartoTileUrls("dark_all") : cartoTileUrls("light_all")
-      );
-      map.triggerRepaint();
+      applyProtomapsTheme(map, next);
     } catch (e) {
       console.warn("Could not update admin basemap theme:", e);
     }
