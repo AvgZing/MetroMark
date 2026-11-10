@@ -221,3 +221,68 @@ textarea:focus {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+.pwa-update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--tabbar-h, 0px) + 16px);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  width: min(460px, calc(100vw - 24px));
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--surface-radius);
+  background: var(--panel);
+  box-shadow: var(--elev-1);
+  transform: translateX(-50%);
+}
+
+.pwa-update-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pwa-update-copy strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pwa-update-copy span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pwa-update-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--sp-2);
+}
+
+.pwa-update-banner .btn {
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  border-radius: 8px;
+}
+
+@media (max-width: 520px) {
+  .pwa-update-banner {
+    align-items: stretch;
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+
+  .pwa-update-actions {
+    justify-content: flex-end;
+  }
+}
+
+.pwa-update-banner[hidden] {
+  display: none;
+}

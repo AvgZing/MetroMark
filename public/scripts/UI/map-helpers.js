@@ -456,10 +456,13 @@ function isPortraitMobileLayout() {
   return window.matchMedia("(max-width: 960px) and (orientation: portrait)").matches;
 }
 
-// Wide-short layouts (iPhone-Duo-style outer display, phones and small tablets
-// in landscape): the top bar is dropped and navigation floats over the map.
+// Wide-short layouts (iPhone Duo outer display, phones and small tablets in
+// landscape): the top bar is dropped and navigation floats over the map.
 function isWideShortLayout() {
-  return window.matchMedia("(max-width: 960px) and (orientation: landscape)").matches;
+  return window.matchMedia("(max-width: 960px) and (orientation: landscape)").matches ||
+    window.matchMedia(
+      "(min-width: 460px) and (max-width: 472px) and (min-height: 560px) and (max-height: 700px) and (orientation: portrait)"
+    ).matches;
 }
 
 function setMobilePanelsOpen(open) {

@@ -402,6 +402,30 @@ function bindEvents() {
   });
 }
 
+function initPwaUpdateBanner() {
+  const banner = document.getElementById("pwaUpdateBanner");
+  const reloadBtn = document.getElementById("pwaUpdateReloadBtn");
+  const laterBtn = document.getElementById("pwaUpdateLaterBtn");
+  if (!banner || !reloadBtn || !laterBtn) {
+    return;
+  }
+  let registration = null;
+  window.addEventListener("metromark:update-available", (event) => {
+    registration = event.detail?.registration || null;
+    banner.hidden = false;
+  });
+  reloadBtn.addEventListener("click", () => {
+    banner.hidden = true;
+    if (registration?.waiting) {
+      registration.waiting.postMessage({ type: "SKIP_WAITING" });
+    } else {
+      window.location.reload();
+    }
+  });
+  laterBtn.addEventListener("click", () => {
+    banner.hidden = true;
+  });
+}
 async function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) {
     return;
@@ -441,8 +465,7 @@ function monitorServiceWorkerUpdates(registration) {
     }
     installing.addEventListener("statechange", () => {
       if (installing.state === "installed" && navigator.serviceWorker.controller) {
-  // Surface a waiting app update to the UI.
-        window.dispatchEvent(new CustomEvent("metromark:update-available"));
+        window.dispatchEvent(new CustomEvent("metromark:update-available", { detail: { registration } }));
         console.info("[sw] A new version is available — reload to apply.");
       }
     });
@@ -560,6 +583,7 @@ async function registerSw() {
 
 async function init() {
   const initT0 = performance.now();
+  initPwaUpdateBanner();
   registerServiceWorker();
   document.body.classList.remove("app-ready");
   setTheme(appState.theme);

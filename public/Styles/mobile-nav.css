@@ -1281,12 +1281,13 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Wide-short layouts (iPhone-Duo-style outer display, phones in landscape):
+   Wide-short layouts (iPhone Duo outer display, phones in landscape):
    the top bar is dropped and the primary destinations float as round icon
    buttons over a full-bleed map, mirroring the side controls the system puts
    on the camera edge. Panels open over the map from the trailing edge.
 --------------------------------------------------------------------------- */
-@media (max-width: 960px) and (orientation: landscape) {
+@media (max-width: 960px) and (orientation: landscape),
+       (min-width: 460px) and (max-width: 472px) and (min-height: 560px) and (max-height: 700px) and (orientation: portrait) {
   :root {
     --topbar-h: 0px;
     --tabbar-h: 0px;
@@ -1431,7 +1432,8 @@
 
 /* Panels in wide-short poses: anchored to the leading edge so the floating
    controls and the map stay usable, single column content. */
-@media (max-width: 960px) and (orientation: landscape) {
+@media (max-width: 960px) and (orientation: landscape),
+       (min-width: 460px) and (max-width: 472px) and (min-height: 560px) and (max-height: 700px) and (orientation: portrait) {
   .filters-panel-backdrop {
     position: fixed;
     inset: 0;
